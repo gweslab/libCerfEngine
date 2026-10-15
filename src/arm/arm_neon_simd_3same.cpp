@@ -1,0 +1,229 @@
+#include "arm_neon_simd_3same.h"
+#include <cerfengine/calling_convention.h>
+
+#include <cstdint>
+#include <cstring>
+
+#include <cerfengine/engine.h>
+#include <cerfengine/arm/arm_cpu.h>
+#include "arm_vfp.h"
+
+namespace cerfengine {
+
+CERFENGINE_REGISTER(ArmNeonSimd3Same);
+
+void ArmNeonSimd3Same::HandleSimd3Same(uint32_t op, uint32_t d_idx, uint32_t n_idx,
+                                       uint32_t m_idx, uint32_t esize, uint32_t regs) {
+    auto* state = engine_.Get<ArmCpu>().State();
+    const uint32_t ebytes   = esize / 8u;
+    const uint32_t elements = 8u / ebytes;
+    for (uint32_t r = 0; r < regs; ++r) {
+        const uint8_t* dn = reinterpret_cast<const uint8_t*>(&state->vfp_d[n_idx + r]);
+        const uint8_t* dm = reinterpret_cast<const uint8_t*>(&state->vfp_d[m_idx + r]);
+        const uint8_t* dd = reinterpret_cast<const uint8_t*>(&state->vfp_d[d_idx + r]);
+        uint8_t res[8];
+        for (uint32_t e = 0; e < elements; ++e) {
+            uint64_t a = 0, b = 0;
+            std::memcpy(&a, dn + e * ebytes, ebytes);
+            std::memcpy(&b, dm + e * ebytes, ebytes);
+            uint64_t s = 0;
+            switch (op) {
+                case kS3Add: s = a + b;  break;
+                case kS3Sub: s = a - b;  break;
+                case kS3And: s = a & b;  break;
+                case kS3Bic: s = a & ~b; break;
+                case kS3Orr: s = a | b;  break;
+                case kS3Orn: s = a | ~b; break;
+                case kS3Eor: s = a ^ b;  break;
+                /* VMUL integer (A8.8.350, op=0): result low esize bits =
+                   (a*b) mod 2^esize; signedness is a "Don't care" value. */
+                case kS3Mul: s = a * b;  break;
+                case kS3Qdmulh:
+                case kS3Qrdmulh: {
+                    /* DDI 0406C.c A8.8.372/376: signed saturating doubling
+                       multiply high, optionally rounded toward +infinity
+                       at ties. */
+                    const uint32_t sh = 64u - esize;
+                    const int64_t sa = static_cast<int64_t>(a << sh) >> sh;
+                    const int64_t sb = static_cast<int64_t>(b << sh) >> sh;
+                    const int64_t bias = op == kS3Qrdmulh
+                        ? (int64_t{1} << (esize - 2u)) : 0;
+                    int64_t result = (sa * sb + bias) >> (esize - 1u);
+                    const int64_t limit = (int64_t{1} << (esize - 1u)) - 1;
+                    if (result > limit) {
+                        result = limit;
+                        state->fpscr |= ArmVfp::kFpscrQcMask;
+                    }
+                    s = static_cast<uint64_t>(result);
+                    break;
+                }
+                case kS3MulP: {
+                    uint64_t result = 0u;
+                    for (uint32_t i = 0; i < 8u; ++i) {
+                        if ((a >> i) & 1u) {
+                            result ^= b << i;
+                        }
+                    }
+                    s = result;
+                    break;
+                }
+                /* VBSL: D[d] = (D[n] & D[d]) | (D[m] & ~D[d]) (A8.8.290). */
+                case kS3Bsl: {
+                    uint64_t c = 0;
+                    std::memcpy(&c, dd + e * ebytes, ebytes);
+                    s = (a & c) | (b & ~c);
+                    break;
+                }
+                /* VBIT: D[d] = (D[n] & D[m]) | (D[d] & ~D[m]) (A8.8.290). */
+                case kS3Bit: {
+                    uint64_t c = 0;
+                    std::memcpy(&c, dd + e * ebytes, ebytes);
+                    s = (a & b) | (c & ~b);
+                    break;
+                }
+                /* VBIF: D[d] = (D[d] & D[m]) | (D[n] & ~D[m]) (A8.8.290). */
+                case kS3Bif: {
+                    uint64_t c = 0;
+                    std::memcpy(&c, dd + e * ebytes, ebytes);
+                    s = (c & b) | (a & ~b);
+                    break;
+                }
+                case kS3Ceq:  s = (a == b)        ? ~0ull : 0ull; break;
+                case kS3Tst:  s = ((a & b) != 0u) ? ~0ull : 0ull; break;
+                case kS3CgtU: s = (a >  b)        ? ~0ull : 0ull; break;
+                case kS3CgeU: s = (a >= b)        ? ~0ull : 0ull; break;
+                case kS3CgtS: {
+                    const uint32_t sh = 64u - esize;
+                    const int64_t sa = static_cast<int64_t>(a << sh) >> sh;
+                    const int64_t sb = static_cast<int64_t>(b << sh) >> sh;
+                    s = (sa > sb) ? ~0ull : 0ull;
+                    break;
+                }
+                case kS3CgeS: {
+                    const uint32_t sh = 64u - esize;
+                    const int64_t sa = static_cast<int64_t>(a << sh) >> sh;
+                    const int64_t sb = static_cast<int64_t>(b << sh) >> sh;
+                    s = (sa >= sb) ? ~0ull : 0ull;
+                    break;
+                }
+                case kS3MaxU: s = (a >= b) ? a : b; break;
+                case kS3MinU: s = (a <= b) ? a : b; break;
+                case kS3MaxS: {
+                    const uint32_t sh = 64u - esize;
+                    const int64_t sa = static_cast<int64_t>(a << sh) >> sh;
+                    const int64_t sb = static_cast<int64_t>(b << sh) >> sh;
+                    s = (sa >= sb) ? a : b;
+                    break;
+                }
+                case kS3MinS: {
+                    const uint32_t sh = 64u - esize;
+                    const int64_t sa = static_cast<int64_t>(a << sh) >> sh;
+                    const int64_t sb = static_cast<int64_t>(b << sh) >> sh;
+                    s = (sa <= sb) ? a : b;
+                    break;
+                }
+                case kS3HaddU:  s = (a + b)      >> 1; break;
+                case kS3HsubU:  s = (a - b)      >> 1; break;
+                case kS3RhaddU: s = (a + b + 1u) >> 1; break;
+                case kS3HaddS: {
+                    const uint32_t sh = 64u - esize;
+                    const int64_t sa = static_cast<int64_t>(a << sh) >> sh;
+                    const int64_t sb = static_cast<int64_t>(b << sh) >> sh;
+                    s = static_cast<uint64_t>((sa + sb) >> 1);
+                    break;
+                }
+                case kS3HsubS: {
+                    const uint32_t sh = 64u - esize;
+                    const int64_t sa = static_cast<int64_t>(a << sh) >> sh;
+                    const int64_t sb = static_cast<int64_t>(b << sh) >> sh;
+                    s = static_cast<uint64_t>((sa - sb) >> 1);
+                    break;
+                }
+                case kS3RhaddS: {
+                    const uint32_t sh = 64u - esize;
+                    const int64_t sa = static_cast<int64_t>(a << sh) >> sh;
+                    const int64_t sb = static_cast<int64_t>(b << sh) >> sh;
+                    s = static_cast<uint64_t>((sa + sb + 1) >> 1);
+                    break;
+                }
+                case kS3AbdU: s = (a >= b) ? (a - b) : (b - a); break;
+                case kS3AbdS: {
+                    const uint32_t sh = 64u - esize;
+                    const int64_t sa = static_cast<int64_t>(a << sh) >> sh;
+                    const int64_t sb = static_cast<int64_t>(b << sh) >> sh;
+                    const int64_t diff = sa - sb;
+                    s = static_cast<uint64_t>(diff < 0 ? -diff : diff);
+                    break;
+                }
+                case kS3ShlU: {
+                    const int32_t shift = static_cast<int8_t>(a & 0xFFu);
+                    if (shift >= 0) {
+                        s = (shift >= 64) ? 0ull : (b << shift);
+                    } else {
+                        const uint32_t rs = static_cast<uint32_t>(-shift);
+                        s = (rs >= 64u) ? 0ull : (b >> rs);
+                    }
+                    break;
+                }
+                case kS3ShlS: {
+                    const int32_t shift = static_cast<int8_t>(a & 0xFFu);
+                    const uint32_t sh = 64u - esize;
+                    const int64_t val = static_cast<int64_t>(b << sh) >> sh;
+                    if (shift >= 0) {
+                        s = (shift >= 64) ? 0ull
+                                          : (static_cast<uint64_t>(val) << shift);
+                    } else {
+                        uint32_t rs = static_cast<uint32_t>(-shift);
+                        if (rs > 63u) rs = 63u;
+                        s = static_cast<uint64_t>(val >> rs);
+                    }
+                    break;
+                }
+                case kS3RshlU: {
+                    const int32_t shift = static_cast<int8_t>(a & 0xFFu);
+                    if (shift >= 0) {
+                        s = (shift >= 64) ? 0ull : (b << shift);
+                    } else {
+                        const uint32_t rs = static_cast<uint32_t>(-shift);
+                        const uint64_t mainv = (rs >= 64u) ? 0ull : (b >> rs);
+                        const uint64_t rbit  = (rs >= 65u) ? 0ull
+                                                          : ((b >> (rs - 1u)) & 1ull);
+                        s = mainv + rbit;
+                    }
+                    break;
+                }
+                case kS3RshlS: {
+                    const int32_t shift = static_cast<int8_t>(a & 0xFFu);
+                    const uint32_t sh = 64u - esize;
+                    const int64_t val = static_cast<int64_t>(b << sh) >> sh;
+                    if (shift >= 0) {
+                        s = (shift >= 64) ? 0ull
+                                          : (static_cast<uint64_t>(val) << shift);
+                    } else {
+                        const uint32_t rs = static_cast<uint32_t>(-shift);
+                        const int64_t  mainv = (rs >= 64u) ? (val >> 63)
+                                                          : (val >> rs);
+                        const uint64_t rbit =
+                            (rs >= 65u) ? (val < 0 ? 1ull : 0ull)
+                                        : ((static_cast<uint64_t>(val) >> (rs - 1u)) & 1ull);
+                        s = static_cast<uint64_t>(mainv + static_cast<int64_t>(rbit));
+                    }
+                    break;
+                }
+                default:
+                    engine_.Panic("HandleSimd3Same: unhandled op=%u", op);
+            }
+            std::memcpy(res + e * ebytes, &s, ebytes);
+        }
+        std::memcpy(&state->vfp_d[d_idx + r], res, 8);
+    }
+}
+
+void CERFENGINE_CDECL ArmNeonSimd3Same::HandleSimd3SameHelper(ArmNeonSimd3Same* svc, uint32_t op,
+                                                              uint32_t d_idx, uint32_t n_idx,
+                                                              uint32_t m_idx, uint32_t esize,
+                                                              uint32_t regs) {
+    svc->HandleSimd3Same(op, d_idx, n_idx, m_idx, esize, regs);
+}
+
+}

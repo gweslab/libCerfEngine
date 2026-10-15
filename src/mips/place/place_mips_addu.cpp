@@ -1,0 +1,12 @@
+#include "../mips_place_fns.h"
+
+#include "../mips_gpr_emit.h"
+
+namespace cerfengine {
+
+uint8_t* PlaceMipsAddu(uint8_t* cursor, MipsDecodedInsn* d, MipsBlockContext*) {
+    mips_emit::EmitRtypeArith32Sext(cursor, d->rd, d->rs, d->rt, 0x03);
+    return cursor;
+}
+
+}

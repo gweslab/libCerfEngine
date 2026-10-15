@@ -1,0 +1,52 @@
+cmake_minimum_required(VERSION 3.25)
+project(cerfengine VERSION 1.0.0 LANGUAGES CXX)
+
+set(CERFENGINE_SERVICELOCATOR_DIR "${CMAKE_CURRENT_SOURCE_DIR}/libservicelocator"
+    CACHE PATH "The libservicelocator checkout that the engine builds against")
+if(NOT TARGET servicelocator::servicelocator)
+    add_subdirectory("${CERFENGINE_SERVICELOCATOR_DIR}" servicelocator EXCLUDE_FROM_ALL)
+endif()
+
+if(MSVC AND CMAKE_CXX_COMPILER_ARCHITECTURE_ID STREQUAL "X86")
+    set(cerfengine_backend_x86_win32 ON)
+else()
+    set(cerfengine_backend_x86_win32 OFF)
+endif()
+
+set(cerfengine_sources src/engine.cpp)
+if(cerfengine_backend_x86_win32)
+    file(GLOB_RECURSE cerfengine_backend_sources CONFIGURE_DEPENDS
+         "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp")
+    list(REMOVE_ITEM cerfengine_backend_sources "${CMAKE_CURRENT_SOURCE_DIR}/src/engine.cpp")
+    list(APPEND cerfengine_sources ${cerfengine_backend_sources})
+endif()
+
+add_library(cerfengine STATIC ${cerfengine_sources})
+add_library(cerfengine::cerfengine ALIAS cerfengine)
+target_include_directories(cerfengine PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
+target_compile_features(cerfengine PUBLIC cxx_std_20)
+target_link_libraries(cerfengine PUBLIC servicelocator::servicelocator)
+if(cerfengine_backend_x86_win32)
+    target_compile_definitions(cerfengine PRIVATE CERFENGINE_BACKEND_X86_WIN32=1)
+endif()
+
+function(cerfengine_strict_warnings target)
+    if(MSVC)
+        target_compile_options(${target} PRIVATE /W4 /WX /permissive- /utf-8)
+    else()
+        target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic -Werror)
+    endif()
+endfunction()
+cerfengine_strict_warnings(cerfengine)
+
+if(CMAKE_SOURCE_DIR STREQUAL PROJECT_SOURCE_DIR)
+    set(cerfengine_is_top_level ON)
+else()
+    set(cerfengine_is_top_level OFF)
+endif()
+option(CERFENGINE_BUILD_TESTS "Build the libCerfEngine tests" ${cerfengine_is_top_level})
+
+if(CERFENGINE_BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
+endif()
