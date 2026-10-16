@@ -1,7 +1,9 @@
 #include <cerfengine/arm/arm_jit.h>
 #include <cerfengine/calling_convention.h>
 
+#if CERFENGINE_BACKEND_X86_WIN32
 #include <excpt.h>
+#endif
 
 #include <atomic>
 #include <cstdio>
@@ -99,6 +101,7 @@ void ArmJit::OnReady() {
     engine_.AttachClock(clock_);
 }
 
+#if CERFENGINE_BACKEND_X86_WIN32
 __declspec(naked) void CERFENGINE_CDECL ArmJit::Dispatch(void*, ArmCpuState*, ArmMmuState*) {
     __asm {
         push ebp
@@ -116,6 +119,7 @@ __declspec(naked) void CERFENGINE_CDECL ArmJit::Dispatch(void*, ArmCpuState*, Ar
         ret
     }
 }
+#endif
 
 GuestEngine::RunStatus ArmJit::Run() {
     mmu_->SynchronizeSctlr();
@@ -171,12 +175,17 @@ GuestEngine::RunStatus ArmJit::Run() {
     }
     predecessor_va_ = folded;
 
+#if CERFENGINE_BACKEND_X86_WIN32
     __try {
         Dispatch(native, cpu_state_, mmu_->State());
     } __except (DispatchFaultFilter(_exception_info(), pc)) {
         return RunStatus::kHalted;
     }
     return RunStatus::kRunning;
+#else
+    engine_.Panic("ArmJit: guest PC 0x%08X reached dispatch in a build without an execution "
+                  "backend", pc);
+#endif
 }
 
 void ArmJit::SetHostChainExit(bool requested) {

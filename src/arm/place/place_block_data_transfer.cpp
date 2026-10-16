@@ -1,7 +1,7 @@
 #include <cstddef>
 #include <cstdint>
-#include <intrin.h>
 
+#include "../../population_count.h"
 #include <cerfengine/arm/arm_cpu.h>
 #include "../arm_emit_services.h"
 #include <cerfengine/arm/arm_mmu.h>
@@ -28,7 +28,7 @@ uint8_t* PlaceBlockDataTransfer(uint8_t*      cursor,
         static_cast<uint32_t>(reinterpret_cast<uintptr_t>(ctx->emit->Cpu()));
 
     const uint32_t list       = d->register_list;
-    const uint32_t count      = __popcnt16(d->register_list);
+    const uint32_t count      = PopulationCount16(d->register_list);
     const bool     load       = d->l != 0;
     const bool     wback      = d->w != 0;
     const bool     pc_in_list = (list & 0x8000u) != 0;

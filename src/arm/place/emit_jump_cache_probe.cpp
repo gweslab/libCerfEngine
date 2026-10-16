@@ -11,8 +11,10 @@
 
 namespace cerfengine {
 
+#if CERFENGINE_BACKEND_X86_WIN32
 static_assert(sizeof(JumpCacheEntry) == (1u << kJumpCacheEntryShift),
               "emitted jump-cache probes scale the index by a shift");
+#endif
 
 /* QEMU helper_lookup_tb_ptr() (cpu-exec.c). */
 uint8_t* EmitJumpCacheProbe(uint8_t* cursor, BlockContext* ctx) {

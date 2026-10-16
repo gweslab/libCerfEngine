@@ -1,4 +1,6 @@
+#if defined(_MSC_VER)
 #pragma fenv_access(on)
+#endif
 
 #include "arm_vfp.h"
 #include <cerfengine/calling_convention.h>

@@ -1,8 +1,8 @@
 #include "arm_routed_instruction.h"
 
 #include <cstring>
-#include <intrin.h>
 
+#include "../population_count.h"
 #include <cerfengine/byte_order.h>
 #include <cerfengine/engine.h>
 #include <cerfengine/arm/arm_cpu.h>
@@ -304,7 +304,7 @@ ArmRoutedInstruction::Outcome ArmRoutedInstruction::HalfwordTransfer(
 ArmRoutedInstruction::Outcome ArmRoutedInstruction::BlockTransfer(
     DecodedInsn* d) {
     const uint32_t list       = d->register_list;
-    const uint32_t count      = __popcnt16(d->register_list);
+    const uint32_t count      = PopulationCount16(d->register_list);
     const bool     load       = d->l != 0u;
     const bool     pc_in_list = (list & 0x8000u) != 0u;
     const bool     exc_return = d->s != 0u && load && pc_in_list;

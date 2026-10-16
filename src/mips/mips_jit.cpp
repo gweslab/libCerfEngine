@@ -1,7 +1,9 @@
 #include <cerfengine/mips/mips_jit.h>
 #include <cerfengine/calling_convention.h>
 
+#if CERFENGINE_BACKEND_X86_WIN32
 #include <excpt.h>
+#endif
 
 #include <cerfengine/engine.h>
 #include "../host_platform.h"
@@ -49,6 +51,7 @@ bool MipsJit::GuestIrqMasked() const {
     return !exceptions_->InterruptsEnabled();
 }
 
+#if CERFENGINE_BACKEND_X86_WIN32
 __declspec(naked) void CERFENGINE_CDECL MipsJit::Dispatch(void*, MipsCpuState*) {
     __asm {
         push ebp
@@ -65,6 +68,7 @@ __declspec(naked) void CERFENGINE_CDECL MipsJit::Dispatch(void*, MipsCpuState*) 
         ret
     }
 }
+#endif
 
 void MipsJit::PrintFatalDump() {
     const auto& g = cpu_state_->gpr;
@@ -120,12 +124,17 @@ GuestEngine::RunStatus MipsJit::Run() {
         if (!native) return RunStatus::kRunning;
     }
 
+#if CERFENGINE_BACKEND_X86_WIN32
     __try {
         Dispatch(native, cpu_state_);
     } __except (DispatchFaultFilter(_exception_info(), pc)) {
         if (_exception_code() == platform::kHaltUnwindCode) return RunStatus::kHalted;
     }
     return RunStatus::kRunning;
+#else
+    engine_.Panic("MipsJit: guest PC 0x%08X reached dispatch in a build without an execution "
+                  "backend", pc);
+#endif
 }
 
 void MipsJit::DeliverReset() {

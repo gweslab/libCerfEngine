@@ -174,8 +174,8 @@ struct ArmMmuState {
     uint32_t code_word_base         = 0;
     uint32_t code_word_top          = 0;
     uint32_t code_word_bitmap_bytes = 0;
-    uint8_t* code_xlat_bitmap       = nullptr;
     uint32_t code_page_dirty_bytes  = 0;
+    uint8_t* code_xlat_bitmap       = nullptr;
     uint8_t* code_page_dirty        = nullptr;
 };
 
