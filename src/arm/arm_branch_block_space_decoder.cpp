@@ -3,7 +3,7 @@
 #include <cerfengine/engine.h>
 #include "arm_opcode.h"
 #include <cerfengine/arm/decoded_insn.h>
-#include <cerfengine/arm/place_fns.h>
+#include <cerfengine/arm/block_context.h>
 
 namespace cerfengine {
 
@@ -20,7 +20,7 @@ bool ArmBranchBlockSpaceDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         insn->l            = (op.word >> 24) & 0x1u;
         insn->offset       = static_cast<int32_t>(op.word << 8) >> 6;
         insn->r15_modified = true;
-        insn->place_fn     = &PlaceBranch;
+        insn->kind         = ArmInsnKind::kBranch;
         return true;
     }
     insn->p             = (op.word >> 24) & 0x1u;
@@ -34,7 +34,7 @@ bool ArmBranchBlockSpaceDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
                           (insn->register_list & 0x8000u) != 0u;
     insn->r15_modified        = pc_load;
     insn->is_exception_return = pc_load && insn->s != 0u;
-    insn->place_fn            = &PlaceBlockDataTransfer;
+    insn->kind                = ArmInsnKind::kBlockDataTransfer;
     return true;
 }
 

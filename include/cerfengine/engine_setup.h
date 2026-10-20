@@ -58,6 +58,7 @@ struct MipsFeatures {
     bool mips16             = false;
     bool tx39_multiply_add  = false;
     bool vr41xx_power_modes = false;
+    bool cop1_cop2_unusable = false;
     uint32_t device_ip_mask = 0;
     uint32_t phys_addr_mask = 0xFFFFFFFFu;
 };
@@ -70,6 +71,7 @@ struct Setup {
     void*                 memory          = nullptr;
     MmioBusBinding        mmio;
     bool                  report_block_compiles = false;
+    bool                  verify_ir       = false;
     void*                 arm_translation = nullptr;
     void*                 arm_alignment_fault = nullptr;
     ArmSystemHost*        arm_system      = nullptr;

@@ -1,9 +1,8 @@
 #include "arm_routed_instruction.h"
 
+#include <bit>
 #include <cstring>
 
-#include "../population_count.h"
-#include <cerfengine/byte_order.h>
 #include <cerfengine/engine.h>
 #include <cerfengine/arm/arm_cpu.h>
 #include "arm_decoder.h"
@@ -12,10 +11,11 @@
 #include "arm_opcode.h"
 #include "arm_routed_access.h"
 #include "arm_routed_addressing.h"
+#include "arm_routed_table_branch.h"
+#include "arm_transfer_rules.h"
 #include <cerfengine/arm/cpu_state.h>
 #include <cerfengine/arm/decoded_insn.h>
-#include <cerfengine/arm/place_fns.h>
-#include <cerfengine/arm/arm_translator.h>
+#include <cerfengine/arm/block_context.h>
 #include "thumb32_decoder.h"
 #include "thumb_decoder.h"
 
@@ -32,71 +32,67 @@ void ArmRoutedInstruction::OnReady() {
     cpu_state_  = cpu_->State();
     decoder_    = &engine_.Get<ArmDecoder>();
     mmu_        = &engine_.Get<ArmMmu>();
-    translator_ = &engine_.Get<ArmTranslator>();
     config_     = &engine_.GetSetup().arm;
     access_     = &engine_.Get<ArmRoutedAccess>();
     addressing_ = &engine_.Get<ArmRoutedAddressing>();
     thumb_      = &engine_.Get<ThumbDecoder>();
     thumb32_    = &engine_.Get<Thumb32Decoder>();
+    table_branch_ = &engine_.Get<ArmRoutedTableBranch>();
 }
 
-void ArmRoutedInstruction::Complete(uint32_t guest_pc) {
-    const bool thumb = cpu_state_->cpsr.bits.thumb_mode != 0u;
-    uint8_t*   host  = translator_->TranslateExecute(guest_pc);
-    if (host == nullptr) {
-        engine_.Panic("ArmRoutedInstruction: guest PC 0x%08X is unmapped on re-fetch",
-                      guest_pc);
+void ArmRoutedInstruction::CompleteOrRaiseAbort(uint32_t guest_pc, uint32_t raw) {
+    if (mmu_->io_pending()) {
+        Complete(guest_pc, raw);
+        return;
     }
+    cpu_->RaiseAbortDataException(guest_pc);
+}
+
+void ArmRoutedInstruction::Complete(uint32_t guest_pc, uint32_t raw) {
+    const bool thumb = cpu_state_->cpsr.bits.thumb_mode != 0u;
 
     DecodedInsn d;
     std::memset(&d, 0, sizeof(d));
     d.guest_address        = guest_pc;
     d.actual_guest_address = guest_pc;
+    d.raw                  = raw;
 
-    uint32_t raw     = 0;
-    bool     decoded = false;
+    bool decoded = false;
     if (thumb) {
-        const uint16_t half = le::U16(host);
         /* DDI 0406C.c A6.1 (p. A6-220): a Thumb instruction is "either a
            single 16-bit halfword in that stream, or a 32-bit instruction
            consisting of two consecutive halfwords in that stream". */
-        if (thumb32_->IsWide(half)) {
-            uint8_t* hi = translator_->TranslateExecute(guest_pc + 2u);
-            if (hi == nullptr) {
-                engine_.Panic("ArmRoutedInstruction: guest PC 0x%08X second halfword is "
-                              "unmapped on re-fetch", guest_pc);
-            }
+        if (thumb32_->IsWide(static_cast<uint16_t>(raw >> 16))) {
             d.length = 4u;
-            raw      = (static_cast<uint32_t>(half) << 16) | le::U16(hi);
             decoded  = thumb32_->DecodeThumb32(&d, raw);
         } else {
             d.length = 2u;
-            raw      = half;
-            decoded  = thumb_->DecodeThumb(&d, half);
+            decoded  = thumb_->DecodeThumb(&d, static_cast<uint16_t>(raw));
         }
     } else {
         ArmOpcode op;
-        op.word  = le::U32(host);
+        op.word  = raw;
         d.length = 4u;
-        raw      = op.word;
         decoded  = decoder_->DecodeArm(&d, op);
     }
     if (!decoded) {
-        engine_.Panic("ArmRoutedInstruction: guest PC 0x%08X word 0x%08X no "
-                      "longer decodes", guest_pc, raw);
+        engine_.Panic("ArmRoutedInstruction: guest PC 0x%08X word 0x%08X does not "
+                      "decode", guest_pc, raw);
     }
 
     Outcome outcome;
-    if (d.place_fn == &PlaceSingleDataTransfer) {
+    if (d.kind == ArmInsnKind::kSingleDataTransfer) {
         outcome = SingleTransfer(&d);
-    } else if (d.place_fn == &PlaceLoadStoreExtension) {
+    } else if (d.kind == ArmInsnKind::kLoadStoreExtension) {
         outcome = d.op1 == 0u ? Swap(&d) : HalfwordTransfer(&d);
-    } else if (d.place_fn == &PlaceBlockDataTransfer) {
+    } else if (d.kind == ArmInsnKind::kBlockDataTransfer) {
         outcome = BlockTransfer(&d);
-    } else if (d.place_fn == &PlaceLdrex) {
+    } else if (d.kind == ArmInsnKind::kLdrex) {
         outcome = Exclusive(&d, false);
-    } else if (d.place_fn == &PlaceStrex) {
+    } else if (d.kind == ArmInsnKind::kStrex) {
         outcome = Exclusive(&d, true);
+    } else if (d.kind == ArmInsnKind::kTableBranchByte) {
+        outcome = table_branch_->Complete(d) ? Outcome::kPcWritten : Outcome::kAborted;
     } else {
         engine_.Halt(cerfengine::HaltReason::kUnimplemented,
                      "ArmRoutedInstruction: guest PC 0x%08X word 0x%08X routes "
@@ -117,7 +113,7 @@ void ArmRoutedInstruction::Complete(uint32_t guest_pc) {
 
 ArmRoutedInstruction::Outcome ArmRoutedInstruction::Abort(
     DecodedInsn* d, bool wback, uint32_t base_on_abort) {
-    if (wback && !config_->base_restored_abort_model) {
+    if (ArmBaseUpdatedOnAbort(wback, *config_)) {
         cpu_state_->gprs[d->rn] = base_on_abort;
     }
     cpu_->RaiseAbortDataException(d->guest_address);
@@ -304,7 +300,7 @@ ArmRoutedInstruction::Outcome ArmRoutedInstruction::HalfwordTransfer(
 ArmRoutedInstruction::Outcome ArmRoutedInstruction::BlockTransfer(
     DecodedInsn* d) {
     const uint32_t list       = d->register_list;
-    const uint32_t count      = PopulationCount16(d->register_list);
+    const uint32_t count      = static_cast<uint32_t>(std::popcount(d->register_list));
     const bool     load       = d->l != 0u;
     const bool     pc_in_list = (list & 0x8000u) != 0u;
     const bool     exc_return = d->s != 0u && load && pc_in_list;

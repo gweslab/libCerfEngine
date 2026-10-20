@@ -35,7 +35,10 @@ public:
     /* Table A3-1 (p. A3-108) and Table D12-1 (D12.3.1, p. D12-2506) give the
        alignment model by architecture version and SCTLR.U; D15.3.1
        (p. D15-2592) gives the v4/v5 legacy behaviour. */
-    bool     UnalignedAccessesFault() const;
+    bool UnalignedAccessesFault() const {
+        return processor_config_->arch_v7 ||
+               (processor_config_->arch_v6 && state_.effective_control_register.bits.u);
+    }
     uint32_t DoublewordAlignMask()    const;
 
     /* DDI 0211I Table 4-2 (p. 4-17) puts LDC/LDM/RFE/SRS/STC/STM in the
@@ -49,7 +52,11 @@ public:
     void ResetControlRegisters();
 
     void InvalidateAllTlbs();
+    void InvalidateInstructionTlbs();
+    void InvalidateDataTlbs();
     void SynchronizeSctlr();
+
+    static void CERFENGINE_FASTCALL InvalidateAllTlbsHelper(ArmMmu* mmu);
 
     void RefreshFcseFold();
 
@@ -110,8 +117,8 @@ private:
 
     std::vector<uint8_t> code_xlat_bitmap_storage_;
     std::vector<uint8_t> code_page_dirty_storage_;
-    ArmTlbSpanTracker data_tlb_span_tracker_;
-    ArmTlbSpanTracker instruction_tlb_span_tracker_;
+    ArmTlbSpanTracker data_tlb_span_tracker_[kArmTlbPrivilegeCount];
+    ArmTlbSpanTracker instruction_tlb_span_tracker_[kArmTlbPrivilegeCount];
 };
 
 }

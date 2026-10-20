@@ -7,6 +7,7 @@
 #include <cerfengine/isa_block_space.h>
 #include "../jit_code_arena.h"
 #include <cerfengine/arm/cpu_state.h>
+#include "arm_tlb_ops.h"
 
 namespace cerfengine {
 
@@ -24,7 +25,7 @@ public:
     JitCodeArena&  Arena()               { return arena_; }
     IsaBlockSpace& Space(bool thumb)     { return thumb ? blocks_thumb_ : blocks_arm_; }
 
-    void* Lookup(bool thumb, uint32_t folded_pc);
+    void* Lookup(bool thumb, uint32_t privilege, uint32_t folded_pc);
 
     void Flush();
     void PendFlush();
@@ -51,6 +52,8 @@ public:
     static void CERFENGINE_FASTCALL UtlbInvalidateMvaHelper(uint32_t mva, ArmTranslationCache* tc);
 
 private:
+    ArmTlbInvalidation InvalidateTlbsByVa(ArmTlbUnit (&units)[kArmTlbPrivilegeCount], uint32_t mva);
+
     JitCodeArena  arena_;
     IsaBlockSpace blocks_arm_;
     IsaBlockSpace blocks_thumb_;

@@ -3,7 +3,7 @@
 #include <cerfengine/engine.h>
 #include "arm_opcode.h"
 #include <cerfengine/arm/decoded_insn.h>
-#include <cerfengine/arm/place_fns.h>
+#include <cerfengine/arm/block_context.h>
 
 namespace cerfengine {
 
@@ -12,21 +12,20 @@ CERFENGINE_REGISTER(ArmNeonLoadStoreDecoder);
 bool ArmNeonLoadStoreDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
     if (op.neon_load_store.a == 0u) {
         const uint32_t type = op.neon_load_store.type;
-        ArmPlaceFn fn = nullptr;
+        ArmInsnKind kind;
         if (type == 0x2u || type == 0x6u || type == 0x7u || type == 0xAu) {
-            fn = &PlaceNeonLoadStoreMultiple;
+            kind = ArmInsnKind::kNeonLoadStoreMultiple;
         } else if (type == 0x0u || type == 0x1u || type == 0x3u ||
                    type == 0x4u || type == 0x5u || type == 0x8u ||
                    type == 0x9u) {
-            fn = &PlaceNeonLoadStoreInterleaved;
-        }
-        if (!fn) {
+            kind = ArmInsnKind::kNeonLoadStoreInterleaved;
+        } else {
             insn->cond      = 14;
             insn->immediate = op.word;
-            insn->place_fn  = &EmitRaiseUndAndReturn;
+            insn->kind      = ArmInsnKind::kUndefined;
             return true;
         }
-        insn->place_fn = fn;
+        insn->kind     = kind;
         insn->cond     = 14;
         insn->rn       = op.neon_load_store.rn;
         insn->rm       = op.neon_load_store.rm;
@@ -39,7 +38,7 @@ bool ArmNeonLoadStoreDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         return true;
     }
     if (op.neon_load_store_single.size != 3u) {
-        insn->place_fn = &PlaceNeonLoadStoreSingleLane;
+        insn->kind     = ArmInsnKind::kNeonLoadStoreSingleLane;
         insn->cond     = 14;
         insn->rn       = op.neon_load_store_single.rn;
         insn->rm       = op.neon_load_store_single.rm;
@@ -53,8 +52,8 @@ bool ArmNeonLoadStoreDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
     }
     insn->cond      = 14;
     insn->immediate = op.word;
-    insn->place_fn = op.neon_load_store_single.l == 0u ? &EmitRaiseUndAndReturn
-        : &PlaceNeonLoadAllLanes;
+    insn->kind      = op.neon_load_store_single.l == 0u ? ArmInsnKind::kUndefined
+        : ArmInsnKind::kNeonLoadAllLanes;
     return true;
 }
 

@@ -8,6 +8,13 @@ if(NOT TARGET servicelocator::servicelocator)
 endif()
 
 if(MSVC)
+    foreach(cerfengine_flags CMAKE_CXX_FLAGS_RELEASE CMAKE_CXX_FLAGS_RELWITHDEBINFO)
+        string(REGEX REPLACE "/Ob[0-3]" "" ${cerfengine_flags} "${${cerfengine_flags}}")
+        string(APPEND ${cerfengine_flags} " /Ob3")
+    endforeach()
+endif()
+
+if(MSVC)
     string(TOLOWER "${CMAKE_CXX_COMPILER_ARCHITECTURE_ID}" cerfengine_cpu)
 else()
     string(TOLOWER "${CMAKE_SYSTEM_PROCESSOR}" cerfengine_cpu)
@@ -41,6 +48,12 @@ endif()
 
 add_library(cerfengine STATIC ${cerfengine_sources})
 add_library(cerfengine::cerfengine ALIAS cerfengine)
+if(cerfengine_backend_x86_win32)
+    set_target_properties(cerfengine PROPERTIES
+        INTERPROCEDURAL_OPTIMIZATION_RELEASE ON
+        INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO ON)
+    target_link_options(cerfengine INTERFACE $<$<CONFIG:Release,RelWithDebInfo>:/LTCG>)
+endif()
 target_include_directories(cerfengine PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_compile_features(cerfengine PUBLIC cxx_std_20)
 target_link_libraries(cerfengine PUBLIC servicelocator::servicelocator)

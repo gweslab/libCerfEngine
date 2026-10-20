@@ -1,6 +1,5 @@
 #pragma once
 
-#include "../calling_convention.h"
 #include <cstdint>
 #include <optional>
 
@@ -9,8 +8,6 @@
 #include "cpu_state.h"
 
 namespace cerfengine {
-
-struct ArmMmuState;
 
 class ArmBlockCompiler;
 class ArmCpu;
@@ -34,10 +31,6 @@ public:
     void SetInterruptPending();
     void ClearInterruptPending();
     void SetIdleWake(bool level);
-
-    static void CERFENGINE_CDECL Dispatch(void*        native_pc,
-                                          ArmCpuState* cpu_state,
-                                          ArmMmuState* mmu_state);
 
     RunStatus Run() override;
     bool      DeepSleep()    const override { return cpu_state_->deep_sleep != 0; }

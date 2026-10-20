@@ -31,19 +31,22 @@ void CERFENGINE_FASTCALL MmioWriteSlow(void* context, uint32_t pa, uint32_t valu
     route.write(route.context, pa - route.base, value, static_cast<uint32_t>(width));
 }
 
-uint64_t CERFENGINE_FASTCALL MmioReadDword(void*, uint32_t pa) {
-    TestFail("unexpected 64-bit MMIO read at PA 0x%08X", pa);
+uint64_t CERFENGINE_FASTCALL MmioReadDword(void* context, uint32_t pa) {
+    return TestHost::MmioReadDword(context, pa);
 }
 
-void CERFENGINE_FASTCALL MmioWriteDword(void*, uint32_t pa, uint64_t) {
-    TestFail("unexpected 64-bit MMIO write at PA 0x%08X", pa);
+void CERFENGINE_FASTCALL MmioWriteDword(void* context, uint32_t pa, uint64_t value) {
+    TestHost::MmioWriteDword(context, pa, value);
 }
 
-void CERFENGINE_FASTCALL ClockDispatch(ClockHost*) {}
+void CERFENGINE_FASTCALL ClockDispatch(ClockHost* clock) {
+    static_cast<TestHost*>(clock)->DispatchClock();
+}
 
 template <ArmMmuAccess kAccess>
-ArmTranslation CERFENGINE_FASTCALL ArmWalk(void*, uint32_t mva, bool, uint32_t) {
-    TestUnexpectedWalk(mva);
+ArmTranslation CERFENGINE_FASTCALL ArmWalk(void* context, uint32_t mva, bool user, uint32_t) {
+    constexpr bool kWrite = kAccess == ArmMmuAccess::kWrite || kAccess == ArmMmuAccess::kReadWrite;
+    return static_cast<TestArmSystem*>(context)->Walk(mva, kWrite, user);
 }
 
 template ArmTranslation CERFENGINE_FASTCALL ArmWalk<ArmMmuAccess::kRead>(void*, uint32_t, bool,
@@ -55,12 +58,12 @@ template ArmTranslation CERFENGINE_FASTCALL ArmWalk<ArmMmuAccess::kReadWrite>(vo
 template ArmTranslation CERFENGINE_FASTCALL ArmWalk<ArmMmuAccess::kExecute>(void*, uint32_t,
                                                                             bool, uint32_t);
 
-bool CERFENGINE_FASTCALL ArmProbeWalk(void*, uint32_t mva, uint32_t, uint32_t*) {
-    TestFail("unexpected ARM probe translation of 0x%08X", mva);
+bool CERFENGINE_FASTCALL ArmProbeWalk(void* context, uint32_t mva, uint32_t, uint32_t* pa) {
+    return static_cast<TestArmSystem*>(context)->Probe(mva, pa);
 }
 
-void CERFENGINE_FASTCALL ArmAlignmentFault(void*, uint32_t va, bool) {
-    TestFail("unexpected alignment fault at 0x%08X", va);
+void CERFENGINE_FASTCALL ArmAlignmentFault(void* context, uint32_t va, bool is_write) {
+    static_cast<TestArmSystem*>(context)->RecordAlignmentFault(va, is_write);
 }
 
 }

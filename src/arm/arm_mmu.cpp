@@ -21,12 +21,6 @@ bool ArmMmu::ShouldRegister() {
 
 ArmMmu::~ArmMmu() = default;
 
-bool ArmMmu::UnalignedAccessesFault() const {
-    return processor_config_->arch_v7 ||
-           (processor_config_->arch_v6 &&
-            state_.effective_control_register.bits.u);
-}
-
 bool ArmMmu::AlignMultiWordOrFault(uint32_t& address, bool is_write) {
     if (!UnalignedAccessesFault() &&
         !state_.effective_control_register.bits.a) {
@@ -63,13 +57,24 @@ void ArmMmu::ResetControlRegisters() {
     state_.effective_control_register = state_.control_register;
     RefreshFcseFold();
 
-    ArmTlbFlushAll(&state_.data_tlb);
-    ArmTlbFlushAll(&state_.instruction_tlb);
+    InvalidateAllTlbs();
 }
 
 void ArmMmu::InvalidateAllTlbs() {
-    ArmTlbFlushAll(&state_.instruction_tlb);
-    ArmTlbFlushAll(&state_.data_tlb);
+    InvalidateInstructionTlbs();
+    InvalidateDataTlbs();
+}
+
+void ArmMmu::InvalidateInstructionTlbs() {
+    for (ArmTlbUnit& unit : state_.instruction_tlb) ArmTlbFlushAll(&unit);
+}
+
+void ArmMmu::InvalidateDataTlbs() {
+    for (ArmTlbUnit& unit : state_.data_tlb) ArmTlbFlushAll(&unit);
+}
+
+void CERFENGINE_FASTCALL ArmMmu::InvalidateAllTlbsHelper(ArmMmu* mmu) {
+    mmu->InvalidateAllTlbs();
 }
 
 /* ARM DDI 0406C.c D10.1.1 / DDI 0100I B4.2.3 (p. B4-6): the FCSE PID "is SBZ
@@ -128,8 +133,10 @@ void ArmMmu::SetEffectiveControlRegister(uint32_t value) {
 void ArmMmu::OnReady() {
     processor_config_ = &engine_.GetSetup().arm;
     alignment_fault_  = engine_.GetSetup().arm_alignment_fault;
-    state_.data_tlb.span_tracker = &data_tlb_span_tracker_;
-    state_.instruction_tlb.span_tracker = &instruction_tlb_span_tracker_;
+    for (uint32_t p = 0; p < kArmTlbPrivilegeCount; ++p) {
+        state_.data_tlb[p].span_tracker        = &data_tlb_span_tracker_[p];
+        state_.instruction_tlb[p].span_tracker = &instruction_tlb_span_tracker_[p];
+    }
 
     uint32_t dram_min = 0xFFFFFFFFu;
     uint32_t dram_max = 0u;
@@ -150,8 +157,7 @@ void ArmMmu::OnReady() {
     code_page_dirty_storage_.assign(state_.code_page_dirty_bytes, 0u);
     state_.code_page_dirty = code_page_dirty_storage_.data();
 
-    ArmTlbFlushAll(&state_.data_tlb);
-    ArmTlbFlushAll(&state_.instruction_tlb);
+    InvalidateAllTlbs();
 }
 
 void ArmMmu::RaiseAlignmentFault(uint32_t va, bool is_write) {

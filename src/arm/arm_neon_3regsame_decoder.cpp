@@ -15,7 +15,7 @@
 #include "arm_neon_simd_3same.h"
 #include "arm_opcode.h"
 #include <cerfengine/arm/decoded_insn.h>
-#include <cerfengine/arm/place_fns.h>
+#include <cerfengine/arm/block_context.h>
 
 namespace cerfengine {
 
@@ -29,7 +29,7 @@ bool ArmNeon3RegSameDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         insn->immediate = op.word;
         insn->op1       = op.neon_data_3reg.u ? ArmNeonSimd3Same::kS3Sub
                                               : ArmNeonSimd3Same::kS3Add;
-        insn->place_fn  = &PlaceNeonData3Same;
+        insn->kind  = ArmInsnKind::kNeonData3Same;
         return true;
     }
 
@@ -56,7 +56,7 @@ bool ArmNeon3RegSameDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         insn->cond      = 14;
         insn->immediate = op.word;
         insn->op1       = op_sel;
-        insn->place_fn  = &PlaceNeonData3Same;
+        insn->kind      = ArmInsnKind::kNeonData3Same;
         return true;
     }
 
@@ -67,7 +67,7 @@ bool ArmNeon3RegSameDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         insn->immediate = op.word;
         insn->op1       = op.neon_data_3reg.u ? ArmNeonSimd3Same::kS3MulP
                                               : ArmNeonSimd3Same::kS3Mul;
-        insn->place_fn  = &PlaceNeonData3Same;
+        insn->kind  = ArmInsnKind::kNeonData3Same;
         return true;
     }
 
@@ -78,7 +78,7 @@ bool ArmNeon3RegSameDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         insn->immediate = op.word;
         insn->op1       = op.neon_data_3reg.u ? ArmNeonSimd3Same::kS3Ceq
                                               : ArmNeonSimd3Same::kS3Tst;
-        insn->place_fn  = &PlaceNeonData3Same;
+        insn->kind  = ArmInsnKind::kNeonData3Same;
         return true;
     }
 
@@ -87,7 +87,7 @@ bool ArmNeon3RegSameDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         insn->immediate = op.word;
         insn->op1       = op.neon_data_3reg.u ? ArmNeonSimd3Same::kS3CgtU
                                               : ArmNeonSimd3Same::kS3CgtS;
-        insn->place_fn  = &PlaceNeonData3Same;
+        insn->kind  = ArmInsnKind::kNeonData3Same;
         return true;
     }
 
@@ -96,7 +96,7 @@ bool ArmNeon3RegSameDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         insn->immediate = op.word;
         insn->op1       = op.neon_data_3reg.u ? ArmNeonSimd3Same::kS3CgeU
                                               : ArmNeonSimd3Same::kS3CgeS;
-        insn->place_fn  = &PlaceNeonData3Same;
+        insn->kind  = ArmInsnKind::kNeonData3Same;
         return true;
     }
 
@@ -112,7 +112,7 @@ bool ArmNeon3RegSameDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         insn->cond      = 14;
         insn->immediate = op.word;
         insn->op1       = op_sel;
-        insn->place_fn  = &PlaceNeonData3Same;
+        insn->kind      = ArmInsnKind::kNeonData3Same;
         return true;
     }
 
@@ -121,7 +121,7 @@ bool ArmNeon3RegSameDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         insn->immediate = op.word;
         insn->op1       = op.neon_data_3reg.u ? ArmNeonSimd3Same::kS3HaddU
                                               : ArmNeonSimd3Same::kS3HaddS;
-        insn->place_fn  = &PlaceNeonData3Same;
+        insn->kind  = ArmInsnKind::kNeonData3Same;
         return true;
     }
 
@@ -130,7 +130,7 @@ bool ArmNeon3RegSameDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         insn->immediate = op.word;
         insn->op1       = op.neon_data_3reg.u ? ArmNeonSimd3Same::kS3HsubU
                                               : ArmNeonSimd3Same::kS3HsubS;
-        insn->place_fn  = &PlaceNeonData3Same;
+        insn->kind  = ArmInsnKind::kNeonData3Same;
         return true;
     }
 
@@ -139,7 +139,7 @@ bool ArmNeon3RegSameDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         insn->immediate = op.word;
         insn->op1       = op.neon_data_3reg.u ? ArmNeonSimd3Same::kS3RhaddU
                                               : ArmNeonSimd3Same::kS3RhaddS;
-        insn->place_fn  = &PlaceNeonData3Same;
+        insn->kind  = ArmInsnKind::kNeonData3Same;
         return true;
     }
 
@@ -148,7 +148,7 @@ bool ArmNeon3RegSameDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         insn->immediate = op.word;
         insn->op1       = op.neon_data_3reg.u ? ArmNeonSimd3Same::kS3AbdU
                                               : ArmNeonSimd3Same::kS3AbdS;
-        insn->place_fn  = &PlaceNeonData3Same;
+        insn->kind  = ArmInsnKind::kNeonData3Same;
         return true;
     }
 
@@ -157,7 +157,7 @@ bool ArmNeon3RegSameDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         insn->immediate = op.word;
         insn->op1       = op.neon_data_3reg.u ? ArmNeonSimd3Same::kS3ShlU
                                               : ArmNeonSimd3Same::kS3ShlS;
-        insn->place_fn  = &PlaceNeonData3Same;
+        insn->kind  = ArmInsnKind::kNeonData3Same;
         return true;
     }
 
@@ -166,7 +166,7 @@ bool ArmNeon3RegSameDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         insn->immediate = op.word;
         insn->op1       = op.neon_data_3reg.u ? ArmNeonSimd3Same::kS3RshlU
                                               : ArmNeonSimd3Same::kS3RshlS;
-        insn->place_fn  = &PlaceNeonData3Same;
+        insn->kind  = ArmInsnKind::kNeonData3Same;
         return true;
     }
 
@@ -177,7 +177,7 @@ bool ArmNeon3RegSameDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         insn->immediate = op.word;
         insn->op1       = op.neon_data_3reg.u ? ArmNeon::kAccMls
                                               : ArmNeon::kAccMla;
-        insn->place_fn  = &PlaceNeonData3SameAcc;
+        insn->kind  = ArmInsnKind::kNeonData3SameAcc;
         return true;
     }
 
@@ -186,7 +186,7 @@ bool ArmNeon3RegSameDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         insn->immediate = op.word;
         insn->op1       = op.neon_data_3reg.u ? ArmNeon::kAccAbaU
                                               : ArmNeon::kAccAbaS;
-        insn->place_fn  = &PlaceNeonData3SameAcc;
+        insn->kind  = ArmInsnKind::kNeonData3SameAcc;
         return true;
     }
 
@@ -195,7 +195,7 @@ bool ArmNeon3RegSameDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         insn->immediate = op.word;
         insn->op1       = op.neon_data_3reg.u ? ArmNeonSat::kSatAddU
                                               : ArmNeonSat::kSatAddS;
-        insn->place_fn  = &PlaceNeonData3SameSat;
+        insn->kind  = ArmInsnKind::kNeonData3SameSat;
         return true;
     }
 
@@ -204,7 +204,7 @@ bool ArmNeon3RegSameDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         insn->immediate = op.word;
         insn->op1       = op.neon_data_3reg.u ? ArmNeonSat::kSatSubU
                                               : ArmNeonSat::kSatSubS;
-        insn->place_fn  = &PlaceNeonData3SameSat;
+        insn->kind  = ArmInsnKind::kNeonData3SameSat;
         return true;
     }
 
@@ -213,7 +213,7 @@ bool ArmNeon3RegSameDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         insn->immediate = op.word;
         insn->op1       = op.neon_data_3reg.u ? ArmNeonSat::kSatShlU
                                               : ArmNeonSat::kSatShlS;
-        insn->place_fn  = &PlaceNeonData3SameSat;
+        insn->kind  = ArmInsnKind::kNeonData3SameSat;
         return true;
     }
 
@@ -222,7 +222,7 @@ bool ArmNeon3RegSameDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         insn->immediate = op.word;
         insn->op1       = op.neon_data_3reg.u ? ArmNeonSat::kSatRshlU
                                               : ArmNeonSat::kSatRshlS;
-        insn->place_fn  = &PlaceNeonData3SameSat;
+        insn->kind  = ArmInsnKind::kNeonData3SameSat;
         return true;
     }
 
@@ -231,7 +231,7 @@ bool ArmNeon3RegSameDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         insn->cond      = 14;
         insn->immediate = op.word;
         insn->op1       = ArmNeon::kPwAdd;
-        insn->place_fn  = &PlaceNeonData3SamePairwise;
+        insn->kind      = ArmInsnKind::kNeonData3SamePairwise;
         return true;
     }
 
@@ -247,7 +247,7 @@ bool ArmNeon3RegSameDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         insn->cond      = 14;
         insn->immediate = op.word;
         insn->op1       = op_sel;
-        insn->place_fn  = &PlaceNeonData3SamePairwise;
+        insn->kind      = ArmInsnKind::kNeonData3SamePairwise;
         return true;
     }
 
@@ -261,7 +261,7 @@ bool ArmNeon3RegSameDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         insn->op1       = ((op.neon_data_3reg.size >> 1) & 1u)
                               ? ArmNeon3SameFpArith::kSub
                               : ArmNeon3SameFpArith::kAdd;
-        insn->place_fn  = &PlaceNeonData3SameFpArith;
+        insn->kind  = ArmInsnKind::kNeonData3SameFpArith;
         return true;
     }
     /* VABD.F32 (A8.8.279): opc=1101, B=0, U=1, bit[21]=1. */
@@ -272,7 +272,7 @@ bool ArmNeon3RegSameDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         insn->cond      = 14;
         insn->immediate = op.word;
         insn->op1       = ArmNeon3SameFpArith::kAbd;
-        insn->place_fn  = &PlaceNeonData3SameFpArith;
+        insn->kind      = ArmInsnKind::kNeonData3SameFpArith;
         return true;
     }
     /* VPADD.F32 (A8.8.363): opc=1101, C=0, U=1, bit[21]=0. */
@@ -282,7 +282,7 @@ bool ArmNeon3RegSameDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         ((op.neon_data_3reg.size >> 1) & 1u) == 0u) {
         insn->cond      = 14;
         insn->immediate = op.word;
-        insn->place_fn  = &PlaceNeonData3SameFpPairAdd;
+        insn->kind      = ArmInsnKind::kNeonData3SameFpPairAdd;
         return true;
     }
     /* VMUL.F32 (A8.8.351): opc=1101, B=1, U=1, bit[21]=0. */
@@ -293,7 +293,7 @@ bool ArmNeon3RegSameDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         insn->cond      = 14;
         insn->immediate = op.word;
         insn->op1       = ArmNeon3SameFpArith::kMul;
-        insn->place_fn  = &PlaceNeonData3SameFpArith;
+        insn->kind      = ArmInsnKind::kNeonData3SameFpArith;
         return true;
     }
     /* VMLA.F32 / VMLS.F32 (A8.8.337): opc=1101, B=1, U=0. bit[21]=op selects. */
@@ -305,7 +305,7 @@ bool ArmNeon3RegSameDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         insn->op1       = ((op.neon_data_3reg.size >> 1) & 1u)
                               ? ArmNeon3SameFpMulAcc::kMls
                               : ArmNeon3SameFpMulAcc::kMla;
-        insn->place_fn  = &PlaceNeonData3SameFpMulAcc;
+        insn->kind  = ArmInsnKind::kNeonData3SameFpMulAcc;
         return true;
     }
     /* VFMA / VFMS (A8.8.317): opc=1100, C=1, U=0. bit[21]=op selects. */
@@ -317,7 +317,7 @@ bool ArmNeon3RegSameDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         insn->op1       = ((op.neon_data_3reg.size >> 1) & 1u)
                               ? ArmNeon3SameFpFma::kFms
                               : ArmNeon3SameFpFma::kFma;
-        insn->place_fn  = &PlaceNeonData3SameFpFma;
+        insn->kind  = ArmInsnKind::kNeonData3SameFpFma;
         return true;
     }
     /* VMAX.F32 / VMIN.F32 (A8.8.335): opc=1111, B=0, U=0. bit[21]=op selects. */
@@ -329,7 +329,7 @@ bool ArmNeon3RegSameDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         insn->op1       = ((op.neon_data_3reg.size >> 1) & 1u)
                               ? ArmNeon3SameFpMinMax::kMin
                               : ArmNeon3SameFpMinMax::kMax;
-        insn->place_fn  = &PlaceNeonData3SameFpMinMax;
+        insn->kind  = ArmInsnKind::kNeonData3SameFpMinMax;
         return true;
     }
     /* VPMAX.F32 / VPMIN.F32 (A8.8.366): opc=1111, C=0, U=1. bit[21]=op selects. */
@@ -341,7 +341,7 @@ bool ArmNeon3RegSameDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         insn->op1       = ((op.neon_data_3reg.size >> 1) & 1u)
                               ? ArmNeon3SameFpPairMinMax::kMin
                               : ArmNeon3SameFpPairMinMax::kMax;
-        insn->place_fn  = &PlaceNeonData3SameFpPairMinMax;
+        insn->kind  = ArmInsnKind::kNeonData3SameFpPairMinMax;
         return true;
     }
     if (op.neon_data_3reg.opc == 0xEu &&
@@ -355,13 +355,13 @@ bool ArmNeon3RegSameDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         else {
             insn->cond      = 14;
             insn->immediate = op.word;
-            insn->place_fn  = &EmitRaiseUndAndReturn;
+            insn->kind      = ArmInsnKind::kUndefined;
             return true;
         }
         insn->cond      = 14;
         insn->immediate = op.word;
         insn->op1       = op_sel;
-        insn->place_fn  = &PlaceNeonData3SameFpCompare;
+        insn->kind      = ArmInsnKind::kNeonData3SameFpCompare;
         return true;
     }
     /* VACGE / VACGT (A8.8.281): opc=1110, C=1, U=1. bit[21]=op selects
@@ -374,7 +374,7 @@ bool ArmNeon3RegSameDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         insn->op1       = ((op.neon_data_3reg.size >> 1) & 1u)
                               ? ArmNeon3SameFpAbsCompare::kAcgt
                               : ArmNeon3SameFpAbsCompare::kAcge;
-        insn->place_fn  = &PlaceNeonData3SameFpAbsCompare;
+        insn->kind  = ArmInsnKind::kNeonData3SameFpAbsCompare;
         return true;
     }
     /* VRECPS / VRSQRTS (A8.8.385 / A8.8.392): opc=1111, C=1, U=0.
@@ -387,7 +387,7 @@ bool ArmNeon3RegSameDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         insn->op1       = ((op.neon_data_3reg.size >> 1) & 1u)
                               ? ArmNeon3SameFpRecipStep::kRsqrts
                               : ArmNeon3SameFpRecipStep::kRecps;
-        insn->place_fn  = &PlaceNeonData3SameFpRecipStep;
+        insn->kind  = ArmInsnKind::kNeonData3SameFpRecipStep;
         return true;
     }
 
@@ -398,7 +398,7 @@ bool ArmNeon3RegSameDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         insn->immediate = op.word;
         insn->op1       = op.neon_data_3reg.u ? ArmNeonSimd3Same::kS3Qrdmulh
                                              : ArmNeonSimd3Same::kS3Qdmulh;
-        insn->place_fn  = &PlaceNeonData3Same;
+        insn->kind  = ArmInsnKind::kNeonData3Same;
         return true;
     }
 
@@ -407,7 +407,7 @@ bool ArmNeon3RegSameDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
        UNDEFINED." */
     insn->cond      = 14;
     insn->immediate = op.word;
-    insn->place_fn  = &EmitRaiseUndAndReturn;
+    insn->kind      = ArmInsnKind::kUndefined;
     return true;
 }
 

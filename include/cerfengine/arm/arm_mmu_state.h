@@ -14,8 +14,10 @@ enum class ArmMmuAccess : uint32_t {
 
 /* ARM DDI 0406C.c B3.19.2 FCSETranslate (p. B3-1503): "if va<31:25> ==
    '0000000' then mva = FCSEIDR.PID:va<24:0>", with no SCTLR.M term. */
+inline constexpr uint32_t kArmFcsePidMask = 0xFE000000u;
+
 inline uint32_t ArmFcseFold(uint32_t va, uint32_t process_id) {
-    return (va & 0xFE000000u) == 0u ? (va | process_id) : va;
+    return (va & kArmFcsePidMask) == 0u ? (va | process_id) : va;
 }
 
 /* SCTLR bit positions: ARM DDI 0406C.c B4.1.130 (VMSAv7), D12.7.4
@@ -56,28 +58,22 @@ union ArmSctlr {
 static_assert(sizeof(ArmSctlr) == 4);
 
 struct ArmTlbEntry {
-    uint32_t tag;
-    uint32_t va_addend;
-    uint32_t pa_page;
-    uint8_t  asid;        /* CONTEXTIDR[7:0] (ARM DDI 0406C.c B4.1.36) */
-    uint8_t  global;
-    uint8_t  writable;
-    uint8_t  span_shift;
+    uint32_t  tag;
+    uintptr_t va_addend;
+    uint32_t  pa_page;
+    uint8_t   asid;        /* CONTEXTIDR[7:0] (ARM DDI 0406C.c B4.1.36) */
+    uint8_t   global;
+    uint8_t   writable;
+    uint8_t   span_shift;
 };
-static_assert(sizeof(ArmTlbEntry) == 16,
-              "emit_tlb_fast_path.cpp addresses ways at stride 16");
 
 constexpr uint32_t kArmTlbWays       = 4;
 constexpr uint32_t kArmTlbSets       = 256;
 constexpr uint32_t kArmTlbSetMask    = kArmTlbSets - 1u;
-constexpr uint32_t kArmTlbSetShift   = 6;
 constexpr uint32_t kArmTlbIoTagBit   = 1u;
 constexpr uint32_t kArmTlbInvalidTag = 0xFFFFFFFFu;
 constexpr uint32_t kArmSectionShift  = 20u;
 constexpr uint32_t kArmSectionCount  = 1u << (32u - kArmSectionShift);
-static_assert((kArmTlbWays * sizeof(ArmTlbEntry)) == (1u << kArmTlbSetShift),
-              "emit_tlb_fast_path.cpp computes a set's byte offset as "
-              "set << kArmTlbSetShift");
 
 constexpr uint32_t kArmTlbEntryCount = kArmTlbSets * kArmTlbWays;
 constexpr uint32_t kArmTlbSpanBitWords = kArmTlbEntryCount / 32u;
@@ -93,7 +89,14 @@ struct ArmTlbSpanTracker {
 struct ArmTlbUnit {
     ArmTlbEntry entries[kArmTlbSets * kArmTlbWays];
     ArmTlbSpanTracker* span_tracker = nullptr;
+    uint32_t           dirty        = 1u;
 };
+
+constexpr uint32_t kArmTlbPrivilegeCount = 2;
+
+constexpr uint32_t ArmTlbPrivilege(bool user) {
+    return user ? 1u : 0u;
+}
 
 inline uint32_t ArmTlbSetBase(uint32_t va) {
     return ((va >> 12) & kArmTlbSetMask) * kArmTlbWays;
@@ -168,8 +171,8 @@ struct ArmMmuState {
     uint32_t  coprocessor_access    = 0;
     uint32_t  contextidr            = 0;   /* ASID = [7:0] (B4.1.36) */
 
-    ArmTlbUnit data_tlb{};
-    ArmTlbUnit instruction_tlb{};
+    ArmTlbUnit data_tlb[kArmTlbPrivilegeCount]{};
+    ArmTlbUnit instruction_tlb[kArmTlbPrivilegeCount]{};
 
     uint32_t code_word_base         = 0;
     uint32_t code_word_top          = 0;

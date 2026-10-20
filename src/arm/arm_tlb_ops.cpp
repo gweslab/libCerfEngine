@@ -6,6 +6,8 @@
 namespace cerfengine {
 
 void ArmTlbFlushAll(ArmTlbUnit* unit) {
+    if (unit->dirty == 0u) return;
+    unit->dirty = 0u;
     std::memset(unit->entries, 0xFF, sizeof(unit->entries));
     ArmTlbSpanTracker* tracker = unit->span_tracker;
     if (!tracker) return;
@@ -129,6 +131,7 @@ void FillFastTlb(ArmTlbUnit* unit, uint32_t folded_va, uint8_t* host,
                  uint32_t span_bytes) {
     const uint32_t base = ArmTlbSetBase(folded_va);
     const uint32_t page = folded_va & 0xFFFFF000u;
+    unit->dirty         = 1u;
     ArmTlbEntry* e = nullptr;
     for (uint32_t w = 0; w < kArmTlbWays; ++w) {
         ArmTlbEntry& c = unit->entries[base + w];
@@ -142,8 +145,7 @@ void FillFastTlb(ArmTlbUnit* unit, uint32_t folded_va, uint8_t* host,
     }
     if (!e) e = &PrepareInsert(unit, base);
     e->tag       = page;
-    e->va_addend = static_cast<uint32_t>(
-        reinterpret_cast<uintptr_t>(host) - folded_va);
+    e->va_addend = reinterpret_cast<uintptr_t>(host) - folded_va;
     e->pa_page   = pa & 0xFFFFF000u;
     e->asid      = asid;
     e->global    = global ? 1u : 0u;
@@ -157,6 +159,7 @@ void FillFastTlbIo(ArmTlbUnit* unit, uint32_t folded_va, uint32_t pa,
                    uint32_t span_bytes) {
     const uint32_t base   = ArmTlbSetBase(folded_va);
     const uint32_t io_tag = (folded_va & 0xFFFFF000u) | kArmTlbIoTagBit;
+    unit->dirty           = 1u;
     ArmTlbEntry* e = nullptr;
     for (uint32_t w = 0; w < kArmTlbWays; ++w) {
         ArmTlbEntry& c = unit->entries[base + w];

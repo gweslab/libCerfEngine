@@ -21,7 +21,8 @@ public:
         return (sizeof(JitBlock) + 15u) & ~static_cast<size_t>(15u);
     }
 
-    JitBlock* PlaceOuterAt(uint8_t* slab, const JitBlock& block);
+    JitBlock* PlaceOuterAt(uint8_t* slab, uint32_t guest_start, uint32_t guest_end,
+                           uint32_t phys_start, uint8_t* native_start);
 
     JitBlock* FindExact(uint32_t guest_start);
 

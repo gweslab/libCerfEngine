@@ -5,7 +5,7 @@
 #include "arm_neon_shift_imm.h"
 #include "arm_opcode.h"
 #include <cerfengine/arm/decoded_insn.h>
-#include <cerfengine/arm/place_fns.h>
+#include <cerfengine/arm/block_context.h>
 
 namespace cerfengine {
 
@@ -19,7 +19,7 @@ bool ArmNeonShiftImmDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         /* L:imm6 == 0000xxx → 1-reg-modified-immediate (A7.4.6). */
         insn->cond      = 14;
         insn->immediate = op.word;
-        insn->place_fn  = &PlaceNeonOneRegImm;
+        insn->kind      = ArmInsnKind::kNeonOneRegImm;
         return true;
     }
 
@@ -30,7 +30,7 @@ bool ArmNeonShiftImmDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         insn->op1       = op.neon_data_3reg.u
                               ? ArmNeonShiftImm::kSiShrU
                               : ArmNeonShiftImm::kSiShrS;
-        insn->place_fn  = &PlaceNeonShiftImm;
+        insn->kind  = ArmInsnKind::kNeonShiftImm;
         return true;
     }
     if (opc == 0x2u) {
@@ -39,7 +39,7 @@ bool ArmNeonShiftImmDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         insn->op1       = op.neon_data_3reg.u
                               ? ArmNeonShiftImm::kSiRshrU
                               : ArmNeonShiftImm::kSiRshrS;
-        insn->place_fn  = &PlaceNeonShiftImm;
+        insn->kind  = ArmInsnKind::kNeonShiftImm;
         return true;
     }
     /* VSRA: opc=0001, U->S/U (A8.8.402). */
@@ -49,7 +49,7 @@ bool ArmNeonShiftImmDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         insn->op1       = op.neon_data_3reg.u
                               ? ArmNeonShiftImm::kSiSraU
                               : ArmNeonShiftImm::kSiSraS;
-        insn->place_fn  = &PlaceNeonShiftImm;
+        insn->kind  = ArmInsnKind::kNeonShiftImm;
         return true;
     }
     /* VRSRA: opc=0011, U->S/U (A8.8.393). */
@@ -59,7 +59,7 @@ bool ArmNeonShiftImmDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         insn->op1       = op.neon_data_3reg.u
                               ? ArmNeonShiftImm::kSiRsraU
                               : ArmNeonShiftImm::kSiRsraS;
-        insn->place_fn  = &PlaceNeonShiftImm;
+        insn->kind  = ArmInsnKind::kNeonShiftImm;
         return true;
     }
     if (opc == 0x5u) {
@@ -68,7 +68,7 @@ bool ArmNeonShiftImmDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         insn->op1       = op.neon_data_3reg.u
                               ? ArmNeonShiftImm::kSiSli
                               : ArmNeonShiftImm::kSiShl;
-        insn->place_fn  = &PlaceNeonShiftImm;
+        insn->kind  = ArmInsnKind::kNeonShiftImm;
         return true;
     }
     /* VSRI: opc=0x4, U fixed to 1 (A8.8.403). */
@@ -76,7 +76,7 @@ bool ArmNeonShiftImmDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         insn->cond      = 14;
         insn->immediate = op.word;
         insn->op1       = ArmNeonShiftImm::kSiSri;
-        insn->place_fn  = &PlaceNeonShiftImm;
+        insn->kind      = ArmInsnKind::kNeonShiftImm;
         return true;
     }
     /* VQSHL imm: opc=0x7 (op-bit=1). U=0 -> VQSHL.S, U=1 -> VQSHL.U
@@ -87,7 +87,7 @@ bool ArmNeonShiftImmDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         insn->op1       = op.neon_data_3reg.u
                               ? ArmNeonSat::kSatShlImmU
                               : ArmNeonSat::kSatShlImmS;
-        insn->place_fn  = &PlaceNeonShiftImmSat;
+        insn->kind  = ArmInsnKind::kNeonShiftImmSat;
         return true;
     }
     /* ARM DDI 0406C.c A8.8.380 (p. A8-1016): "if U == '0' && op == '0' then
@@ -96,7 +96,7 @@ bool ArmNeonShiftImmDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         insn->cond      = 14;
         insn->immediate = op.word;
         insn->op1       = ArmNeonSat::kSatShlImmSU;
-        insn->place_fn  = &PlaceNeonShiftImmSat;
+        insn->kind      = ArmInsnKind::kNeonShiftImmSat;
         return true;
     }
     /* VSHRN (A8.8.399) / VRSHRN (A8.8.390): opc=0x8, u=0.
@@ -107,7 +107,7 @@ bool ArmNeonShiftImmDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         insn->immediate = op.word;
         insn->op1       = bit6 ? ArmNeonShiftImm::kSiRshrn
                                : ArmNeonShiftImm::kSiShrn;
-        insn->place_fn  = &PlaceNeonShiftImmNarrow;
+        insn->kind  = ArmInsnKind::kNeonShiftImmNarrow;
         return true;
     }
     /* VQSHRUN (A8.8.381) / VQRSHRUN (A8.8.378): opc=0x8, u=1. Signed src,
@@ -118,7 +118,7 @@ bool ArmNeonShiftImmDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         insn->immediate = op.word;
         insn->op1       = bit6 ? ArmNeonSat::kSatRShrnSU
                                : ArmNeonSat::kSatShrnSU;
-        insn->place_fn  = &PlaceNeonShiftImmNarrowSat;
+        insn->kind  = ArmInsnKind::kNeonShiftImmNarrowSat;
         return true;
     }
     /* VQSHRN (A8.8.381) / VQRSHRN (A8.8.378): opc=0x9. bit6: 0 truncating,
@@ -136,7 +136,7 @@ bool ArmNeonShiftImmDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         insn->cond      = 14;
         insn->immediate = op.word;
         insn->op1       = op_sel;
-        insn->place_fn  = &PlaceNeonShiftImmNarrowSat;
+        insn->kind      = ArmInsnKind::kNeonShiftImmNarrowSat;
         return true;
     }
     /* VSHLL T1/A1 (A8.8.397): opc=0xA, L=0. U=0 signed, U=1 unsigned. */
@@ -146,7 +146,7 @@ bool ArmNeonShiftImmDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         insn->op1       = op.neon_data_3reg.u
                               ? ArmNeonShiftImm::kSiShllU
                               : ArmNeonShiftImm::kSiShllS;
-        insn->place_fn  = &PlaceNeonShiftImmWiden;
+        insn->kind  = ArmInsnKind::kNeonShiftImmWiden;
         return true;
     }
     /* Table A7-12 (p. A7-266): A = 111x, L = 0 is VCVT (between floating-point and
@@ -155,14 +155,14 @@ bool ArmNeonShiftImmDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         insn->cond      = 14;
         insn->immediate = op.word;
         insn->op1       = ((opc & 1u) << 1) | op.neon_data_3reg.u;
-        insn->place_fn  = &PlaceNeonData2RegCvtIntFp;
+        insn->kind      = ArmInsnKind::kNeonData2RegCvtIntFp;
         return true;
     }
     /* ARM DDI 0406C.c A7.4.4 (p. A7-266): "Other encodings in this space are
        UNDEFINED." */
     insn->cond      = 14;
     insn->immediate = op.word;
-    insn->place_fn  = &EmitRaiseUndAndReturn;
+    insn->kind      = ArmInsnKind::kUndefined;
     return true;
 }
 

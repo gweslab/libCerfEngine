@@ -2,7 +2,7 @@
 
 #include <cerfengine/engine.h>
 #include <cerfengine/arm/decoded_insn.h>
-#include <cerfengine/arm/place_fns.h>
+#include "arm_mark_unimplemented.h"
 #include "thumb32_fatal.h"
 
 namespace cerfengine {
@@ -49,7 +49,7 @@ bool Thumb32DataProcDecoder::DecodeMoveRegisterImmediateShifts(
     insn->rm       = rm;
     insn->n        = shift_t;
     insn->rs       = shift_n;
-    insn->place_fn = &PlaceDataProcessingReg;
+    insn->kind     = ArmInsnKind::kDataProcessingReg;
     return true;
 }
 
@@ -115,7 +115,7 @@ bool Thumb32DataProcDecoder::DecodeDataProcessingShiftedRegister(
     insn->rm       = rm;
     insn->n        = shift_t;
     insn->rs       = shift_n;
-    insn->place_fn = &PlaceDataProcessingReg;
+    insn->kind     = ArmInsnKind::kDataProcessingReg;
     return true;
 }
 
@@ -202,7 +202,7 @@ bool Thumb32DataProcDecoder::DecodeDataProcessingModifiedImmediate(
     insn->rd        = rd;
     insn->immediate = ThumbExpandImm(key, imm8);
     insn->rs        = key >= 8u ? key : 0u;
-    insn->place_fn  = &PlaceDataProcessing;
+    insn->kind      = ArmInsnKind::kDataProcessing;
     return true;
 }
 
@@ -232,7 +232,7 @@ bool Thumb32DataProcDecoder::DecodeMiscellaneous(DecodedInsn* insn,
         insn->rn       = rn;
         insn->rd       = rd;
         insn->rm       = rm;
-        insn->place_fn = &PlaceSaturatingArith;
+        insn->kind     = ArmInsnKind::kSaturatingArith;
         return true;
     }
 
@@ -251,11 +251,11 @@ bool Thumb32DataProcDecoder::DecodeMiscellaneous(DecodedInsn* insn,
     }
     insn->rd       = rd;
     insn->rm       = rm;
-    insn->place_fn = op1 == 0x3u ? &PlaceClz
-                   : op2 == 0x0u ? &PlaceRev
-                   : op2 == 0x1u ? &PlaceRev16
-                   : op2 == 0x2u ? &PlaceRbit
-                                 : &PlaceRevsh;
+    insn->kind     = op1 == 0x3u ? ArmInsnKind::kClz
+                   : op2 == 0x0u ? ArmInsnKind::kRev
+                   : op2 == 0x1u ? ArmInsnKind::kRev16
+                   : op2 == 0x2u ? ArmInsnKind::kRbit
+                                 : ArmInsnKind::kRevsh;
     return true;
 }
 
@@ -282,7 +282,7 @@ bool Thumb32DataProcDecoder::DecodeDataProcessingRegister(DecodedInsn* insn,
         insn->rm       = rn;
         insn->rs       = rm;
         insn->n        = (op1 >> 1) & 0x3u;
-        insn->place_fn = &PlaceDataProcessingShiftedReg;
+        insn->kind     = ArmInsnKind::kDataProcessingShiftedReg;
         return true;
     }
 
@@ -314,10 +314,10 @@ bool Thumb32DataProcDecoder::DecodeDataProcessingRegister(DecodedInsn* insn,
             insn->n  = 1u;
         }
         switch (op1) {
-        case 0x0u: insn->place_fn = &PlaceSxth; break;
-        case 0x1u: insn->place_fn = &PlaceUxth; break;
-        case 0x4u: insn->place_fn = &PlaceSxtb; break;
-        default:   insn->place_fn = &PlaceUxtb; break;
+        case 0x0u: insn->kind = ArmInsnKind::kSxth; break;
+        case 0x1u: insn->kind = ArmInsnKind::kUxth; break;
+        case 0x4u: insn->kind = ArmInsnKind::kSxtb; break;
+        default:   insn->kind = ArmInsnKind::kUxtb; break;
         }
         return true;
     }

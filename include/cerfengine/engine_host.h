@@ -15,6 +15,12 @@ struct DramRegion {
 
 enum class LogChannel : uint32_t { kJit, kCaution };
 
+struct BlockCompileStats {
+    uint32_t guest_insns;
+    uint32_t host_bytes;
+    uint64_t compile_ns;
+};
+
 class EngineHost {
 public:
     virtual ~EngineHost() = default;
@@ -25,9 +31,10 @@ public:
     virtual void OnRebootRequested()              = 0;
     virtual void OnResetDelivered()               = 0;
     virtual void OnPowerDownRequest()             = 0;
-    virtual void OnBlockCompiled()                = 0;
+    virtual void OnBlockCompiled(const BlockCompileStats& stats) = 0;
 
     virtual bool HasPcTrace(uint32_t pc)                                          = 0;
+    virtual bool HasPcTraceIn(uint32_t first_pc, uint32_t last_pc)                = 0;
     virtual void OnArmPcTrace(uint32_t pc, const uint32_t* gprs, uint32_t cpsr)   = 0;
     virtual void OnMipsPcTrace(uint32_t pc, const MipsCpuState* state)            = 0;
 

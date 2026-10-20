@@ -4,7 +4,7 @@
 #include "arm_opcode.h"
 #include <cerfengine/arm/cpu_state.h>
 #include <cerfengine/arm/decoded_insn.h>
-#include <cerfengine/arm/place_fns.h>
+#include "arm_mark_unimplemented.h"
 
 namespace cerfengine {
 
@@ -107,7 +107,7 @@ bool ArmMediaSpaceDecoder::DecodeBitfield(DecodedInsn* insn, ArmOpcode op) {
         insn->op1       = lsb;
         insn->rs        = width;
         insn->immediate = mask;
-        insn->place_fn  = (rn == 15u) ? &PlaceBfc : &PlaceBfi;
+        insn->kind      = (rn == 15u) ? ArmInsnKind::kBfc : ArmInsnKind::kBfi;
         return true;
     }
 
@@ -120,7 +120,7 @@ bool ArmMediaSpaceDecoder::DecodeBitfield(DecodedInsn* insn, ArmOpcode op) {
         insn->rn        = rn;
         insn->op1       = lsb;
         insn->rs        = width;
-        insn->place_fn  = (bits27_21 == 0x3Du) ? &PlaceSbfx : &PlaceUbfx;
+        insn->kind      = (bits27_21 == 0x3Du) ? ArmInsnKind::kSbfx : ArmInsnKind::kUbfx;
         return true;
     }
 
@@ -150,7 +150,7 @@ bool ArmMediaSpaceDecoder::DecodeDualMultiply(DecodedInsn* insn, ArmOpcode op,
     insn->rs       = ra;
     insn->rm       = rm;
     insn->rn       = rn;
-    insn->place_fn = &PlaceDualMultiply;
+    insn->kind     = ArmInsnKind::kDualMultiply;
     return true;
 }
 
@@ -179,7 +179,7 @@ bool ArmMediaSpaceDecoder::DecodeMostSignificantMultiply(DecodedInsn* insn,
     insn->rs       = ra;
     insn->rm       = rm;
     insn->rn       = rn;
-    insn->place_fn = &PlaceMostSignificantMultiply;
+    insn->kind     = ArmInsnKind::kMostSignificantMultiply;
     return true;
 }
 
@@ -207,7 +207,7 @@ bool ArmMediaSpaceDecoder::DecodeSignedSaturate(DecodedInsn* insn,
     insn->op1       = shift_t;
     insn->rs        = shift_n;
     insn->immediate = sat_imm + 1u;
-    insn->place_fn  = &PlaceSsat;
+    insn->kind      = ArmInsnKind::kSsat;
     return true;
 }
 
@@ -250,9 +250,9 @@ bool ArmMediaSpaceDecoder::DecodePackSatReverse(DecodedInsn* insn,
             }
             insn->rd       = rd;
             insn->rm       = rm;
-            insn->place_fn = (fop2 == 0x1u) ? &PlaceRev
-                           : (fop1 == 0x3u) ? &PlaceRev16
-                                            : &PlaceRevsh;
+            insn->kind     = (fop2 == 0x1u) ? ArmInsnKind::kRev
+                           : (fop1 == 0x3u) ? ArmInsnKind::kRev16
+                                            : ArmInsnKind::kRevsh;
             return true;
         }
         if (fop2 == 0x1u && ((fop1 & 0x3u) == 0x2u)) {
@@ -271,7 +271,7 @@ bool ArmMediaSpaceDecoder::DecodePackSatReverse(DecodedInsn* insn,
             }
             insn->rd       = rd;
             insn->rm       = rm;
-            insn->place_fn = &PlaceRbit;
+            insn->kind     = ArmInsnKind::kRbit;
             return true;
         }
         if (fop2 == 0x5u && fop1 == 0x0u) {
@@ -308,10 +308,10 @@ bool ArmMediaSpaceDecoder::DecodePackSatReverse(DecodedInsn* insn,
             insn->rm  = rm;
             insn->op1 = (bits11_8 >> 2) & 0x3u;
             switch (fop1) {
-            case 0x2u: insn->place_fn = &PlaceSxtb; break;
-            case 0x3u: insn->place_fn = &PlaceSxth; break;
-            case 0x6u: insn->place_fn = &PlaceUxtb; break;
-            default:   insn->place_fn = &PlaceUxth; break;
+            case 0x2u: insn->kind = ArmInsnKind::kSxtb; break;
+            case 0x3u: insn->kind = ArmInsnKind::kSxth; break;
+            case 0x6u: insn->kind = ArmInsnKind::kUxtb; break;
+            default:   insn->kind = ArmInsnKind::kUxth; break;
             }
             return true;
         }

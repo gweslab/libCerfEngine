@@ -2,7 +2,7 @@
 
 #include <cerfengine/engine.h>
 #include <cerfengine/arm/decoded_insn.h>
-#include <cerfengine/arm/place_fns.h>
+#include <cerfengine/arm/block_context.h>
 
 namespace cerfengine {
 
@@ -48,7 +48,7 @@ bool Thumb32LoadStoreMultipleDecoder::DecodeBlockTransfer(DecodedInsn* insn,
     insn->u             = increment ? 1u : 0u;
     insn->p             = increment ? 0u : 1u;
     insn->r15_modified  = (list & 0x8000u) != 0u;
-    insn->place_fn      = &PlaceBlockDataTransfer;
+    insn->kind          = ArmInsnKind::kBlockDataTransfer;
     return true;
 }
 
@@ -67,7 +67,7 @@ bool Thumb32LoadStoreMultipleDecoder::DecodeReturnFromException(
     insn->p                   = increment ? 0u : 1u;
     insn->r15_modified        = true;
     insn->is_exception_return = true;
-    insn->place_fn            = &PlaceRfe;
+    insn->kind                = ArmInsnKind::kRfe;
     return true;
 }
 
@@ -80,7 +80,7 @@ bool Thumb32LoadStoreMultipleDecoder::DecodeStoreReturnState(
     insn->u         = increment ? 1u : 0u;
     insn->p         = increment ? 0u : 1u;
     insn->immediate = op & 0x1Fu;
-    insn->place_fn  = &PlaceSrs;
+    insn->kind      = ArmInsnKind::kSrs;
     return true;
 }
 

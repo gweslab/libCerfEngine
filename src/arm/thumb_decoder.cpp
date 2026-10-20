@@ -2,7 +2,7 @@
 
 #include <cerfengine/engine.h>
 #include <cerfengine/arm/decoded_insn.h>
-#include <cerfengine/arm/place_fns.h>
+#include "arm_mark_unimplemented.h"
 #include "thumb_stack_control_decoder.h"
 #include "thumb_transfer_decoder.h"
 
@@ -39,7 +39,7 @@ bool ThumbDecoder::DecodeShiftByImmediate(DecodedInsn* insn, uint16_t op) {
     insn->n        = shift_t;
     insn->rs       =
         (shift_t != kSrLsl && immed_5 == 0u) ? 32u : immed_5;
-    insn->place_fn = &PlaceDataProcessingReg;
+    insn->kind = ArmInsnKind::kDataProcessingReg;
     return true;
 }
 
@@ -54,12 +54,12 @@ bool ThumbDecoder::DecodeAddSubtract(DecodedInsn* insn, uint16_t op) {
     insn->rs  = 0u;
     if (((op >> 10) & 0x1u) != 0u) {
         insn->immediate = (op >> 6) & 0x7u;
-        insn->place_fn  = &PlaceDataProcessing;
+        insn->kind      = ArmInsnKind::kDataProcessing;
         return true;
     }
     insn->rm       = (op >> 6) & 0x7u;
     insn->n        = kSrLsl;
-    insn->place_fn = &PlaceDataProcessingReg;
+    insn->kind     = ArmInsnKind::kDataProcessingReg;
     return true;
 }
 
@@ -95,7 +95,7 @@ bool ThumbDecoder::DecodeImmediateOperations(DecodedInsn* insn, uint16_t op) {
         insn->rn  = reg;
         break;
     }
-    insn->place_fn = &PlaceDataProcessing;
+    insn->kind = ArmInsnKind::kDataProcessing;
     return true;
 }
 
@@ -142,7 +142,7 @@ bool ThumbDecoder::DecodeSpecialDataProcessing(DecodedInsn* insn,
     default:
         return MarkArmUnimplemented(insn, op);
     }
-    insn->place_fn = &PlaceDataProcessingReg;
+    insn->kind = ArmInsnKind::kDataProcessingReg;
     return true;
 }
 
@@ -151,7 +151,7 @@ bool ThumbDecoder::DecodeBranchExchange(DecodedInsn* insn, uint16_t op) {
     const bool link = ((op >> 7) & 0x1u) != 0u;
     insn->rm = (((op >> 6) & 0x1u) << 3) | ((op >> 3) & 0x7u);
     if (link && insn->rm == 15u) return false;
-    insn->place_fn = link ? &PlaceBlxReg : &PlaceBx;
+    insn->kind = link ? ArmInsnKind::kBlxReg : ArmInsnKind::kBx;
     return true;
 }
 
@@ -166,7 +166,7 @@ bool ThumbDecoder::DecodeShiftByRegister(DecodedInsn* insn, uint16_t op,
     insn->rd       =  op       & 0x7u;
     insn->rm       =  op       & 0x7u;
     insn->rs       = (op >> 3) & 0x7u;
-    insn->place_fn = &PlaceDataProcessingShiftedReg;
+    insn->kind     = ArmInsnKind::kDataProcessingShiftedReg;
     return true;
 }
 
@@ -202,7 +202,7 @@ bool ThumbDecoder::DecodeAluOperations(DecodedInsn* insn, uint16_t op) {
         insn->rd        = reg;
         insn->immediate = 0u;
         insn->rs        = 0u;
-        insn->place_fn  = &PlaceDataProcessing;
+        insn->kind      = ArmInsnKind::kDataProcessing;
         return true;
     case 0xDu: {
         /* ARM DDI 0100I A7.1.45 MUL, p. A7-77. */
@@ -214,7 +214,7 @@ bool ThumbDecoder::DecodeAluOperations(DecodedInsn* insn, uint16_t op) {
         insn->rd       = reg;
         insn->rm       = reg;
         insn->rn       = rm;
-        insn->place_fn = &PlaceMultiply;
+        insn->kind     = ArmInsnKind::kMultiply;
         return true;
     }
     case 0x2u:
@@ -233,7 +233,7 @@ bool ThumbDecoder::DecodeAluOperations(DecodedInsn* insn, uint16_t op) {
     insn->rm       = (op >> 3) & 0x7u;
     insn->n        = kSrLsl;
     insn->rs       = 0u;
-    insn->place_fn = &PlaceDataProcessingReg;
+    insn->kind     = ArmInsnKind::kDataProcessingReg;
     return true;
 }
 
@@ -247,7 +247,7 @@ bool ThumbDecoder::DecodeAddToPcOrSp(DecodedInsn* insn, uint16_t op) {
     insn->rd        = (op >> 8) & 0x7u;
     insn->rn        = sp ? 13u : 15u;
     insn->immediate = sp ? imm : imm - ((insn->guest_address + 4u) & 3u);
-    insn->place_fn  = &PlaceDataProcessing;
+    insn->kind      = ArmInsnKind::kDataProcessing;
     return true;
 }
 
@@ -256,7 +256,7 @@ bool ThumbDecoder::DecodeConditionalBranch(DecodedInsn* insn, uint16_t op) {
     const uint32_t imm8 = op & 0xFFu;
     insn->l        = 0u;
     insn->offset   = static_cast<int32_t>(((imm8 ^ 0x80u) - 0x80u) << 1);
-    insn->place_fn = &PlaceBranch;
+    insn->kind     = ArmInsnKind::kBranch;
     return true;
 }
 
@@ -265,7 +265,7 @@ bool ThumbDecoder::DecodeUnconditionalBranch(DecodedInsn* insn, uint16_t op) {
     const uint32_t off11 = op & 0x7FFu;
     insn->l        = 0u;
     insn->offset   = static_cast<int32_t>(((off11 ^ 0x400u) - 0x400u) << 1);
-    insn->place_fn = &PlaceBranch;
+    insn->kind     = ArmInsnKind::kBranch;
     return true;
 }
 
@@ -273,14 +273,14 @@ bool ThumbDecoder::DecodeUnconditionalBranch(DecodedInsn* insn, uint16_t op) {
 bool ThumbDecoder::DecodeBranchLinkPrefix(DecodedInsn* insn, uint16_t op) {
     const uint32_t off11 = op & 0x7FFu;
     insn->offset   = static_cast<int32_t>(((off11 ^ 0x400u) - 0x400u) << 12);
-    insn->place_fn = &PlaceThumbBlPrefix;
+    insn->kind     = ArmInsnKind::kThumbBlPrefix;
     return true;
 }
 
 /* ARM DDI 0100I A7.1.17 BL, BLX (1), H == 11 (p. A7-27). */
 bool ThumbDecoder::DecodeBranchLinkSuffix(DecodedInsn* insn, uint16_t op) {
     insn->offset   = static_cast<int32_t>((op & 0x7FFu) << 1);
-    insn->place_fn = &PlaceThumbBlSuffix;
+    insn->kind     = ArmInsnKind::kThumbBlSuffix;
     return true;
 }
 

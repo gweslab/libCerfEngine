@@ -2,7 +2,7 @@
 
 #include <cerfengine/engine.h>
 #include <cerfengine/arm/decoded_insn.h>
-#include <cerfengine/arm/place_fns.h>
+#include <cerfengine/arm/block_context.h>
 
 namespace cerfengine {
 
@@ -18,7 +18,7 @@ bool Thumb32LoadByteDecoder::DecodePreloadRegister(DecodedInsn* insn,
     if (rm == 13u || rm == 0xFu) {
         return false;
     }
-    insn->place_fn = &PlaceNop;
+    insn->kind = ArmInsnKind::kNop;
     return true;
 }
 
@@ -45,7 +45,7 @@ bool Thumb32LoadByteDecoder::DecodeByteLiteral(DecodedInsn* insn,
     insn->rd       = rt;
     insn->offset   = add != 0u ? static_cast<int32_t>(imm12)
                                : -static_cast<int32_t>(imm12);
-    insn->place_fn = &PlaceSingleDataTransfer;
+    insn->kind = ArmInsnKind::kSingleDataTransfer;
     return true;
 }
 
@@ -66,7 +66,7 @@ bool Thumb32LoadByteDecoder::DecodeByteImmediate12(DecodedInsn* insn,
     insn->rn       = (op >> 16) & 0xFu;
     insn->rd       = rt;
     insn->offset   = static_cast<int32_t>(op & 0xFFFu);
-    insn->place_fn = &PlaceSingleDataTransfer;
+    insn->kind     = ArmInsnKind::kSingleDataTransfer;
     return true;
 }
 
@@ -92,7 +92,7 @@ bool Thumb32LoadByteDecoder::DecodeByteImmediate8(DecodedInsn* insn,
     insn->rd       = rt;
     insn->offset   = add != 0u ? static_cast<int32_t>(imm8)
                                : -static_cast<int32_t>(imm8);
-    insn->place_fn = &PlaceSingleDataTransfer;
+    insn->kind = ArmInsnKind::kSingleDataTransfer;
     return true;
 }
 
@@ -116,7 +116,7 @@ bool Thumb32LoadByteDecoder::DecodeByteRegister(DecodedInsn* insn,
     insn->rm       = rm;
     insn->op1      = kSrLsl;
     insn->rs       = (op >> 4) & 0x3u;
-    insn->place_fn = &PlaceSingleDataTransfer;
+    insn->kind     = ArmInsnKind::kSingleDataTransfer;
     return true;
 }
 
@@ -140,7 +140,7 @@ bool Thumb32LoadByteDecoder::DecodeByteUnprivileged(DecodedInsn* insn,
     insn->rn       = (op >> 16) & 0xFu;
     insn->rd       = rt;
     insn->offset   = static_cast<int32_t>(op & 0xFFu);
-    insn->place_fn = &PlaceSingleDataTransfer;
+    insn->kind     = ArmInsnKind::kSingleDataTransfer;
     return true;
 }
 
@@ -167,7 +167,7 @@ bool Thumb32LoadByteDecoder::DecodeSignedByteLiteral(DecodedInsn* insn,
     insn->rd       = rt;
     insn->offset   = add != 0u ? static_cast<int32_t>(imm12)
                                : -static_cast<int32_t>(imm12);
-    insn->place_fn = &PlaceLoadStoreExtension;
+    insn->kind = ArmInsnKind::kLoadStoreExtension;
     return true;
 }
 
@@ -190,7 +190,7 @@ bool Thumb32LoadByteDecoder::DecodeSignedByteRegister(DecodedInsn* insn,
     insn->rd       = rt;
     insn->rm       = rm;
     insn->rs       = (op >> 4) & 0x3u;
-    insn->place_fn = &PlaceLoadStoreExtension;
+    insn->kind     = ArmInsnKind::kLoadStoreExtension;
     return true;
 }
 
@@ -211,7 +211,7 @@ bool Thumb32LoadByteDecoder::DecodeSignedByteImmediate12(DecodedInsn* insn,
     insn->rn       = (op >> 16) & 0xFu;
     insn->rd       = rt;
     insn->offset   = static_cast<int32_t>(op & 0xFFFu);
-    insn->place_fn = &PlaceLoadStoreExtension;
+    insn->kind     = ArmInsnKind::kLoadStoreExtension;
     return true;
 }
 
@@ -237,7 +237,7 @@ bool Thumb32LoadByteDecoder::DecodeSignedByteImmediate8(DecodedInsn* insn,
     insn->rd       = rt;
     insn->offset   = add != 0u ? static_cast<int32_t>(imm8)
                                : -static_cast<int32_t>(imm8);
-    insn->place_fn = &PlaceLoadStoreExtension;
+    insn->kind = ArmInsnKind::kLoadStoreExtension;
     return true;
 }
 
@@ -261,7 +261,7 @@ bool Thumb32LoadByteDecoder::DecodeSignedByteUnprivileged(DecodedInsn* insn,
     insn->rn       = (op >> 16) & 0xFu;
     insn->rd       = rt;
     insn->offset   = static_cast<int32_t>(op & 0xFFu);
-    insn->place_fn = &PlaceLoadStoreExtension;
+    insn->kind     = ArmInsnKind::kLoadStoreExtension;
     return true;
 }
 
@@ -275,7 +275,7 @@ bool Thumb32LoadByteDecoder::DecodeLoadByteMemoryHints(DecodedInsn* insn,
 
     if (rn == 0xFu) {
         if (rt == 0xFu) {
-            insn->place_fn = &PlaceNop;
+            insn->kind = ArmInsnKind::kNop;
             return true;
         }
         return signed_byte ? DecodeSignedByteLiteral(insn, op)
@@ -284,7 +284,7 @@ bool Thumb32LoadByteDecoder::DecodeLoadByteMemoryHints(DecodedInsn* insn,
 
     if (op1 == 0x1u || op1 == 0x3u) {
         if (rt == 0xFu) {
-            insn->place_fn = &PlaceNop;
+            insn->kind = ArmInsnKind::kNop;
             return true;
         }
         return signed_byte ? DecodeSignedByteImmediate12(insn, op)
@@ -300,7 +300,7 @@ bool Thumb32LoadByteDecoder::DecodeLoadByteMemoryHints(DecodedInsn* insn,
     }
     if ((op2 & 0x24u) == 0x24u || (op2 & 0x3Cu) == 0x30u) {
         if (rt == 0xFu && (op2 & 0x3Cu) == 0x30u) {
-            insn->place_fn = &PlaceNop;
+            insn->kind = ArmInsnKind::kNop;
             return true;
         }
         return signed_byte ? DecodeSignedByteImmediate8(insn, op)

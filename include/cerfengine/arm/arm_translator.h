@@ -32,8 +32,8 @@ public:
     uint8_t* TranslateUserWrite(uint32_t va);
 
     uint32_t LastExecPa() const { return last_exec_pa_; }
-
-    bool ExecPageGlobal(uint32_t folded_va) const;
+    bool     LastExecTracked() const { return last_exec_tracked_; }
+    bool     LastExecGlobal() const { return last_exec_global_; }
 
     std::optional<uint8_t*> PeekDataTlb(uint32_t va) const;
     uint8_t* PeekVaToHost(uint32_t va);
@@ -52,7 +52,9 @@ private:
     void*               memory_    = nullptr;
     void*               walker_    = nullptr;
 
-    uint32_t last_exec_pa_ = 0;
+    uint32_t last_exec_pa_      = 0;
+    bool     last_exec_tracked_ = false;
+    bool     last_exec_global_  = false;
 };
 
 }

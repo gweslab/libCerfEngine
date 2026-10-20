@@ -1,7 +1,7 @@
 #include "thumb32_plain_imm_decoder.h"
 
 #include <cerfengine/engine.h>
-#include <cerfengine/arm/place_fns.h>
+#include <cerfengine/arm/block_context.h>
 #include "thumb32_fatal.h"
 
 namespace cerfengine {
@@ -30,7 +30,7 @@ bool Thumb32PlainImmDecoder::DecodeAddSubImm12(DecodedInsn* insn, uint32_t op,
         const uint32_t base = (insn->guest_address + 4u) & ~3u;
         insn->rd        = rd;
         insn->immediate = add ? base + imm32 : base - imm32;
-        insn->place_fn  = &PlaceMovw;
+        insn->kind      = ArmInsnKind::kMovw;
         return true;
     }
 
@@ -44,14 +44,14 @@ bool Thumb32PlainImmDecoder::DecodeAddSubImm12(DecodedInsn* insn, uint32_t op,
     insn->rd        = rd;
     insn->immediate = imm32;
     insn->rs        = 0u;
-    insn->place_fn  = &PlaceDataProcessing;
+    insn->kind      = ArmInsnKind::kDataProcessing;
     return true;
 }
 
 /* DDI 0406C.c A8.8.102 MOV (immediate) T3 p. A8-484, A8.8.106 MOVT T1
    p. A8-491; imm4 occupies the Rn field at bits[19:16]. */
 bool Thumb32PlainImmDecoder::DecodeMoveImm16(DecodedInsn* insn, uint32_t op,
-                                             ArmPlaceFn place) {
+                                             ArmInsnKind place) {
     const uint32_t rd = (op >> 8) & 0xFu;
     if (rd == 13u || rd == 0xFu) {
         return false;
@@ -59,7 +59,7 @@ bool Thumb32PlainImmDecoder::DecodeMoveImm16(DecodedInsn* insn, uint32_t op,
     insn->rd        = rd;
     insn->immediate = (((op >> 16) & 0xFu) << 12) | (((op >> 26) & 0x1u) << 11) |
                       (((op >> 12) & 0x7u) << 8) | (op & 0xFFu);
-    insn->place_fn  = place;
+    insn->kind  = place;
     return true;
 }
 
@@ -67,7 +67,7 @@ bool Thumb32PlainImmDecoder::DecodeMoveImm16(DecodedInsn* insn, uint32_t op,
    widthm1 at hw2[4:0], bit[26] and hw2[5] are (0) per A6.1.1 p. A6-220. */
 bool Thumb32PlainImmDecoder::DecodeBitFieldExtract(DecodedInsn* insn,
                                                    uint32_t op,
-                                                   ArmPlaceFn place) {
+                                                   ArmInsnKind place) {
     if (((op >> 26) & 0x1u) != 0u || ((op >> 5) & 0x1u) != 0u) {
         return false;
     }
@@ -85,7 +85,7 @@ bool Thumb32PlainImmDecoder::DecodeBitFieldExtract(DecodedInsn* insn,
     insn->rn       = rn;
     insn->op1      = lsb;
     insn->rs       = width;
-    insn->place_fn = place;
+    insn->kind     = place;
     return true;
 }
 
@@ -110,7 +110,7 @@ bool Thumb32PlainImmDecoder::DecodeBitFieldInsert(DecodedInsn* insn,
     insn->rs        = width;
     insn->immediate = (width == 32u) ? 0xFFFFFFFFu
                                      : (((1u << width) - 1u) << lsb);
-    insn->place_fn  = (rn == 0xFu) ? &PlaceBfc : &PlaceBfi;
+    insn->kind  = (rn == 0xFu) ? ArmInsnKind::kBfc : ArmInsnKind::kBfi;
     return true;
 }
 
@@ -136,10 +136,10 @@ bool Thumb32PlainImmDecoder::Decode(DecodedInsn* insn, uint32_t op) {
     switch ((op >> 20) & 0x1Fu) {
     case 0x00u: return DecodeAddSubImm12(insn, op, true);
     case 0x0Au: return DecodeAddSubImm12(insn, op, false);
-    case 0x04u: return DecodeMoveImm16(insn, op, &PlaceMovw);
-    case 0x0Cu: return DecodeMoveImm16(insn, op, &PlaceMovt);
-    case 0x14u: return DecodeBitFieldExtract(insn, op, &PlaceSbfx);
-    case 0x1Cu: return DecodeBitFieldExtract(insn, op, &PlaceUbfx);
+    case 0x04u: return DecodeMoveImm16(insn, op, ArmInsnKind::kMovw);
+    case 0x0Cu: return DecodeMoveImm16(insn, op, ArmInsnKind::kMovt);
+    case 0x14u: return DecodeBitFieldExtract(insn, op, ArmInsnKind::kSbfx);
+    case 0x1Cu: return DecodeBitFieldExtract(insn, op, ArmInsnKind::kUbfx);
     case 0x16u: return DecodeBitFieldInsert(insn, op);
     case 0x10u:
     case 0x12u:

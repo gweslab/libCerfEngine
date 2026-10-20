@@ -1,7 +1,7 @@
 #include <cerfengine/jit_block_index.h>
 
 #include <algorithm>
-#include <cstring>
+#include <new>
 
 #include <cerfengine/byte_order.h>
 #include <cerfengine/engine.h>
@@ -10,7 +10,7 @@ namespace cerfengine {
 
 void JitBlockIndex::Initialize(cerfengine::Engine& engine) {
     engine_ = &engine;
-    SetCapacity(kInitialSlots);
+    table_.clear();
     count_ = 0;
 }
 
@@ -38,9 +38,12 @@ void JitBlockIndex::Grow() {
     }
 }
 
-JitBlock* JitBlockIndex::PlaceOuterAt(uint8_t* slab, const JitBlock& block) {
-    JitBlock* stored = reinterpret_cast<JitBlock*>(slab);
-    std::memcpy(stored, &block, sizeof(JitBlock));
+JitBlock* JitBlockIndex::PlaceOuterAt(uint8_t* slab, uint32_t guest_start, uint32_t guest_end,
+                                      uint32_t phys_start, uint8_t* native_start) {
+    JitBlock* stored = new (slab) JitBlock{.guest_start  = guest_start,
+                                           .guest_end    = guest_end,
+                                           .phys_start   = phys_start,
+                                           .native_start = native_start};
 
     if ((count_ + 1u) * 4u > table_.size() * 3u) Grow();
 

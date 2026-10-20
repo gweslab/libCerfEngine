@@ -1,6 +1,5 @@
 #pragma once
 
-#include "../calling_convention.h"
 #include <cstdint>
 #include <optional>
 
@@ -36,8 +35,6 @@ public:
     void OnStateRestored();
     void PrepareStateSave();
 
-    static void CERFENGINE_CDECL Dispatch(void* native_pc, MipsCpuState* state);
-
     RunStatus Run() override;
     bool      DeepSleep()    const override { return cpu_state_->deep_sleep != 0; }
     bool      ResetPending() const override;
@@ -64,7 +61,8 @@ private:
     void DeliverReset();
     int  DispatchFaultFilter(void* exception_pointers, uint32_t guest_pc);
 
-    MipsCpuState* cpu_state_ = nullptr;
+    MipsCpuState* cpu_state_      = nullptr;
+    uint32_t      predecessor_va_ = 0;
 
     MipsCpu*                cpu_           = nullptr;
     MipsMmu*                mmu_           = nullptr;

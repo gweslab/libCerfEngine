@@ -1,5 +1,4 @@
 #include <cerfengine/arm/arm_jit.h>
-#include <cerfengine/calling_convention.h>
 
 #if CERFENGINE_BACKEND_X86_WIN32
 #include <excpt.h>
@@ -11,6 +10,7 @@
 #include <cerfengine/engine.h>
 #include "../host_platform.h"
 #include <cerfengine/host_request_channel.h>
+#include "../cerfir/cerfir_host_lowering.h"
 #include "../jit_code_arena.h"
 #include "arm_block_compiler.h"
 #include <cerfengine/arm/arm_cpu.h>
@@ -71,12 +71,7 @@ int ArmJit::DispatchFaultFilter(void* exception_pointers, uint32_t guest_pc) {
         CERFENGINE_LOG(engine_, kCaution, "ArmJit:   host symbol %s\n", symbol);
     }
 
-    CERFENGINE_LOG(engine_, kCaution, "ArmJit:   eax=%08X ecx=%08X edx=%08X ebx=%08X\n",
-                   fault.eax, fault.ecx, fault.edx, fault.ebx);
-    CERFENGINE_LOG(engine_, kCaution, "ArmJit:   esp=%08X ebp=%08X esi=%08X edi=%08X\n",
-                   fault.esp, fault.ebp, fault.esi, fault.edi);
-    CERFENGINE_LOG(engine_, kCaution, "ArmJit:   eip=%08X eflags=%08X\n", fault.eip,
-                   fault.eflags);
+    CERFENGINE_LOG(engine_, kCaution, "ArmJit:   %s\n", fault.registers);
 
     LogEmittedBytesAroundFault(reinterpret_cast<uintptr_t>(fault.address));
 
@@ -100,26 +95,6 @@ void ArmJit::OnReady() {
     host_       = &engine_.Host();
     engine_.AttachClock(clock_);
 }
-
-#if CERFENGINE_BACKEND_X86_WIN32
-__declspec(naked) void CERFENGINE_CDECL ArmJit::Dispatch(void*, ArmCpuState*, ArmMmuState*) {
-    __asm {
-        push ebp
-        push ebx
-        push esi
-        push edi
-        mov  ecx, [esp + 20]
-        mov  esi, [esp + 24]
-        mov  ebx, [esp + 28]
-        call ecx
-        pop  edi
-        pop  esi
-        pop  ebx
-        pop  ebp
-        ret
-    }
-}
-#endif
 
 GuestEngine::RunStatus ArmJit::Run() {
     mmu_->SynchronizeSctlr();
@@ -160,7 +135,9 @@ GuestEngine::RunStatus ArmJit::Run() {
     const uint32_t pc = cpu_state_->gprs[ArmGpr::kR15];
     const uint32_t folded = ArmFcseFold(pc, mmu_->State()->fcse_fold_id);
     void*          native =
-        cache_->Lookup(cpu_state_->cpsr.bits.thumb_mode != 0u, folded);
+        cache_->Lookup(cpu_state_->cpsr.bits.thumb_mode != 0u,
+                       cpu_state_->cpsr.bits.mode == ArmMode::kUser ? kBlockUser : kBlockPrivileged,
+                       folded);
     if (native == nullptr) {
         compiler_->SetPredecessor(predecessor_va_);
         void* compiled = nullptr;
@@ -177,7 +154,7 @@ GuestEngine::RunStatus ArmJit::Run() {
 
 #if CERFENGINE_BACKEND_X86_WIN32
     __try {
-        Dispatch(native, cpu_state_, mmu_->State());
+        cerfir::HostEnterBlock(native, cpu_state_, mmu_->State());
     } __except (DispatchFaultFilter(_exception_info(), pc)) {
         return RunStatus::kHalted;
     }

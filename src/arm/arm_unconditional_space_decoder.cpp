@@ -5,7 +5,7 @@
 #include <cerfengine/arm/cpu_state.h>
 #include <cerfengine/arm/decoded_insn.h>
 #include "neon_unconditional_decoder.h"
-#include <cerfengine/arm/place_fns.h>
+#include "arm_mark_unimplemented.h"
 
 namespace cerfengine {
 
@@ -27,7 +27,7 @@ bool ArmUnconditionalSpaceDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         if (rn == ArmGpr::kR15) {
             return false;
         }
-        insn->place_fn            = &PlaceRfe;
+        insn->kind                = ArmInsnKind::kRfe;
         insn->p                   = (op.word >> 24) & 0x1u;
         insn->u                   = (op.word >> 23) & 0x1u;
         insn->w                   = (op.word >> 21) & 0x1u;
@@ -41,7 +41,7 @@ bool ArmUnconditionalSpaceDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
        1111 100P U1W0 1101 0000 0101 000 mode[4:0]. */
     if (processor_config_->arch_v6 &&
         (op.word & 0xFE5FFFE0u) == 0xF84D0500u) {
-        insn->place_fn  = &PlaceSrs;
+        insn->kind      = ArmInsnKind::kSrs;
         insn->p         = (op.word >> 24) & 0x1u;
         insn->u         = (op.word >> 23) & 0x1u;
         insn->w         = (op.word >> 21) & 0x1u;
@@ -60,7 +60,7 @@ bool ArmUnconditionalSpaceDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
                of "Performing an ISB operation ... Taking an exception ...
                Returning from an exception". DSB and DMB are not in that set. */
             insn->context_sync = barrier_op == 0x6u;
-            insn->place_fn     = &PlaceNop;
+            insn->kind         = ArmInsnKind::kNop;
             return true;
         }
     }
@@ -81,7 +81,7 @@ bool ArmUnconditionalSpaceDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
     if (processor_config_->preload &&
         ((op1 & 0xF7u) == 0x55u ||
          ((op1 & 0xF7u) == 0x75u && (op.word & 0x10u) == 0u))) {
-        insn->place_fn = &PlaceNop;
+        insn->kind = ArmInsnKind::kNop;
         return true;
     }
 
@@ -95,7 +95,7 @@ bool ArmUnconditionalSpaceDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         insn->offset       = (static_cast<int32_t>(op.word << 8) >> 6) |
                              static_cast<int32_t>((op.word >> 23) & 2u);
         insn->r15_modified = true;
-        insn->place_fn     = &PlaceArmBlxImm;
+        insn->kind         = ArmInsnKind::kArmBlxImm;
         return true;
     }
     if ((op1 & 0x80u) == 0x00u) {

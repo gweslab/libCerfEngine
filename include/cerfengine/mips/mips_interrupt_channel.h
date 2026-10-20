@@ -7,10 +7,9 @@
 #include <vector>
 
 #include "../engine.h"
+#include "mips_cpu_state.h"
 
 namespace cerfengine {
-
-struct MipsCpuState;
 
 class HostRequestChannel;
 
@@ -39,6 +38,21 @@ public:
         return dispatch_request_.load(std::memory_order_acquire);
     }
     bool ResetRequested() const { return (DispatchRequests() & kDispatchReset) != 0u; }
+
+    void RequestChainExit() {
+        std::atomic_ref<uint32_t>(cpu_state_->chain_exit_request)
+            .fetch_or(MipsChainExit::kKick, std::memory_order_acq_rel);
+    }
+
+    /* QEMU cpu_handle_interrupt (cpu-exec.c): "Clear the interrupt
+       flag now since we're processing cpu->interrupt_request and
+       cpu->exit_request." */
+    void ConsumeChainExit() {
+        std::atomic_ref<uint32_t> word(cpu_state_->chain_exit_request);
+        if ((word.load(std::memory_order_acquire) & MipsChainExit::kKick) != 0u) {
+            word.fetch_and(~MipsChainExit::kKick, std::memory_order_acq_rel);
+        }
+    }
 
     uint32_t Level() const {
         return external_ip_.load(std::memory_order_acquire);

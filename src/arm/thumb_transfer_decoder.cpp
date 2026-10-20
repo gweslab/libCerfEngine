@@ -2,7 +2,7 @@
 
 #include <cerfengine/engine.h>
 #include <cerfengine/arm/decoded_insn.h>
-#include <cerfengine/arm/place_fns.h>
+#include <cerfengine/arm/block_context.h>
 
 namespace cerfengine {
 
@@ -23,7 +23,7 @@ bool ThumbTransferDecoder::DecodeLoadLiteral(DecodedInsn* insn, uint16_t op) {
     insn->rn       = 15u;
     insn->rd       = (op >> 8) & 0x7u;
     insn->offset   = static_cast<int32_t>((op & 0xFFu) * 4u);
-    insn->place_fn = &PlaceSingleDataTransfer;
+    insn->kind     = ArmInsnKind::kSingleDataTransfer;
     return true;
 }
 
@@ -56,27 +56,27 @@ bool ThumbTransferDecoder::DecodeRegisterOffsetTransfer(DecodedInsn* insn,
     case 1u:
         insn->op1      = 1u;
         insn->l        = 0u;
-        insn->place_fn = &PlaceLoadStoreExtension;
+        insn->kind     = ArmInsnKind::kLoadStoreExtension;
         return true;
     case 5u:
         insn->op1      = 1u;
         insn->l        = 1u;
-        insn->place_fn = &PlaceLoadStoreExtension;
+        insn->kind     = ArmInsnKind::kLoadStoreExtension;
         return true;
     case 3u:
         insn->op1      = 2u;
         insn->l        = 1u;
-        insn->place_fn = &PlaceLoadStoreExtension;
+        insn->kind     = ArmInsnKind::kLoadStoreExtension;
         return true;
     default:
         insn->op1      = 3u;
         insn->l        = 1u;
-        insn->place_fn = &PlaceLoadStoreExtension;
+        insn->kind     = ArmInsnKind::kLoadStoreExtension;
         return true;
     }
     insn->op1      = kSrLsl;
     insn->rs       = 0u;
-    insn->place_fn = &PlaceSingleDataTransfer;
+    insn->kind     = ArmInsnKind::kSingleDataTransfer;
     return true;
 }
 
@@ -96,7 +96,7 @@ bool ThumbTransferDecoder::DecodeImmediateOffsetTransfer(DecodedInsn* insn,
     insn->rd       =  op       & 0x7u;
     insn->offset   =
         static_cast<int32_t>(byte != 0u ? immed_5 : immed_5 * 4u);
-    insn->place_fn = &PlaceSingleDataTransfer;
+    insn->kind = ArmInsnKind::kSingleDataTransfer;
     return true;
 }
 
@@ -112,7 +112,7 @@ bool ThumbTransferDecoder::DecodeHalfwordOffsetTransfer(DecodedInsn* insn,
     insn->rn       = (op >> 3) & 0x7u;
     insn->rd       =  op       & 0x7u;
     insn->offset   = static_cast<int32_t>(((op >> 6) & 0x1Fu) * 2u);
-    insn->place_fn = &PlaceLoadStoreExtension;
+    insn->kind     = ArmInsnKind::kLoadStoreExtension;
     return true;
 }
 
@@ -128,7 +128,7 @@ bool ThumbTransferDecoder::DecodeStackRelativeTransfer(DecodedInsn* insn,
     insn->rn       = 13u;
     insn->rd       = (op >> 8) & 0x7u;
     insn->offset   = static_cast<int32_t>((op & 0xFFu) * 4u);
-    insn->place_fn = &PlaceSingleDataTransfer;
+    insn->kind     = ArmInsnKind::kSingleDataTransfer;
     return true;
 }
 
@@ -150,7 +150,7 @@ bool ThumbTransferDecoder::DecodeLoadStoreMultiple(DecodedInsn* insn,
     insn->u             = 1u;
     insn->s             = 0u;
     insn->w             = (load && ((list >> rn) & 0x1u) != 0u) ? 0u : 1u;
-    insn->place_fn      = &PlaceBlockDataTransfer;
+    insn->kind          = ArmInsnKind::kBlockDataTransfer;
     return true;
 }
 

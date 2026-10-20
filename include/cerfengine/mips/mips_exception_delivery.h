@@ -28,6 +28,7 @@ public:
     void DeliverFetchAddressError(uint32_t va);
     void RaiseAddressError(uint32_t va, MipsAccess acc);
     void RaiseOverflowException();
+    void RaiseCoprocessorUnusable(uint32_t unit);
     [[noreturn]] void LeaveBlock();
 
     /* QEMU cpu_mips_hw_interrupts_enabled / _pending (MIPS internal.h). */
@@ -40,6 +41,8 @@ public:
 
     static void CERFENGINE_FASTCALL SyscallHelper(MipsExceptionDelivery* ex);
     static void CERFENGINE_FASTCALL BreakHelper(MipsExceptionDelivery* ex);
+    static void CERFENGINE_FASTCALL Cop0UsableHelper(MipsExceptionDelivery* ex);
+    static void CERFENGINE_FASTCALL CopUnusableHelper(MipsExceptionDelivery* ex, uint32_t unit);
 
     static void CERFENGINE_CDECL ArithOverflowHelper(MipsExceptionDelivery* ex, uint32_t pc);
 

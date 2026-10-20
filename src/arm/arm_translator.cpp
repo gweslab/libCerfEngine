@@ -32,18 +32,21 @@ uint8_t* ArmTranslator::MapGuestVirtualToHost(uint32_t p) {
     if (!st.effective_control_register.bits.m) {
         uint8_t* host = map_->Read(p);
         if (host) {
-            if constexpr (kAccess == ArmMmuAccess::kExecute) last_exec_pa_ = p;
+            if constexpr (kAccess == ArmMmuAccess::kExecute) {
+                last_exec_pa_      = p;
+                last_exec_tracked_ = false;
+                last_exec_global_  = false;
+            }
             return host;
         }
         mmu_->SetIoPending(p);
         return nullptr;
     }
 
-    ArmTlbUnit* tlb_unit = (kAccess == ArmMmuAccess::kExecute)
-        ? &st.instruction_tlb : &st.data_tlb;
-
     const bool is_user_mode =
         kForceUser || (cpu_state_->cpsr.bits.mode == ArmMode::kUser);
+    ArmTlbUnit* tlb_unit = &((kAccess == ArmMmuAccess::kExecute)
+        ? st.instruction_tlb : st.data_tlb)[ArmTlbPrivilege(is_user_mode)];
     const uint8_t current_asid = static_cast<uint8_t>(st.contextidr & 0xFFu);
 
     const uint32_t va_page  = p & 0xFFFFF000u;
@@ -57,7 +60,11 @@ uint8_t* ArmTranslator::MapGuestVirtualToHost(uint32_t p) {
             ArmTlbPromote(tlb_unit, set_base, hit_way);
             const ArmTlbEntry& fast = tlb_unit->entries[set_base];
             const uint32_t pa = fast.pa_page | (p & 0x0FFFu);
-            if constexpr (kAccess == ArmMmuAccess::kExecute) last_exec_pa_ = pa;
+            if constexpr (kAccess == ArmMmuAccess::kExecute) {
+                last_exec_pa_      = pa;
+                last_exec_tracked_ = true;
+                last_exec_global_  = fast.global != 0u;
+            }
             ArmNoteCodeTracking<kAccess>(st, pa);
             return reinterpret_cast<uint8_t*>(
                 static_cast<uintptr_t>(p) + fast.va_addend);
@@ -80,14 +87,22 @@ uint8_t* ArmTranslator::MapGuestVirtualToHost(uint32_t p) {
     if (!walk.mapped) return nullptr;
     const uint32_t effective_address = walk.pa;
     if (walk.host != nullptr) {
-        if constexpr (kAccess == ArmMmuAccess::kExecute) last_exec_pa_ = effective_address;
+        if constexpr (kAccess == ArmMmuAccess::kExecute) {
+            last_exec_pa_      = effective_address;
+            last_exec_tracked_ = false;
+            last_exec_global_  = false;
+        }
         return walk.host;
     }
 
     const bool uniform = walk.cacheable &&
                          host::PhysicalSpanUniform(memory_, effective_address, walk.span_bytes);
 
-    if constexpr (kAccess == ArmMmuAccess::kExecute) last_exec_pa_ = effective_address;
+    if constexpr (kAccess == ArmMmuAccess::kExecute) {
+        last_exec_pa_      = effective_address;
+        last_exec_tracked_ = true;
+        last_exec_global_  = uniform && walk.global;
+    }
 
     if constexpr (kAccess == ArmMmuAccess::kWrite) {
         uint8_t* host_ptr = map_->Write(effective_address);
@@ -170,10 +185,11 @@ const ArmTlbEntry* ArmTranslator::MatchDataTlb(uint32_t va, uint32_t* folded) co
     *folded = p;
     const uint8_t current_asid = static_cast<uint8_t>(st.contextidr & 0xFFu);
     const uint32_t base = ArmTlbSetBase(p);
-    const int w = ArmTlbMatchWay(&st.data_tlb, base, p & 0xFFFFF000u,
-                                 current_asid, false);
+    const ArmTlbUnit& unit =
+        st.data_tlb[ArmTlbPrivilege(cpu_state_->cpsr.bits.mode == ArmMode::kUser)];
+    const int w = ArmTlbMatchWay(&unit, base, p & 0xFFFFF000u, current_asid, false);
     if (w < 0) return nullptr;
-    return &st.data_tlb.entries[base + static_cast<uint32_t>(w)];
+    return &unit.entries[base + static_cast<uint32_t>(w)];
 }
 
 std::optional<uint8_t*> ArmTranslator::PeekDataTlb(uint32_t va) const {
@@ -181,17 +197,6 @@ std::optional<uint8_t*> ArmTranslator::PeekDataTlb(uint32_t va) const {
     const ArmTlbEntry* e = MatchDataTlb(va, &p);
     if (!e) return std::nullopt;
     return reinterpret_cast<uint8_t*>(static_cast<uintptr_t>(p) + e->va_addend);
-}
-
-bool ArmTranslator::ExecPageGlobal(uint32_t folded_va) const {
-    const ArmMmuState& st = *state_;
-    const uint8_t current_asid = static_cast<uint8_t>(st.contextidr & 0xFFu);
-    const uint32_t base = ArmTlbSetBase(folded_va);
-    const int w = ArmTlbMatchWay(&st.instruction_tlb, base,
-                                 folded_va & 0xFFFFF000u, current_asid,
-                                 false);
-    return w >= 0 &&
-           st.instruction_tlb.entries[base + static_cast<uint32_t>(w)].global != 0u;
 }
 
 uint8_t* ArmTranslator::PeekVaToHost(uint32_t va) {

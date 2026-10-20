@@ -2,23 +2,14 @@
 
 #include <cmath>
 #include <cstdint>
-#include <xmmintrin.h>
 
+#include "../host_fp_env.h"
 #include "arm_vfp.h"
 
 namespace cerfengine {
 
 class ArmVfpArith {
 public:
-    static constexpr uint32_t kMxcsrOe     = 1u << 3;
-    static constexpr uint32_t kMxcsrPe     = 1u << 5;
-    static constexpr uint32_t kMxcsrSticky = 0x3Fu;
-
-    /* Intel SDM Vol. 1 section 10.2.3.2 (p. 10-4): "Bits 13 and 14 of the
-       MXCSR register (the rounding control [RC] field) control how the results
-       of SIMD floating-point instructions are rounded". */
-    static constexpr uint32_t kMxcsrRcZero = _MM_ROUND_TOWARD_ZERO;
-
     enum class Kind { Zero, Infinity, QNaN, SNaN, Nonzero };
 
     /* ARM DDI 0406C.c FPZero (p. A2-73), FPInfinity and FPDefaultNaN
@@ -110,29 +101,28 @@ public:
 
     template <class F, class Fn>
     static inline typename F::Bits Numeric(uint32_t* fpscr, Fn compute) {
-        const uint32_t csr = _mm_getcsr();
-        _mm_setcsr(csr & ~kMxcsrSticky);
+        const HostFpEnv::Saved saved = HostFpEnv::BeginClean();
         const typename F::Flt r = compute();
-        uint32_t raised = _mm_getcsr() & kMxcsrSticky;
+        uint32_t raised = HostFpEnv::Raised();
         typename F::Bits rb = ArmVfp::BitCast<typename F::Bits>(r);
         const typename F::Bits mag = rb & ~F::kSign;
-        const bool inexact = (raised & kMxcsrPe) != 0u;
+        const bool inexact = (raised & HostFpEnv::kInexact) != 0u;
         bool tiny = mag < F::kMinNo && (mag != 0 || inexact);
         if (mag == F::kMinNo && inexact) {
-            _mm_setcsr((csr & ~kMxcsrSticky) | kMxcsrRcZero);
+            HostFpEnv::RoundTowardZero(saved);
             const typename F::Bits zb = ArmVfp::BitCast<typename F::Bits>(compute()) & ~F::kSign;
-            _mm_setcsr(csr & ~kMxcsrSticky);
+            HostFpEnv::Restore(saved);
             tiny = zb < F::kMinNo;
         }
         if (tiny && (*fpscr & ArmVfp::kFpscrFzMask) != 0u) {
             rb &= F::kSign;
             *fpscr |= ArmVfp::kFpscrUfcMask;
-            raised &= ~kMxcsrPe;
+            raised &= ~HostFpEnv::kInexact;
         } else if (tiny && inexact) {
             *fpscr |= ArmVfp::kFpscrUfcMask;
         }
-        if (raised & kMxcsrOe) *fpscr |= ArmVfp::kFpscrOfcMask;
-        if (raised & kMxcsrPe) *fpscr |= ArmVfp::kFpscrIxcMask;
+        if (raised & HostFpEnv::kOverflow) *fpscr |= ArmVfp::kFpscrOfcMask;
+        if (raised & HostFpEnv::kInexact) *fpscr |= ArmVfp::kFpscrIxcMask;
         return rb;
     }
 

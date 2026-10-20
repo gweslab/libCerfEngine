@@ -49,6 +49,7 @@ namespace MipsStatusBit {
 /* QEMU MIPS CP0Ca_* (cpu.h). */
 namespace MipsCauseBit {
     constexpr uint32_t kBD      = 31;
+    constexpr uint32_t kCE      = 28;
     constexpr uint32_t kIV      = 23;
     constexpr uint32_t kIP      = 8;
     constexpr uint32_t kExcCode = 2;
@@ -56,6 +57,11 @@ namespace MipsCauseBit {
 
 constexpr uint32_t kMipsCauseTimerIp = 1u << (MipsCauseBit::kIP + 7);
 constexpr uint32_t kMipsCauseIpMask  = 0xFFu << MipsCauseBit::kIP;
+
+namespace MipsChainExit {
+    constexpr uint32_t kKick = 1u << 0;
+    constexpr uint32_t kHost = 1u << 1;
+}
 
 namespace MipsIdle {
     constexpr uint32_t kNone    = 0;
@@ -77,6 +83,7 @@ namespace MipsExcCode {
     constexpr uint32_t kSys = 8;
     constexpr uint32_t kBp  = 9;
     constexpr uint32_t kRI  = 10;
+    constexpr uint32_t kCpU = 11;
     constexpr uint32_t kOv  = 12;
 }
 
@@ -181,7 +188,7 @@ struct MipsCpuState {
     uint32_t branch_len;
 
     uint32_t idle_wait;
-    uint32_t idle_pad;
+    uint32_t chain_exit_request;
 };
 
 static_assert(offsetof(MipsTlbEntry, pfn) == 24, "MipsTlbEntry layout");

@@ -18,6 +18,7 @@ struct MipsBlockContext {
 
     MipsDecodedInsn insns[kMaxMipsInsnPerBlock];
     uint32_t        num_insns;
+    uint32_t        privilege;
 
     uint32_t        block_phys_page_base;
 
@@ -31,7 +32,7 @@ struct MipsBlockContext {
     uint32_t        fetch_unbacked_va;
     uint32_t        fetch_unbacked_pa;
 
-    uint32_t        insn0_pcrel_guard;
+    uint32_t        uncacheable;
 };
 
 }

@@ -4,6 +4,7 @@
 #define NOMINMAX
 #include <windows.h>
 
+#include <cstdio>
 #include <cstdlib>
 
 namespace cerfengine::platform {
@@ -52,16 +53,11 @@ int CaptureFault(void* exception_pointers, HostFault& fault) {
     const CONTEXT*            ctx = ep->ContextRecord;
     fault.code    = rec->ExceptionCode;
     fault.address = rec->ExceptionAddress;
-    fault.eax     = ctx->Eax;
-    fault.ecx     = ctx->Ecx;
-    fault.edx     = ctx->Edx;
-    fault.ebx     = ctx->Ebx;
-    fault.esp     = ctx->Esp;
-    fault.ebp     = ctx->Ebp;
-    fault.esi     = ctx->Esi;
-    fault.edi     = ctx->Edi;
-    fault.eip     = ctx->Eip;
-    fault.eflags  = ctx->EFlags;
+    std::snprintf(fault.registers, sizeof(fault.registers),
+                  "eax=%08lX ecx=%08lX edx=%08lX ebx=%08lX esp=%08lX ebp=%08lX esi=%08lX "
+                  "edi=%08lX eip=%08lX eflags=%08lX",
+                  ctx->Eax, ctx->Ecx, ctx->Edx, ctx->Ebx, ctx->Esp, ctx->Ebp, ctx->Esi,
+                  ctx->Edi, ctx->Eip, ctx->EFlags);
     return EXCEPTION_EXECUTE_HANDLER;
 }
 

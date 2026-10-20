@@ -28,6 +28,10 @@ void MipsExceptionDelivery::SetMmuFaultRegs(uint32_t va) {
 
 void MipsExceptionDelivery::RaiseTlbException(uint32_t va, MipsAccess acc,
                                               MipsTlbResult res) {
+    if (res == MipsTlbResult::kAddressError) {
+        RaiseAddressError(va, acc);
+        return;
+    }
     SetMmuFaultRegs(va);
 
     uint32_t cause = 0;
@@ -44,8 +48,9 @@ void MipsExceptionDelivery::RaiseTlbException(uint32_t va, MipsAccess acc,
             cause = MipsExcCode::kMod;
             break;
         case MipsTlbResult::kMatch:
-            engine_.Panic("MipsExceptionDelivery::RaiseTlbException: kMatch is not a "
-                          "fault (va=0x%08X)", va);
+        case MipsTlbResult::kAddressError:
+            engine_.Panic("MipsExceptionDelivery::RaiseTlbException: result %u is not a "
+                          "TLB fault (va=0x%08X)", static_cast<unsigned>(res), va);
     }
 
     EnterException(cause, nomatch);
@@ -54,6 +59,10 @@ void MipsExceptionDelivery::RaiseTlbException(uint32_t va, MipsAccess acc,
 
 void MipsExceptionDelivery::DeliverFetchTlbException(uint32_t va,
                                                      MipsTlbResult res) {
+    if (res == MipsTlbResult::kAddressError) {
+        DeliverFetchAddressError(va);
+        return;
+    }
     SetMmuFaultRegs(va);
     EnterException(MipsExcCode::kTLBL, res == MipsTlbResult::kNoMatch);
 }
@@ -77,6 +86,15 @@ void MipsExceptionDelivery::RaiseAddressError(uint32_t va, MipsAccess acc) {
 
 void MipsExceptionDelivery::RaiseOverflowException() {
     EnterException(MipsExcCode::kOv, false);
+    Unwind();
+}
+
+/* VR4121 UM Figure 7-7 (p.203) and TMPR39xx-um Figure 6-2 (p.51): Cause CE<29:28> holds
+   the coprocessor number of a Coprocessor Unusable exception. */
+void MipsExceptionDelivery::RaiseCoprocessorUnusable(uint32_t unit) {
+    cpu_state_->cp0_cause = (cpu_state_->cp0_cause & ~(3u << MipsCauseBit::kCE)) |
+                            (unit << MipsCauseBit::kCE);
+    EnterException(MipsExcCode::kCpU, false);
     Unwind();
 }
 
@@ -109,6 +127,18 @@ void CERFENGINE_FASTCALL MipsExceptionDelivery::BreakHelper(MipsExceptionDeliver
        (tlb_helper.c mips_cpu_do_interrupt EXCP_BREAK). */
     ex->EnterException(MipsExcCode::kBp, false);
     ex->Unwind();
+}
+
+/* VR4121 UM §7.4.12 (p.224) and TMPR39xx-um Figure 6-4 CU (p.55): CP0 is usable in Kernel mode
+   regardless of CU0; elsewhere a CP0 instruction with CU0 = 0 raises Coprocessor Unusable. */
+void CERFENGINE_FASTCALL MipsExceptionDelivery::Cop0UsableHelper(MipsExceptionDelivery* ex) {
+    if ((ex->cpu_state_->cp0_status & (1u << MipsStatusBit::kCU0)) != 0u) return;
+    ex->RaiseCoprocessorUnusable(0u);
+}
+
+void CERFENGINE_FASTCALL MipsExceptionDelivery::CopUnusableHelper(MipsExceptionDelivery* ex,
+                                                                  uint32_t unit) {
+    ex->RaiseCoprocessorUnusable(unit);
 }
 
 void CERFENGINE_CDECL MipsExceptionDelivery::ArithOverflowHelper(MipsExceptionDelivery* ex,

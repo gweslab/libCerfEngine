@@ -5,7 +5,7 @@
 #include "arm_opcode.h"
 #include <cerfengine/arm/decoded_insn.h>
 #include "neon_unconditional_decoder.h"
-#include <cerfengine/arm/place_fns.h>
+#include <cerfengine/arm/block_context.h>
 #include "thumb32_branch_system_decoder.h"
 #include "thumb32_data_proc_decoder.h"
 #include "thumb32_fatal.h"
@@ -64,7 +64,7 @@ bool Thumb32Decoder::DecodeCoprocessorSimdFp(DecodedInsn* insn, uint32_t op) {
         arm.word = 0xF2000000u | (((op >> 28) & 0x1u) << 24) |
                    (op & 0x00FFFFFFu);
         neon_decoder_->DecodeData3reg(insn, arm);
-        if (insn->place_fn == &PlaceNeonUnimplemented) insn->immediate = op;
+        if (insn->kind == ArmInsnKind::kNeonUnimplemented) insn->immediate = op;
         return true;
     }
     /* T is hw1[12]. A7.5 p. A7-272, A7.6 p. A7-274, A7.8 p. A7-278, A7.9
@@ -115,7 +115,7 @@ bool Thumb32Decoder::DecodeSimdElementOrStructure(DecodedInsn* insn,
     if (!neon_decoder_->DecodeLoadStore(insn, arm)) {
         return false;
     }
-    if (insn->place_fn == &PlaceNeonUnimplemented) insn->immediate = op;
+    if (insn->kind == ArmInsnKind::kNeonUnimplemented) insn->immediate = op;
     return true;
 }
 

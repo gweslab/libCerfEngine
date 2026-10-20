@@ -2,16 +2,21 @@
 
 /* Encodings: Intel SDM Vol. 2; ModR/M forms per Vol. 2A Table 2-2 (p. 2-6). */
 
+#include <cstddef>
 #include <cstdint>
-#include <cstdio>
 
 #include <cerfengine/byte_order.h>
 
 #include "emit_fault.h"
+#include <cerfengine/force_inline.h>
 
 namespace cerfengine {
 
 namespace x86 {
+
+[[noreturn]] void ThrowModRmNeedsSib(uint8_t mod);
+[[noreturn]] void ThrowModRmBareDisp32();
+[[noreturn]] void ThrowRel8FixupRange(uint8_t opcode, ptrdiff_t disp);
 
 /* r32 / r8 field encodings - SDM Vol. 2A Table 2-2. */
 constexpr uint8_t kEax = 0;
@@ -30,275 +35,438 @@ constexpr uint8_t kAl = 0;
 constexpr uint8_t kCl = 1;
 constexpr uint8_t kDl = 2;
 
-inline void Emit8(uint8_t*& c, uint8_t v) {
-    *c++ = v;
+CERFENGINE_FORCEINLINE void Emit8(uint8_t*& c, uint8_t v) {
+    uint8_t* p = c;
+    *p++ = v;
+    c = p;
 }
 
-inline void Emit32(uint8_t*& c, uint32_t v) {
-    le::Put32(c, v);
-    c += 4;
+CERFENGINE_FORCEINLINE void Emit32(uint8_t*& c, uint32_t v) {
+    uint8_t* p = c;
+    le::Put32(p, v);
+    p += 4;
+    c = p;
 }
 
 /* ModR/M byte = (mod << 6) | (reg << 3) | r/m - SDM Vol. 2A Table 2-2. */
-inline void EmitModRmByte(uint8_t*& c, uint8_t mod, uint8_t rm, uint8_t reg) {
-    Emit8(c, static_cast<uint8_t>((mod << 6) | (reg << 3) | rm));
+CERFENGINE_FORCEINLINE void EmitModRmByte(uint8_t*& c, uint8_t mod, uint8_t rm, uint8_t reg) {
+    uint8_t* p = c;
+    Emit8(p, static_cast<uint8_t>((mod << 6) | (reg << 3) | rm));
+    c = p;
 }
 
 /* Per Table 2-2 notes 1-2: in the memory forms, r/m = 100b means a SIB
    byte follows, and mod = 00b with r/m = 101b means bare disp32. */
-inline void EmitModRmReg(uint8_t*& c, uint8_t mod, uint8_t rm, uint8_t reg) {
-    if (mod != 3u && rm == kEsp) {
-        char text[96];
-        std::snprintf(text, sizeof(text),
-                      "x86 emit: r/m=100b in a memory form requires a SIB byte (mod=%u)",
-                      mod);
-        throw cerfengine::EmitFault(text);
-    }
-    if (mod == 0u && rm == kEbp) {
-        throw cerfengine::EmitFault("x86 emit: mod=00b r/m=101b encodes disp32, not [EBP]");
-    }
-    EmitModRmByte(c, mod, rm, reg);
+CERFENGINE_FORCEINLINE void EmitModRmReg(uint8_t*& c, uint8_t mod, uint8_t rm, uint8_t reg) {
+    uint8_t* p = c;
+    if (mod != 3u && rm == kEsp) ThrowModRmNeedsSib(mod);
+    if (mod == 0u && rm == kEbp) ThrowModRmBareDisp32();
+    EmitModRmByte(p, mod, rm, reg);
+    c = p;
 }
 
 /* mod = 00b, r/m = 101b - bare disp32 (SDM Vol. 2A Table 2-2 note 2). */
-inline void EmitModRmDisp32(uint8_t*& c, uint8_t reg) {
-    EmitModRmByte(c, 0, kEbp, reg);
+CERFENGINE_FORCEINLINE void EmitModRmDisp32(uint8_t*& c, uint8_t reg) {
+    uint8_t* p = c;
+    EmitModRmByte(p, 0, kEbp, reg);
+    c = p;
 }
 
 /* rel32 - displacement relative to the next instruction:
    SDM Vol. 2A 3-139 CALL, 3-552 JMP. */
-inline void EmitOpcodeRel32(uint8_t*& c, uint8_t opcode, const void* target) {
-    Emit8(c, opcode);
-    Emit32(c, static_cast<uint32_t>(reinterpret_cast<uintptr_t>(target) -
-                                    reinterpret_cast<uintptr_t>(c + 4)));
+CERFENGINE_FORCEINLINE void EmitOpcodeRel32(uint8_t*& c, uint8_t opcode, const void* target) {
+    uint8_t* p = c;
+    Emit8(p, opcode);
+    Emit32(p, static_cast<uint32_t>(reinterpret_cast<uintptr_t>(target) -
+                                    reinterpret_cast<uintptr_t>(p + 4)));
+    c = p;
 }
 
 /* CALL rel32 - E8 cd (SDM Vol. 2A 3-139 CALL). */
-inline void EmitCall(uint8_t*& c, const void* target) {
-    EmitOpcodeRel32(c, 0xE8, target);
+CERFENGINE_FORCEINLINE void EmitCall(uint8_t*& c, const void* target) {
+    uint8_t* p = c;
+    EmitOpcodeRel32(p, 0xE8, target);
+    c = p;
+}
+
+/* CALL r/m32 - FF /2 (SDM Vol. 2A 3-139 CALL). */
+CERFENGINE_FORCEINLINE void EmitCallReg(uint8_t*& c, uint8_t reg) {
+    uint8_t* p = c;
+    Emit8(p, 0xFF);
+    EmitModRmByte(p, 3, reg, 2);
+    c = p;
 }
 
 /* JMP rel32 - E9 cd (SDM Vol. 2A 3-552 JMP). */
-inline void EmitJmp32(uint8_t*& c, const void* target) {
-    EmitOpcodeRel32(c, 0xE9, target);
+CERFENGINE_FORCEINLINE void EmitJmp32(uint8_t*& c, const void* target) {
+    uint8_t* p = c;
+    EmitOpcodeRel32(p, 0xE9, target);
+    c = p;
 }
 
 /* RET - C3, Op/En ZO (SDM Vol. 2B 4-564 RET). */
-inline void EmitRet(uint8_t*& c) {
-    Emit8(c, 0xC3);
+CERFENGINE_FORCEINLINE void EmitRet(uint8_t*& c) {
+    uint8_t* p = c;
+    Emit8(p, 0xC3);
+    c = p;
 }
 
-inline uint8_t* EmitRel8Label(uint8_t*& c, uint8_t opcode) {
-    Emit8(c, opcode);
-    uint8_t* label = c;
-    Emit8(c, 0);
+CERFENGINE_FORCEINLINE uint8_t* EmitRel8Label(uint8_t*& c, uint8_t opcode) {
+    uint8_t* p = c;
+    Emit8(p, opcode);
+    uint8_t* label = p;
+    Emit8(p, 0);
+    c = p;
     return label;
 }
 
-inline uint8_t* EmitRel32Label(uint8_t*& c, uint8_t opcode0F) {
-    Emit8(c, 0x0F);
-    Emit8(c, opcode0F);
-    uint8_t* label = c;
-    Emit32(c, 0);
+CERFENGINE_FORCEINLINE uint8_t* EmitRel32Label(uint8_t*& c, uint8_t opcode0F) {
+    uint8_t* p = c;
+    Emit8(p, 0x0F);
+    Emit8(p, opcode0F);
+    uint8_t* label = p;
+    Emit32(p, 0);
+    c = p;
     return label;
 }
 
 /* JMP rel8 - EB cb (SDM Vol. 2A 3-552 JMP). */
-inline uint8_t* EmitJmpLabel(uint8_t*& c) { return EmitRel8Label(c, 0xEB); }
+CERFENGINE_FORCEINLINE uint8_t* EmitJmpLabel(uint8_t*& c) { return EmitRel8Label(c, 0xEB); }
 
 /* JMP rel32 - E9 cd (SDM Vol. 2A 3-552 JMP). */
-inline uint8_t* EmitJmpLabel32(uint8_t*& c) {
-    Emit8(c, 0xE9);
-    uint8_t* label = c;
-    Emit32(c, 0);
+CERFENGINE_FORCEINLINE uint8_t* EmitJmpLabel32(uint8_t*& c) {
+    uint8_t* p = c;
+    Emit8(p, 0xE9);
+    uint8_t* label = p;
+    Emit32(p, 0);
+    c = p;
     return label;
 }
 
 /* Jcc rel8 - 7x cb; Jcc rel32 - 0F 8x cd (SDM Vol. 2A 3-547..3-549 Jcc). */
-inline uint8_t* EmitJzLabel(uint8_t*& c)    { return EmitRel8Label(c, 0x74); }
-inline uint8_t* EmitJnzLabel(uint8_t*& c)   { return EmitRel8Label(c, 0x75); }
-inline uint8_t* EmitJnoLabel(uint8_t*& c)   { return EmitRel8Label(c, 0x71); }
-inline uint8_t* EmitJgeLabel(uint8_t*& c)   { return EmitRel8Label(c, 0x7D); }
-inline uint8_t* EmitJleLabel(uint8_t*& c)   { return EmitRel8Label(c, 0x7E); }
-inline uint8_t* EmitJzLabel32(uint8_t*& c)  { return EmitRel32Label(c, 0x84); }
-inline uint8_t* EmitJnzLabel32(uint8_t*& c) { return EmitRel32Label(c, 0x85); }
-inline uint8_t* EmitJsLabel32(uint8_t*& c)  { return EmitRel32Label(c, 0x88); }
-inline uint8_t* EmitJnsLabel32(uint8_t*& c) { return EmitRel32Label(c, 0x89); }
-inline uint8_t* EmitJaeLabel32(uint8_t*& c) { return EmitRel32Label(c, 0x83); }
-inline uint8_t* EmitJncLabel32(uint8_t*& c) { return EmitJaeLabel32(c); }
-inline uint8_t* EmitJbLabel32(uint8_t*& c)  { return EmitRel32Label(c, 0x82); }
+CERFENGINE_FORCEINLINE uint8_t* EmitJzLabel(uint8_t*& c)    { return EmitRel8Label(c, 0x74); }
+CERFENGINE_FORCEINLINE uint8_t* EmitJnzLabel(uint8_t*& c)   { return EmitRel8Label(c, 0x75); }
+CERFENGINE_FORCEINLINE uint8_t* EmitJnoLabel(uint8_t*& c)   { return EmitRel8Label(c, 0x71); }
+CERFENGINE_FORCEINLINE uint8_t* EmitJgeLabel(uint8_t*& c)   { return EmitRel8Label(c, 0x7D); }
+CERFENGINE_FORCEINLINE uint8_t* EmitJleLabel(uint8_t*& c)   { return EmitRel8Label(c, 0x7E); }
+CERFENGINE_FORCEINLINE uint8_t* EmitJzLabel32(uint8_t*& c)  { return EmitRel32Label(c, 0x84); }
+CERFENGINE_FORCEINLINE uint8_t* EmitJnzLabel32(uint8_t*& c) { return EmitRel32Label(c, 0x85); }
+CERFENGINE_FORCEINLINE uint8_t* EmitJsLabel32(uint8_t*& c)  { return EmitRel32Label(c, 0x88); }
+CERFENGINE_FORCEINLINE uint8_t* EmitJnsLabel32(uint8_t*& c) { return EmitRel32Label(c, 0x89); }
+CERFENGINE_FORCEINLINE uint8_t* EmitJaeLabel32(uint8_t*& c) { return EmitRel32Label(c, 0x83); }
+CERFENGINE_FORCEINLINE uint8_t* EmitJncLabel32(uint8_t*& c) { return EmitJaeLabel32(c); }
+CERFENGINE_FORCEINLINE uint8_t* EmitJbLabel32(uint8_t*& c)  { return EmitRel32Label(c, 0x82); }
 
 /* rel8 - sign-extended 8-bit displacement: SDM Vol. 2A 3-552 JMP (EB cb),
    3-547 Jcc (7x cb). */
-inline void FixupLabel(uint8_t* label, uint8_t* cursor) {
+CERFENGINE_FORCEINLINE void FixupLabel(uint8_t* label, uint8_t* cursor) {
     const ptrdiff_t disp = cursor - (label + 1);
-    if (disp < -128 || disp > 127) {
-        char text[96];
-        std::snprintf(text, sizeof(text),
-                      "x86 emit: rel8 fixup out of range - opcode 0x%02X, displacement %d",
-                      label[-1], static_cast<int>(disp));
-        throw cerfengine::EmitFault(text);
-    }
+    if (disp < -128 || disp > 127) ThrowRel8FixupRange(label[-1], disp);
     label[0] = static_cast<uint8_t>(disp);
 }
 
-inline void FixupLabel32(uint8_t* label, uint8_t* cursor) {
+CERFENGINE_FORCEINLINE void FixupLabel32(uint8_t* label, uint8_t* cursor) {
     le::Put32(label, static_cast<uint32_t>(cursor - (label + 4)));
 }
 
 /* MOV r32, imm32 - B8+rd id (SDM Vol. 2B 4-35 MOV). */
-inline void EmitMovRegImm32(uint8_t*& c, uint8_t reg, uint32_t imm) {
-    Emit8(c, static_cast<uint8_t>(0xB8 + reg));
-    Emit32(c, imm);
+CERFENGINE_FORCEINLINE void EmitMovRegImm32(uint8_t*& c, uint8_t reg, uint32_t imm) {
+    uint8_t* p = c;
+    Emit8(p, static_cast<uint8_t>(0xB8 + reg));
+    Emit32(p, imm);
+    c = p;
 }
 
 /* MOV r32, r/m32 - 8B /r, register-direct (SDM Vol. 2B 4-35 MOV). */
-inline void EmitMovRegReg(uint8_t*& c, uint8_t dst, uint8_t src) {
-    Emit8(c, 0x8B);
-    EmitModRmReg(c, 3, src, dst);
+CERFENGINE_FORCEINLINE void EmitMovRegReg(uint8_t*& c, uint8_t dst, uint8_t src) {
+    uint8_t* p = c;
+    Emit8(p, 0x8B);
+    EmitModRmReg(p, 3, src, dst);
+    c = p;
 }
 
 /* MOV r32, [base + disp32] - 8B /r mod=10 (SDM Vol. 2B 4-35 MOV). */
-inline void EmitMovRegBaseDisp32(uint8_t*& c, uint8_t reg, uint8_t base,
+CERFENGINE_FORCEINLINE void EmitMovRegBaseDisp32(uint8_t*& c, uint8_t reg, uint8_t base,
                                  int32_t disp) {
-    Emit8(c, 0x8B);
-    EmitModRmReg(c, 2, base, reg);
-    Emit32(c, static_cast<uint32_t>(disp));
+    uint8_t* p = c;
+    Emit8(p, 0x8B);
+    EmitModRmReg(p, 2, base, reg);
+    Emit32(p, static_cast<uint32_t>(disp));
+    c = p;
 }
 
 /* MOV [base + disp32], r32 - 89 /r mod=10 (SDM Vol. 2B 4-35 MOV). */
-inline void EmitMovBaseDisp32Reg(uint8_t*& c, uint8_t base, int32_t disp,
+CERFENGINE_FORCEINLINE void EmitMovBaseDisp32Reg(uint8_t*& c, uint8_t base, int32_t disp,
                                  uint8_t reg) {
-    Emit8(c, 0x89);
-    EmitModRmReg(c, 2, base, reg);
-    Emit32(c, static_cast<uint32_t>(disp));
+    uint8_t* p = c;
+    Emit8(p, 0x89);
+    EmitModRmReg(p, 2, base, reg);
+    Emit32(p, static_cast<uint32_t>(disp));
+    c = p;
 }
 
 /* MOV r/m32, imm32 - C7 /0 id, mod=10 (SDM Vol. 2B 4-35 MOV). */
-inline void EmitMovBaseDisp32Imm32(uint8_t*& c, uint8_t base, int32_t disp,
+CERFENGINE_FORCEINLINE void EmitMovBaseDisp32Imm32(uint8_t*& c, uint8_t base, int32_t disp,
                                    uint32_t imm) {
-    Emit8(c, 0xC7);
-    EmitModRmReg(c, 2, base, 0);
-    Emit32(c, static_cast<uint32_t>(disp));
-    Emit32(c, imm);
+    uint8_t* p = c;
+    Emit8(p, 0xC7);
+    EmitModRmReg(p, 2, base, 0);
+    Emit32(p, static_cast<uint32_t>(disp));
+    Emit32(p, imm);
+    c = p;
 }
 
 /* MOV r/m8, r8 - 88 /r mod=10 (SDM Vol. 2B 4-35 MOV). */
-inline void EmitMovBaseDisp32Byte(uint8_t*& c, uint8_t base, int32_t disp,
+CERFENGINE_FORCEINLINE void EmitMovBaseDisp32Byte(uint8_t*& c, uint8_t base, int32_t disp,
                                   uint8_t reg8) {
-    Emit8(c, 0x88);
-    EmitModRmReg(c, 2, base, reg8);
-    Emit32(c, static_cast<uint32_t>(disp));
+    uint8_t* p = c;
+    Emit8(p, 0x88);
+    EmitModRmReg(p, 2, base, reg8);
+    Emit32(p, static_cast<uint32_t>(disp));
+    c = p;
+}
+
+/* MOV r32, [base] - 8B /r mod=00 (SDM Vol. 2B 4-35 MOV). */
+CERFENGINE_FORCEINLINE void EmitMovRegBase(uint8_t*& c, uint8_t reg, uint8_t base) {
+    uint8_t* p = c;
+    Emit8(p, 0x8B);
+    EmitModRmReg(p, 0, base, reg);
+    c = p;
+}
+
+/* MOV [base], r32 - 89 /r mod=00 (SDM Vol. 2B 4-35 MOV). */
+CERFENGINE_FORCEINLINE void EmitMovBaseReg(uint8_t*& c, uint8_t base, uint8_t reg) {
+    uint8_t* p = c;
+    Emit8(p, 0x89);
+    EmitModRmReg(p, 0, base, reg);
+    c = p;
+}
+
+/* MOV [base], r8 - 88 /r mod=00 (SDM Vol. 2B 4-35 MOV). */
+CERFENGINE_FORCEINLINE void EmitMovBaseReg8(uint8_t*& c, uint8_t base, uint8_t reg8) {
+    uint8_t* p = c;
+    Emit8(p, 0x88);
+    EmitModRmReg(p, 0, base, reg8);
+    c = p;
+}
+
+/* MOVZX r32, byte [base] - 0F B6 /r mod=00 (SDM Vol. 2B 4-140 MOVZX). */
+CERFENGINE_FORCEINLINE void EmitMovzxRegByteBase(uint8_t*& c, uint8_t dst, uint8_t base) {
+    uint8_t* p = c;
+    Emit8(p, 0x0F);
+    Emit8(p, 0xB6);
+    EmitModRmReg(p, 0, base, dst);
+    c = p;
+}
+
+/* MOVZX r32, word [base] - 0F B7 /r mod=00 (SDM Vol. 2B 4-140 MOVZX). */
+CERFENGINE_FORCEINLINE void EmitMovzxRegWordBase(uint8_t*& c, uint8_t dst, uint8_t base) {
+    uint8_t* p = c;
+    Emit8(p, 0x0F);
+    Emit8(p, 0xB7);
+    EmitModRmReg(p, 0, base, dst);
+    c = p;
+}
+
+/* MOVSX r32, byte [base] - 0F BE /r mod=00 (SDM Vol. 2B 4-130 MOVSX). */
+CERFENGINE_FORCEINLINE void EmitMovsxRegByteBase(uint8_t*& c, uint8_t dst, uint8_t base) {
+    uint8_t* p = c;
+    Emit8(p, 0x0F);
+    Emit8(p, 0xBE);
+    EmitModRmReg(p, 0, base, dst);
+    c = p;
+}
+
+/* MOVSX r32, word [base] - 0F BF /r mod=00 (SDM Vol. 2B 4-130 MOVSX). */
+CERFENGINE_FORCEINLINE void EmitMovsxRegWordBase(uint8_t*& c, uint8_t dst, uint8_t base) {
+    uint8_t* p = c;
+    Emit8(p, 0x0F);
+    Emit8(p, 0xBF);
+    EmitModRmReg(p, 0, base, dst);
+    c = p;
+}
+
+/* MOV [base], r16 - 66 89 /r mod=00: MOV r/m16, r16 (SDM Vol. 2B 4-35) under
+   the operand-size override prefix 66H (SDM Vol. 2A 2-2). */
+CERFENGINE_FORCEINLINE void EmitMovBaseReg16(uint8_t*& c, uint8_t base, uint8_t reg16) {
+    uint8_t* p = c;
+    Emit8(p, 0x66);
+    Emit8(p, 0x89);
+    EmitModRmReg(p, 0, base, reg16);
+    c = p;
 }
 
 /* MOV [disp32], r32 - 89 /r, mod=00 r/m=101 = bare disp32
    (SDM Vol. 2B 4-35 MOV; Vol. 2A Table 2-2 note 2). */
-inline void EmitMovDwordPtrReg(uint8_t*& c, const void* addr, uint8_t reg) {
-    Emit8(c, 0x89);
-    EmitModRmDisp32(c, reg);
-    Emit32(c, static_cast<uint32_t>(reinterpret_cast<uintptr_t>(addr)));
+CERFENGINE_FORCEINLINE void EmitMovDwordPtrReg(uint8_t*& c, const void* addr, uint8_t reg) {
+    uint8_t* p = c;
+    Emit8(p, 0x89);
+    EmitModRmDisp32(p, reg);
+    Emit32(p, static_cast<uint32_t>(reinterpret_cast<uintptr_t>(addr)));
+    c = p;
 }
 
 /* MOV [disp32], imm32 - C7 /0 id, mod=00 r/m=101 = bare disp32
    (SDM Vol. 2B 4-35 MOV; Vol. 2A Table 2-2 note 2). */
-inline void EmitMovDwordPtrImm32(uint8_t*& c, const void* addr, uint32_t imm) {
-    Emit8(c, 0xC7);
-    EmitModRmDisp32(c, 0);
-    Emit32(c, static_cast<uint32_t>(reinterpret_cast<uintptr_t>(addr)));
-    Emit32(c, imm);
+CERFENGINE_FORCEINLINE void EmitMovDwordPtrImm32(uint8_t*& c, const void* addr, uint32_t imm) {
+    uint8_t* p = c;
+    Emit8(p, 0xC7);
+    EmitModRmDisp32(p, 0);
+    Emit32(p, static_cast<uint32_t>(reinterpret_cast<uintptr_t>(addr)));
+    Emit32(p, imm);
+    c = p;
 }
 
 /* MOV r32, [disp32] - 8B /r, mod=00 r/m=101 = bare disp32
    (SDM Vol. 2B 4-35 MOV; Vol. 2A Table 2-2 note 2). */
-inline void EmitMovRegDwordPtr(uint8_t*& c, uint8_t reg, const void* addr) {
-    Emit8(c, 0x8B);
-    EmitModRmDisp32(c, reg);
-    Emit32(c, static_cast<uint32_t>(reinterpret_cast<uintptr_t>(addr)));
+CERFENGINE_FORCEINLINE void EmitMovRegDwordPtr(uint8_t*& c, uint8_t reg, const void* addr) {
+    uint8_t* p = c;
+    Emit8(p, 0x8B);
+    EmitModRmDisp32(p, reg);
+    Emit32(p, static_cast<uint32_t>(reinterpret_cast<uintptr_t>(addr)));
+    c = p;
 }
 
 /* MOVSX r32, r/m8 - 0F BE /r, mod=00 r/m=101 = bare disp32
    (SDM Vol. 2B 4-130 MOVSX; Vol. 2A Table 2-2 note 2). */
-inline void EmitMovsxRegBytePtr(uint8_t*& c, uint8_t reg, const void* addr) {
-    Emit8(c, 0x0F);
-    Emit8(c, 0xBE);
-    EmitModRmDisp32(c, reg);
-    Emit32(c, static_cast<uint32_t>(reinterpret_cast<uintptr_t>(addr)));
+CERFENGINE_FORCEINLINE void EmitMovsxRegBytePtr(uint8_t*& c, uint8_t reg, const void* addr) {
+    uint8_t* p = c;
+    Emit8(p, 0x0F);
+    Emit8(p, 0xBE);
+    EmitModRmDisp32(p, reg);
+    Emit32(p, static_cast<uint32_t>(reinterpret_cast<uintptr_t>(addr)));
+    c = p;
 }
 
 /* MOV r/m8, r8 - 88 /r, mod=00 r/m=101 = bare disp32
    (SDM Vol. 2B 4-35 MOV; Vol. 2A Table 2-2 note 2). */
-inline void EmitMovBytePtrReg8(uint8_t*& c, const void* addr, uint8_t reg8) {
-    Emit8(c, 0x88);
-    EmitModRmDisp32(c, reg8);
-    Emit32(c, static_cast<uint32_t>(reinterpret_cast<uintptr_t>(addr)));
+CERFENGINE_FORCEINLINE void EmitMovBytePtrReg8(uint8_t*& c, const void* addr, uint8_t reg8) {
+    uint8_t* p = c;
+    Emit8(p, 0x88);
+    EmitModRmDisp32(p, reg8);
+    Emit32(p, static_cast<uint32_t>(reinterpret_cast<uintptr_t>(addr)));
+    c = p;
+}
+
+/* MOV r/m8, imm8 - C6 /0 ib, mod=00 r/m=101 = bare disp32
+   (SDM Vol. 2B 4-35 MOV; Vol. 2A Table 2-2 note 2). */
+CERFENGINE_FORCEINLINE void EmitMovBytePtrImm8(uint8_t*& c, const void* addr, uint8_t imm8) {
+    uint8_t* p = c;
+    Emit8(p, 0xC6);
+    EmitModRmDisp32(p, 0);
+    Emit32(p, static_cast<uint32_t>(reinterpret_cast<uintptr_t>(addr)));
+    Emit8(p, imm8);
+    c = p;
 }
 
 /* MOVSX r32, r/m8 - 0F BE /r mod=10 (SDM Vol. 2B 4-130 MOVSX). */
-inline void EmitMovsxByteRegBaseDisp32(uint8_t*& c, uint8_t reg, uint8_t base,
+CERFENGINE_FORCEINLINE void EmitMovsxByteRegBaseDisp32(uint8_t*& c, uint8_t reg, uint8_t base,
                                        int32_t disp) {
-    Emit8(c, 0x0F);
-    Emit8(c, 0xBE);
-    EmitModRmReg(c, 2, base, reg);
-    Emit32(c, static_cast<uint32_t>(disp));
+    uint8_t* p = c;
+    Emit8(p, 0x0F);
+    Emit8(p, 0xBE);
+    EmitModRmReg(p, 2, base, reg);
+    Emit32(p, static_cast<uint32_t>(disp));
+    c = p;
 }
 
 /* MOVSX r32, r/m8 - 0F BE /r, register-direct (SDM Vol. 2B 4-130 MOVSX). */
-inline void EmitMovsxReg32Reg8(uint8_t*& c, uint8_t dst, uint8_t src8) {
-    Emit8(c, 0x0F);
-    Emit8(c, 0xBE);
-    EmitModRmReg(c, 3, src8, dst);
+CERFENGINE_FORCEINLINE void EmitMovsxReg32Reg8(uint8_t*& c, uint8_t dst, uint8_t src8) {
+    uint8_t* p = c;
+    Emit8(p, 0x0F);
+    Emit8(p, 0xBE);
+    EmitModRmReg(p, 3, src8, dst);
+    c = p;
 }
 
 /* MOVSX r32, r/m16 - 0F BF /r, register-direct (SDM Vol. 2B 4-130 MOVSX). */
-inline void EmitMovsxReg32Reg16(uint8_t*& c, uint8_t dst, uint8_t src16) {
-    Emit8(c, 0x0F);
-    Emit8(c, 0xBF);
-    EmitModRmReg(c, 3, src16, dst);
+CERFENGINE_FORCEINLINE void EmitMovsxReg32Reg16(uint8_t*& c, uint8_t dst, uint8_t src16) {
+    uint8_t* p = c;
+    Emit8(p, 0x0F);
+    Emit8(p, 0xBF);
+    EmitModRmReg(p, 3, src16, dst);
+    c = p;
 }
 
 /* MOVZX r32, r/m8 - 0F B6 /r, register-direct (SDM Vol. 2B 4-140 MOVZX). */
-inline void EmitMovzxReg32Reg8(uint8_t*& c, uint8_t dst, uint8_t src8) {
-    Emit8(c, 0x0F);
-    Emit8(c, 0xB6);
-    EmitModRmReg(c, 3, src8, dst);
+CERFENGINE_FORCEINLINE void EmitMovzxReg32Reg8(uint8_t*& c, uint8_t dst, uint8_t src8) {
+    uint8_t* p = c;
+    Emit8(p, 0x0F);
+    Emit8(p, 0xB6);
+    EmitModRmReg(p, 3, src8, dst);
+    c = p;
+}
+
+/* MOVZX r32, r/m8 - 0F B6 /r mod=10, "Flags Affected: None"
+   (SDM Vol. 2B 4-140 MOVZX). */
+CERFENGINE_FORCEINLINE void EmitMovzxRegByteBaseDisp32(uint8_t*& c, uint8_t dst, uint8_t base,
+                                       int32_t disp) {
+    uint8_t* p = c;
+    Emit8(p, 0x0F);
+    Emit8(p, 0xB6);
+    EmitModRmReg(p, 2, base, dst);
+    Emit32(p, static_cast<uint32_t>(disp));
+    c = p;
 }
 
 /* MOVZX r32, r/m16 - 0F B7 /r, register-direct (SDM Vol. 2B 4-140 MOVZX). */
-inline void EmitMovzxReg32Reg16(uint8_t*& c, uint8_t dst, uint8_t src16) {
-    Emit8(c, 0x0F);
-    Emit8(c, 0xB7);
-    EmitModRmReg(c, 3, src16, dst);
+CERFENGINE_FORCEINLINE void EmitMovzxReg32Reg16(uint8_t*& c, uint8_t dst, uint8_t src16) {
+    uint8_t* p = c;
+    Emit8(p, 0x0F);
+    Emit8(p, 0xB7);
+    EmitModRmReg(p, 3, src16, dst);
+    c = p;
 }
 
 /* LEA r32, m - 8D /r mod=10 (SDM Vol. 2A 3-594 LEA). */
-inline void EmitLeaRegBaseDisp32(uint8_t*& c, uint8_t reg, uint8_t base,
+CERFENGINE_FORCEINLINE void EmitLeaRegBaseDisp32(uint8_t*& c, uint8_t reg, uint8_t base,
                                  int32_t disp) {
-    Emit8(c, 0x8D);
-    EmitModRmReg(c, 2, base, reg);
-    Emit32(c, static_cast<uint32_t>(disp));
+    uint8_t* p = c;
+    Emit8(p, 0x8D);
+    EmitModRmReg(p, 2, base, reg);
+    Emit32(p, static_cast<uint32_t>(disp));
+    c = p;
 }
 
 /* PUSH imm32 - 68 id (SDM Vol. 2B 4-521 PUSH). */
-inline void EmitPush32(uint8_t*& c, uint32_t imm) {
-    Emit8(c, 0x68);
-    Emit32(c, imm);
+CERFENGINE_FORCEINLINE void EmitPush32(uint8_t*& c, uint32_t imm) {
+    uint8_t* p = c;
+    Emit8(p, 0x68);
+    Emit32(p, imm);
+    c = p;
 }
 
 /* PUSH r32 - 50+rd (SDM Vol. 2B 4-521 PUSH). */
-inline void EmitPushReg(uint8_t*& c, uint8_t reg) {
-    Emit8(c, static_cast<uint8_t>(0x50 + reg));
+CERFENGINE_FORCEINLINE void EmitPushReg(uint8_t*& c, uint8_t reg) {
+    uint8_t* p = c;
+    Emit8(p, static_cast<uint8_t>(0x50 + reg));
+    c = p;
 }
 
 /* PUSH r/m32 - FF /6 mod=10 (SDM Vol. 2B 4-521 PUSH). */
-inline void EmitPushBaseDisp32(uint8_t*& c, uint8_t base, int32_t disp) {
-    Emit8(c, 0xFF);
-    EmitModRmReg(c, 2, base, 6);
-    Emit32(c, static_cast<uint32_t>(disp));
+CERFENGINE_FORCEINLINE void EmitPushBaseDisp32(uint8_t*& c, uint8_t base, int32_t disp) {
+    uint8_t* p = c;
+    Emit8(p, 0xFF);
+    EmitModRmReg(p, 2, base, 6);
+    Emit32(p, static_cast<uint32_t>(disp));
+    c = p;
+}
+
+/* PUSH r/m32 - FF /6, mod=00 r/m=101 = bare disp32 (SDM Vol. 2B 4-521 PUSH;
+   Vol. 2A Table 2-2 note 2). */
+CERFENGINE_FORCEINLINE void EmitPushDwordPtr(uint8_t*& c, const void* addr) {
+    uint8_t* p = c;
+    Emit8(p, 0xFF);
+    EmitModRmDisp32(p, 6);
+    Emit32(p, static_cast<uint32_t>(reinterpret_cast<uintptr_t>(addr)));
+    c = p;
 }
 
 /* POP r32 - 58+rd (SDM Vol. 2B 4-398 POP). */
-inline void EmitPopReg(uint8_t*& c, uint8_t reg) {
-    Emit8(c, static_cast<uint8_t>(0x58 + reg));
+CERFENGINE_FORCEINLINE void EmitPopReg(uint8_t*& c, uint8_t reg) {
+    uint8_t* p = c;
+    Emit8(p, static_cast<uint8_t>(0x58 + reg));
+    c = p;
 }
 
 }

@@ -1,11 +1,12 @@
 #include "arm_dataproc_space_decoder.h"
 
 #include <cerfengine/engine.h>
+#include "arm_expand_imm.h"
 #include "arm_multiply_space_decoder.h"
 #include "arm_opcode.h"
 #include <cerfengine/arm/cpu_state.h>
 #include <cerfengine/arm/decoded_insn.h>
-#include <cerfengine/arm/place_fns.h>
+#include "arm_mark_unimplemented.h"
 
 namespace cerfengine {
 
@@ -20,133 +21,20 @@ void ArmDataprocSpaceDecoder::OnReady() {
     processor_config_ = &engine_.GetSetup().arm;
 }
 
-/* DDI 0406C.c Table A5-2 (p. A5-196): op = insn[25], op1 = insn[24:20],
-   op2 = insn[7:4]. */
-bool ArmDataprocSpaceDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
-    const uint32_t op1      = (op.word >> 20) & 0x1Fu;
-    const uint32_t op2      = (op.word >>  4) & 0xFu;
-    const bool     misc_row = (op1 & 0x19u) == 0x10u;
-
-    if (((op.word >> 25) & 0x1u) == 0u) {
-        if (op2 == 0x9u) {
-            if ((op1 & 0x10u) == 0u) {
-                return multiply_decoder_->Decode(insn, op);
-            }
-            return DecodeSyncSpace(insn, op);
-        }
-        if ((op2 & 0x9u) == 0x9u) {
-            return DecodeExtraLoadStore(insn, op);
-        }
-        if (misc_row) {
-            if ((op2 & 0x8u) == 0u) {
-                return DecodeMiscSpace(insn, op);
-            }
-            return multiply_decoder_->DecodeHalfword(insn, op);
-        }
-        /* DDI 0406C.c Table A5-2 (p. A5-196): op2 xxx0 selects
-           Data-processing (register), op2 0xx1 register-shifted
-           register. */
-        if ((op2 & 0x1u) == 0u) {
-            return DecodeDataProcessingReg(insn, op);
-        }
-        return DecodeDataProcessingShiftedReg(insn, op);
-    }
-
-    if (!misc_row) {
-        return DecodeDataProcessingImm(insn, op);
-    }
-    if (op1 == 0x10u || op1 == 0x14u) {
-        /* MOVW - DDI 0406C.c A8.8.102 encoding A2 (p. A8-484); MOVT -
-           A8.8.106 encoding A1 (p. A8-491). Both: imm16 = imm4:imm12,
-           d == 15 UNPREDICTABLE. */
-        if (!processor_config_->movw_movt) {
-            return false;
-        }
-        const uint32_t rd = (op.word >> 12) & 0xFu;
-        if (rd == ArmGpr::kR15) {
-            return false;
-        }
-        insn->rd        = rd;
-        insn->immediate = ((op.word >> 4) & 0xF000u) | (op.word & 0xFFFu);
-        insn->place_fn  = (op1 == 0x10u) ? &PlaceMovw : &PlaceMovt;
-        return true;
-    }
-    return DecodeMsrImmHints(insn, op);
-}
-
-bool ArmDataprocSpaceDecoder::DecodeDataProcessingImm(DecodedInsn* insn,
-                                                      ArmOpcode    op) {
-    const uint32_t opcode = (op.word >> 21) & 0xFu;
-    const uint32_t s      = (op.word >> 20) & 0x1u;
-    const uint32_t rn     = (op.word >> 16) & 0xFu;
-    const uint32_t rd     = (op.word >> 12) & 0xFu;
-    const uint32_t rot2   = ((op.word >> 8) & 0xFu) * 2u;
-    const uint32_t imm8   =  op.word        & 0xFFu;
-    const uint32_t imm32  =
-        rot2 ? ((imm8 >> rot2) | (imm8 << (32u - rot2))) : imm8;
-
-    const bool is_test = opcode >= 8u && opcode <= 11u;
-    const bool is_move = opcode == 13u || opcode == 15u;
-    if (is_move && rn != 0u) {
+/* MOVW - DDI 0406C.c A8.8.102 encoding A2 (p. A8-484); MOVT -
+   A8.8.106 encoding A1 (p. A8-491). Both: imm16 = imm4:imm12,
+   d == 15 UNPREDICTABLE. */
+bool ArmDataprocSpaceDecoder::DecodeMovwMovt(DecodedInsn* insn, ArmOpcode op, uint32_t op1) {
+    if (!processor_config_->movw_movt) {
         return false;
     }
-    if (is_test && rd != 0u) {
+    const uint32_t rd = (op.word >> 12) & 0xFu;
+    if (rd == ArmGpr::kR15) {
         return false;
     }
-
-    insn->op1       = opcode;
-    insn->s         = s;
-    insn->rn        = rn;
     insn->rd        = rd;
-    insn->rs        = rot2;
-    insn->immediate = imm32;
-    if (rd == ArmGpr::kR15 && !is_test) {
-        insn->r15_modified = true;
-        if (s != 0u) {
-            insn->is_exception_return = true;
-        }
-    }
-    insn->place_fn = &PlaceDataProcessing;
-    return true;
-}
-
-bool ArmDataprocSpaceDecoder::DecodeDataProcessingReg(DecodedInsn* insn,
-                                                      ArmOpcode    op) {
-    const uint32_t opcode = (op.word >> 21) & 0xFu;
-    const uint32_t s      = (op.word >> 20) & 0x1u;
-    const uint32_t rn     = (op.word >> 16) & 0xFu;
-    const uint32_t rd     = (op.word >> 12) & 0xFu;
-    const uint32_t imm5   = (op.word >>  7) & 0x1Fu;
-    const uint32_t type   = (op.word >>  5) & 0x3u;
-    const uint32_t rm     =  op.word        & 0xFu;
-
-    const bool is_test = opcode >= 8u && opcode <= 11u;
-    const bool is_move = opcode == 13u || opcode == 15u;
-    if (is_move && rn != 0u) {
-        return false;
-    }
-    if (is_test && rd != 0u) {
-        return false;
-    }
-
-    uint32_t shift_t = 0u;
-    uint32_t shift_n = 0u;
-    DecodeImmShift(type, imm5, &shift_t, &shift_n);
-
-    insn->op1 = opcode;
-    insn->s   = s;
-    insn->rn  = rn;
-    insn->rd  = rd;
-    insn->rm  = rm;
-    insn->n   = shift_t;
-    insn->rs  = shift_n;
-    if (rd == ArmGpr::kR15 && !is_test) {
-        insn->r15_modified = true;
-        if (s != 0u) {
-            insn->is_exception_return = true;
-        }
-    }
-    insn->place_fn = &PlaceDataProcessingReg;
+    insn->immediate = ((op.word >> 4) & 0xF000u) | (op.word & 0xFFFu);
+    insn->kind      = (op1 == 0x10u) ? ArmInsnKind::kMovw : ArmInsnKind::kMovt;
     return true;
 }
 
@@ -185,7 +73,7 @@ bool ArmDataprocSpaceDecoder::DecodeDataProcessingShiftedReg(
     insn->rm       = rm;
     insn->rs       = rs;
     insn->n        = type;
-    insn->place_fn = &PlaceDataProcessingShiftedReg;
+    insn->kind     = ArmInsnKind::kDataProcessingShiftedReg;
     return true;
 }
 
@@ -216,7 +104,7 @@ bool ArmDataprocSpaceDecoder::DecodeMiscSpace(DecodedInsn* insn, ArmOpcode op) {
                -> gen_lookup_tb (DISAS_EXIT). */
             insn->context_sync = true;
         }
-        insn->place_fn = &PlaceMRSorMSR;
+        insn->kind = ArmInsnKind::kMrsOrMsr;
         return true;
     case 1u:
         if (mop == 1u) {
@@ -226,7 +114,7 @@ bool ArmDataprocSpaceDecoder::DecodeMiscSpace(DecodedInsn* insn, ArmOpcode op) {
             }
             insn->rm           = op.word & 0xFu;
             insn->r15_modified = true;
-            insn->place_fn     = &PlaceBx;
+            insn->kind         = ArmInsnKind::kBx;
             return true;
         }
         if (mop == 3u) {
@@ -242,7 +130,7 @@ bool ArmDataprocSpaceDecoder::DecodeMiscSpace(DecodedInsn* insn, ArmOpcode op) {
             }
             insn->rd       = rd;
             insn->rm       = rm;
-            insn->place_fn = &PlaceClz;
+            insn->kind     = ArmInsnKind::kClz;
             return true;
         }
         return false;
@@ -265,7 +153,7 @@ bool ArmDataprocSpaceDecoder::DecodeMiscSpace(DecodedInsn* insn, ArmOpcode op) {
             }
             insn->rm           = rm;
             insn->r15_modified = true;
-            insn->place_fn     = &PlaceBlxReg;
+            insn->kind         = ArmInsnKind::kBlxReg;
             return true;
         }
         return false;
@@ -286,7 +174,7 @@ bool ArmDataprocSpaceDecoder::DecodeMiscSpace(DecodedInsn* insn, ArmOpcode op) {
         insn->rn       = rn;
         insn->rd       = rd;
         insn->rm       = rm;
-        insn->place_fn = &PlaceSaturatingArith;
+        insn->kind     = ArmInsnKind::kSaturatingArith;
         return true;
     }
     case 7u:
@@ -324,7 +212,7 @@ bool ArmDataprocSpaceDecoder::DecodeSyncSpace(DecodedInsn* insn, ArmOpcode op) {
     insn->rm       =  op.word        & 0xFu;
     insn->n        = (op.word >> 22) & 0x1u;
     insn->op1      = (op.word >>  5) & 0x3u;
-    insn->place_fn = &PlaceLoadStoreExtension;
+    insn->kind     = ArmInsnKind::kLoadStoreExtension;
     return true;
 }
 
@@ -375,7 +263,7 @@ bool ArmDataprocSpaceDecoder::DecodeLdrexStrex(DecodedInsn* insn, ArmOpcode op) 
         insn->op1      = bytes;
         insn->rd       = rd;
         insn->rn       = rn;
-        insn->place_fn = &PlaceLdrex;
+        insn->kind     = ArmInsnKind::kLdrex;
         return true;
     }
 
@@ -398,7 +286,7 @@ bool ArmDataprocSpaceDecoder::DecodeLdrexStrex(DecodedInsn* insn, ArmOpcode op) 
     insn->rd       = rd;
     insn->rn       = rn;
     insn->rm       = rt;
-    insn->place_fn = &PlaceStrex;
+    insn->kind     = ArmInsnKind::kStrex;
     return true;
 }
 
@@ -424,7 +312,7 @@ bool ArmDataprocSpaceDecoder::DecodeExtraLoadStore(DecodedInsn* insn,
     const int32_t imm8 = static_cast<int32_t>(
         ((op.word >> 4) & 0xF0u) | (op.word & 0xFu));
     insn->offset   = insn->u ? imm8 : -imm8;
-    insn->place_fn = &PlaceLoadStoreExtension;
+    insn->kind     = ArmInsnKind::kLoadStoreExtension;
     return true;
 }
 
@@ -441,10 +329,10 @@ bool ArmDataprocSpaceDecoder::DecodeMsrImmHints(DecodedInsn* insn,
         switch (hint) {
         case 0x03u:
             /* WFI - DDI 0406C.c A8.8.425 (p. A8-1106). */
-            insn->place_fn = &PlaceWfi;
+            insn->kind = ArmInsnKind::kWfi;
             return true;
         default:
-            insn->place_fn = &PlaceNop;
+            insn->kind = ArmInsnKind::kNop;
             return true;
         }
     }
@@ -456,7 +344,7 @@ bool ArmDataprocSpaceDecoder::DecodeMsrImmHints(DecodedInsn* insn,
     /* QEMU ARM translate.c trans_MSR_imm -> gen_set_psr_im ->
        gen_lookup_tb (DISAS_EXIT). */
     insn->context_sync = true;
-    insn->place_fn  = &PlaceMSRImmediate;
+    insn->kind         = ArmInsnKind::kMsrImmediate;
     return true;
 }
 

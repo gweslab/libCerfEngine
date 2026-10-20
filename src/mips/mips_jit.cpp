@@ -1,11 +1,11 @@
 #include <cerfengine/mips/mips_jit.h>
-#include <cerfengine/calling_convention.h>
 
 #if CERFENGINE_BACKEND_X86_WIN32
 #include <excpt.h>
 #endif
 
 #include <cerfengine/engine.h>
+#include "../cerfir/cerfir_host_lowering.h"
 #include "../host_platform.h"
 #include <cerfengine/host_request_channel.h>
 #include "mips_block_compiler.h"
@@ -51,25 +51,6 @@ bool MipsJit::GuestIrqMasked() const {
     return !exceptions_->InterruptsEnabled();
 }
 
-#if CERFENGINE_BACKEND_X86_WIN32
-__declspec(naked) void CERFENGINE_CDECL MipsJit::Dispatch(void*, MipsCpuState*) {
-    __asm {
-        push ebp
-        push ebx
-        push esi
-        push edi
-        mov  ecx, [esp + 20]
-        mov  esi, [esp + 24]
-        call ecx
-        pop  edi
-        pop  esi
-        pop  ebx
-        pop  ebp
-        ret
-    }
-}
-#endif
-
 void MipsJit::PrintFatalDump() {
     const auto& g = cpu_state_->gpr;
     CERFENGINE_LOG(engine_, kCaution, "      guest PC=0x%08X  hi=0x%016llX  lo=0x%016llX\n",
@@ -91,6 +72,7 @@ bool MipsJit::ResetPending() const { return channel_->ResetRequested(); }
 void MipsJit::SetHostChainExit(bool requested) { channel_->SetHostExit(requested); }
 
 GuestEngine::RunStatus MipsJit::Run() {
+    channel_->ConsumeChainExit();
     if (channel_->DispatchRequests() != 0u) {
         const uint32_t req   = channel_->TakeDispatchRequests();
         const bool     reset = (req & MipsInterruptChannel::kDispatchReset) != 0u;
@@ -109,24 +91,41 @@ GuestEngine::RunStatus MipsJit::Run() {
     cpu_state_->cp0_cause = (cpu_state_->cp0_cause & ~device_mask) |
                             (channel_->Level() & device_mask);
 
-    if (cpu_state_->branch_state == MipsBranch::kNone &&
-        exceptions_->InterruptReady()) {
+    uint32_t pc        = 0;
+    uint32_t privilege = 0;
+    void*    native    = nullptr;
+    if (cpu_state_->branch_state != MipsBranch::kNone) {
+        pc            = cpu_state_->pc;
+        privilege     = cpu_->Privilege();
+        auto compile = [this, pc, privilege, &native] {
+            native = compiler_->CompilePendingEntry(pc, privilege);
+        };
+        if (!platform::CallHaltGuarded(compile)) return RunStatus::kHalted;
+        if (!native) return RunStatus::kRunning;
+        goto dispatch;
+    } else if (exceptions_->InterruptReady()) {
         exceptions_->DeliverInterrupt();
     }
 
-    const uint32_t pc     = cpu_state_->pc;
-    void*          native = compiler_->FindBlockNativeStart(pc);
+    pc        = cpu_state_->pc;
+    privilege = cpu_->Privilege();
+    native    = compiler_->FindBlockNativeStart(pc, privilege);
     if (!native) {
+        compiler_->SetPredecessor(predecessor_va_);
         void* compiled = nullptr;
-        auto  compile  = [this, pc, &compiled] { compiled = compiler_->Compile(pc); };
+        auto  compile  = [this, pc, privilege, &compiled] {
+            compiled = compiler_->Compile(pc, privilege);
+        };
         if (!platform::CallHaltGuarded(compile)) return RunStatus::kHalted;
         native = compiled;
         if (!native) return RunStatus::kRunning;
     }
+    predecessor_va_ = pc;
 
+dispatch:
 #if CERFENGINE_BACKEND_X86_WIN32
     __try {
-        Dispatch(native, cpu_state_);
+        cerfir::HostEnterBlock(native, cpu_state_);
     } __except (DispatchFaultFilter(_exception_info(), pc)) {
         if (_exception_code() == platform::kHaltUnwindCode) return RunStatus::kHalted;
     }
@@ -169,7 +168,10 @@ void MipsJit::SetResetPending(bool is_resume) {
     host_->OnRebootRequested();
 }
 
-void MipsJit::EnterDeepSleep() { cpu_state_->deep_sleep = 1; }
+void MipsJit::EnterDeepSleep() {
+    cpu_state_->deep_sleep = 1;
+    channel_->RequestChainExit();
+}
 
 void MipsJit::ExitDeepSleep() {
     cpu_state_->deep_sleep = 0;
@@ -190,7 +192,7 @@ void MipsJit::SetDmaRegion(uint32_t pa, uint32_t size) {
 
 std::optional<uint8_t*> MipsJit::PeekGuestVa(uint32_t va) {
     uint32_t pa = 0;
-    if (mmu_->Translate(cpu_state_, va, MipsAccess::kRead, &pa) !=
+    if (mmu_->Translate<kBlockPrivileged>(cpu_state_, va, MipsAccess::kRead, &pa) !=
         MipsTlbResult::kMatch) {
         return std::nullopt;
     }
@@ -201,7 +203,7 @@ std::optional<uint8_t*> MipsJit::PeekGuestVa(uint32_t va) {
 
 uint8_t* MipsJit::ResolveGuestVaToHost(uint32_t va) {
     uint32_t pa = 0;
-    if (mmu_->Translate(cpu_state_, va, MipsAccess::kRead, &pa) !=
+    if (mmu_->Translate<kBlockPrivileged>(cpu_state_, va, MipsAccess::kRead, &pa) !=
         MipsTlbResult::kMatch) {
         return nullptr;
     }
@@ -210,7 +212,7 @@ uint8_t* MipsJit::ResolveGuestVaToHost(uint32_t va) {
 }
 
 bool MipsJit::ResolveGuestVaToPa(uint32_t va, uint32_t* pa) {
-    return mmu_->Translate(cpu_state_, va, MipsAccess::kRead, pa) ==
+    return mmu_->Translate<kBlockPrivileged>(cpu_state_, va, MipsAccess::kRead, pa) ==
            MipsTlbResult::kMatch;
 }
 

@@ -12,6 +12,12 @@ void MipsMmu::OnReady() {
     state_ = engine_.Get<MipsCpu>().State();
 }
 
+MipsTlbResult MipsMmu::TranslateUnprivileged(uint32_t privilege, MipsCpuState* st, uint32_t va,
+                                             MipsAccess acc, uint32_t* pa) {
+    if (privilege == kBlockUser) return Translate<kBlockUser>(st, va, acc, pa);
+    return Translate<kBlockSupervisor>(st, va, acc, pa);
+}
+
 void CERFENGINE_FASTCALL MipsMmu::TlbWriteIndexedHelper(MipsMmu* mmu) {
     mmu->tlb_.write_indexed(mmu->tlb_.context, mmu->context_);
 }

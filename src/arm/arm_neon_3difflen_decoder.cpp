@@ -4,7 +4,7 @@
 #include "arm_neon_3difflen.h"
 #include "arm_opcode.h"
 #include <cerfengine/arm/decoded_insn.h>
-#include <cerfengine/arm/place_fns.h>
+#include <cerfengine/arm/block_context.h>
 
 namespace cerfengine {
 
@@ -20,7 +20,7 @@ bool ArmNeon3DiffLenDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         insn->immediate = op.word;
         insn->op1       = op_bit ? ArmNeon3DiffLen::kDlAddWide
                                  : ArmNeon3DiffLen::kDlAddLong;
-        insn->place_fn  = &PlaceNeonData3DiffLen;
+        insn->kind  = ArmInsnKind::kNeonData3DiffLen;
         return true;
     }
     /* A=001op: VSUBL (op=0) / VSUBW (op=1) (A8.8.417). */
@@ -29,7 +29,7 @@ bool ArmNeon3DiffLenDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         insn->immediate = op.word;
         insn->op1       = op_bit ? ArmNeon3DiffLen::kDlSubWide
                                  : ArmNeon3DiffLen::kDlSubLong;
-        insn->place_fn  = &PlaceNeonData3DiffLen;
+        insn->kind  = ArmInsnKind::kNeonData3DiffLen;
         return true;
     }
     /* A=0100: VADDHN (U=0, A8.8.284) / VRADDHN (U=1, A8.8.383).
@@ -40,7 +40,7 @@ bool ArmNeon3DiffLenDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         insn->op1       = op.neon_data_3reg.u
                               ? ArmNeon3DiffLen::kDlRaddhn
                               : ArmNeon3DiffLen::kDlAddhn;
-        insn->place_fn  = &PlaceNeonData3DiffLenHN;
+        insn->kind  = ArmInsnKind::kNeonData3DiffLenHn;
         return true;
     }
     /* A=0110: VSUBHN (U=0, A8.8.416) / VRSUBHN (U=1, A8.8.394).
@@ -51,7 +51,7 @@ bool ArmNeon3DiffLenDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         insn->op1       = op.neon_data_3reg.u
                               ? ArmNeon3DiffLen::kDlRsubhn
                               : ArmNeon3DiffLen::kDlSubhn;
-        insn->place_fn  = &PlaceNeonData3DiffLenHN;
+        insn->kind  = ArmInsnKind::kNeonData3DiffLenHn;
         return true;
     }
     /* A=0101: VABAL (A8.8.277 T2/A2). a_high==2, op_bit==1. */
@@ -61,7 +61,7 @@ bool ArmNeon3DiffLenDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         insn->op1       = op.neon_data_3reg.u
                               ? ArmNeon3DiffLen::kDlAbalU
                               : ArmNeon3DiffLen::kDlAbalS;
-        insn->place_fn  = &PlaceNeonData3DiffLenAbs;
+        insn->kind  = ArmInsnKind::kNeonData3DiffLenAbs;
         return true;
     }
     /* A=0111: VABDL (A8.8.278 T2/A2). a_high==3, op_bit==1. */
@@ -71,7 +71,7 @@ bool ArmNeon3DiffLenDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         insn->op1       = op.neon_data_3reg.u
                               ? ArmNeon3DiffLen::kDlAbdlU
                               : ArmNeon3DiffLen::kDlAbdlS;
-        insn->place_fn  = &PlaceNeonData3DiffLenAbs;
+        insn->kind  = ArmInsnKind::kNeonData3DiffLenAbs;
         return true;
     }
     /* A=1000: VMLAL (A8.8.336 T2/A2). a_high==4, op_bit==0. */
@@ -81,7 +81,7 @@ bool ArmNeon3DiffLenDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         insn->op1       = op.neon_data_3reg.u
                               ? ArmNeon3DiffLen::kDlMlalU
                               : ArmNeon3DiffLen::kDlMlalS;
-        insn->place_fn  = &PlaceNeonData3DiffLenMul;
+        insn->kind  = ArmInsnKind::kNeonData3DiffLenMul;
         return true;
     }
     /* A=1010: VMLSL (A8.8.336 T2/A2). a_high==5, op_bit==0. */
@@ -91,7 +91,7 @@ bool ArmNeon3DiffLenDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         insn->op1       = op.neon_data_3reg.u
                               ? ArmNeon3DiffLen::kDlMlslU
                               : ArmNeon3DiffLen::kDlMlslS;
-        insn->place_fn  = &PlaceNeonData3DiffLenMul;
+        insn->kind  = ArmInsnKind::kNeonData3DiffLenMul;
         return true;
     }
     /* A=1100: VMULL integer (A8.8.350 T2/A2). a_high==6, op_bit==0. */
@@ -101,7 +101,7 @@ bool ArmNeon3DiffLenDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         insn->op1       = op.neon_data_3reg.u
                               ? ArmNeon3DiffLen::kDlMullIntU
                               : ArmNeon3DiffLen::kDlMullIntS;
-        insn->place_fn  = &PlaceNeonData3DiffLenMul;
+        insn->kind  = ArmInsnKind::kNeonData3DiffLenMul;
         return true;
     }
     /* A=1110: VMULL polynomial (A8.8.350 T2/A2). a_high==7, op_bit==0.
@@ -111,7 +111,7 @@ bool ArmNeon3DiffLenDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         insn->cond      = 14;
         insn->immediate = op.word;
         insn->op1       = ArmNeon3DiffLen::kDlMullPoly;
-        insn->place_fn  = &PlaceNeonData3DiffLenMul;
+        insn->kind      = ArmInsnKind::kNeonData3DiffLenMul;
         return true;
     }
     /* A=1001: VQDMLAL (A8.8.371 T1/A1). a_high==4, op_bit==1. */
@@ -119,7 +119,7 @@ bool ArmNeon3DiffLenDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         insn->cond      = 14;
         insn->immediate = op.word;
         insn->op1       = ArmNeon3DiffLen::kDlVqdmlal;
-        insn->place_fn  = &PlaceNeonData3DiffLenMulSat;
+        insn->kind      = ArmInsnKind::kNeonData3DiffLenMulSat;
         return true;
     }
     /* A=1011: VQDMLSL (A8.8.371 T1/A1). a_high==5, op_bit==1. */
@@ -127,7 +127,7 @@ bool ArmNeon3DiffLenDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         insn->cond      = 14;
         insn->immediate = op.word;
         insn->op1       = ArmNeon3DiffLen::kDlVqdmlsl;
-        insn->place_fn  = &PlaceNeonData3DiffLenMulSat;
+        insn->kind      = ArmInsnKind::kNeonData3DiffLenMulSat;
         return true;
     }
     /* A=1101: VQDMULL (A8.8.373 T1/A1). a_high==6, op_bit==1. */
@@ -135,7 +135,7 @@ bool ArmNeon3DiffLenDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         insn->cond      = 14;
         insn->immediate = op.word;
         insn->op1       = ArmNeon3DiffLen::kDlVqdmull;
-        insn->place_fn  = &PlaceNeonData3DiffLenMulSat;
+        insn->kind      = ArmInsnKind::kNeonData3DiffLenMulSat;
         return true;
     }
     /* ARM DDI 0406C.c Table A7-10 (p. A7-264) allocates A = 000x through 1110
@@ -143,7 +143,7 @@ bool ArmNeon3DiffLenDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
        UNDEFINED." */
     insn->cond      = 14;
     insn->immediate = op.word;
-    insn->place_fn  = &EmitRaiseUndAndReturn;
+    insn->kind      = ArmInsnKind::kUndefined;
     return true;
 }
 

@@ -2,7 +2,7 @@
 
 #include <cerfengine/engine.h>
 #include <cerfengine/arm/decoded_insn.h>
-#include <cerfengine/arm/place_fns.h>
+#include <cerfengine/arm/block_context.h>
 #include "thumb32_fatal.h"
 
 namespace cerfengine {
@@ -35,7 +35,7 @@ bool Thumb32MultiplyDecoder::DecodeMultiplyAccumulate(DecodedInsn* insn,
     insn->rn       = rn;
     insn->rm       = rm;
     insn->rs       = ra == 0xFu ? 0u : ra;
-    insn->place_fn = &PlaceMultiply;
+    insn->kind     = ArmInsnKind::kMultiply;
     return true;
 }
 
@@ -59,7 +59,7 @@ bool Thumb32MultiplyDecoder::DecodeMultiplySubtract(DecodedInsn* insn,
     insn->rn       = rn;
     insn->rm       = rm;
     insn->rs       = ra;
-    insn->place_fn = &PlaceMultiply;
+    insn->kind     = ArmInsnKind::kMultiply;
     return true;
 }
 
@@ -82,7 +82,7 @@ bool Thumb32MultiplyDecoder::DecodeHalfwordMultiply(DecodedInsn* insn,
     insn->rn       = rn;
     insn->rm       = rm;
     insn->rs       = ra == 0xFu ? 0u : ra;
-    insn->place_fn = &PlaceHalfwordMultiply;
+    insn->kind     = ArmInsnKind::kHalfwordMultiply;
     return true;
 }
 
@@ -105,7 +105,7 @@ bool Thumb32MultiplyDecoder::DecodeWordByHalfwordMultiply(DecodedInsn* insn,
     insn->rn       = rn;
     insn->rm       = rm;
     insn->rs       = ra == 0xFu ? 0u : ra;
-    insn->place_fn = &PlaceHalfwordMultiply;
+    insn->kind     = ArmInsnKind::kHalfwordMultiply;
     return true;
 }
 

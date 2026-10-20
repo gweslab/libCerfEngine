@@ -22,8 +22,8 @@ private:
     Thumb32Fatal* fatal_ = nullptr;
 
     bool DecodeAddSubImm12(DecodedInsn* insn, uint32_t op, bool add);
-    bool DecodeMoveImm16(DecodedInsn* insn, uint32_t op, ArmPlaceFn place);
-    bool DecodeBitFieldExtract(DecodedInsn* insn, uint32_t op, ArmPlaceFn place);
+    bool DecodeMoveImm16(DecodedInsn* insn, uint32_t op, ArmInsnKind place);
+    bool DecodeBitFieldExtract(DecodedInsn* insn, uint32_t op, ArmInsnKind place);
     bool DecodeBitFieldInsert(DecodedInsn* insn, uint32_t op);
     bool DecodeSaturate(DecodedInsn* insn, uint32_t op);
 };

@@ -2,7 +2,7 @@
 
 #include <cerfengine/engine.h>
 #include <cerfengine/arm/decoded_insn.h>
-#include <cerfengine/arm/place_fns.h>
+#include <cerfengine/arm/block_context.h>
 #include "thumb32_fatal.h"
 
 namespace cerfengine {
@@ -48,7 +48,7 @@ bool Thumb32LongMultiplyDecoder::DecodeLongMultiply(DecodedInsn* insn,
     insn->rs       = (op >> 12) & 0xFu;
     insn->rd       = (op >>  8) & 0xFu;
     insn->rm       =  op        & 0xFu;
-    insn->place_fn = &PlaceMultiply;
+    insn->kind     = ArmInsnKind::kMultiply;
     return true;
 }
 
@@ -69,7 +69,7 @@ bool Thumb32LongMultiplyDecoder::DecodeHalfwordLongMultiply(DecodedInsn* insn,
     insn->rs       = (op >> 12) & 0xFu;
     insn->rd       = (op >>  8) & 0xFu;
     insn->rm       =  op        & 0xFu;
-    insn->place_fn = &PlaceHalfwordMultiply;
+    insn->kind     = ArmInsnKind::kHalfwordMultiply;
     return true;
 }
 

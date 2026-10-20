@@ -2,13 +2,9 @@
 
 #include <cstdint>
 
+#include "arm_insn_kind.h"
+
 namespace cerfengine {
-
-struct BlockContext;
-struct DecodedInsn;
-
-using ArmPlaceFn = uint8_t* (*)(uint8_t* cursor, DecodedInsn* d,
-                                BlockContext* ctx);
 
 /* DDI 0406C.c A8.4.3 (pp. A8-292/293): SRType. LSL/LSR/ASR/ROR carry the
    instruction's own type encoding ("encoded as type = 0b00" .. 0b11);
@@ -44,7 +40,7 @@ enum ArmDpOpcode : uint32_t {
 };
 
 struct DecodedInsn {
-    ArmPlaceFn place_fn;
+    ArmInsnKind kind;
     uint32_t   guest_address;
     uint32_t   actual_guest_address;
     uint32_t   length;
@@ -109,6 +105,8 @@ struct DecodedInsn {
        (immediate) T1 (p. A8-686): "t2 = UInt(Rt2)", an independent field. Every
        A1 encoding of those instructions instead gives "t2 = t+1". */
     uint32_t   rd2;
+
+    uint32_t   raw;
 };
 
 }

@@ -2,7 +2,7 @@
 
 #include <cerfengine/engine.h>
 #include <cerfengine/arm/decoded_insn.h>
-#include <cerfengine/arm/place_fns.h>
+#include <cerfengine/arm/block_context.h>
 
 namespace cerfengine {
 
@@ -33,7 +33,7 @@ bool Thumb32LoadStoreDualDecoder::DecodeTableBranchByte(DecodedInsn* insn,
     /* "is_tbh = (H == '1')", H at hw2[4] of the A8.8.236 T1 diagram. */
     insn->op1          = (op >> 4) & 0x1u;
     insn->r15_modified = true;
-    insn->place_fn     = &PlaceTableBranchByte;
+    insn->kind         = ArmInsnKind::kTableBranchByte;
     return true;
 }
 
@@ -69,7 +69,7 @@ bool Thumb32LoadStoreDualDecoder::DecodeLoadExclusive(DecodedInsn* insn,
     insn->op1      = bytes;
     insn->rd       = rt;
     insn->rn       = rn;
-    insn->place_fn = &PlaceLdrex;
+    insn->kind     = ArmInsnKind::kLdrex;
     return true;
 }
 
@@ -112,7 +112,7 @@ bool Thumb32LoadStoreDualDecoder::DecodeStoreExclusive(DecodedInsn* insn,
     insn->rd       = rd;
     insn->rn       = rn;
     insn->rm       = rt;
-    insn->place_fn = &PlaceStrex;
+    insn->kind     = ArmInsnKind::kStrex;
     return true;
 }
 
@@ -177,7 +177,7 @@ bool Thumb32LoadStoreDualDecoder::DecodeDual(DecodedInsn* insn, uint32_t op) {
     insn->rd       = rt;
     insn->rd2      = rt2;
     insn->offset   = u != 0u ? imm32 : -imm32;
-    insn->place_fn = &PlaceLoadStoreExtension;
+    insn->kind     = ArmInsnKind::kLoadStoreExtension;
     return true;
 }
 

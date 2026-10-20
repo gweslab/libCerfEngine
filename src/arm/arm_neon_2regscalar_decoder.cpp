@@ -5,7 +5,7 @@
 #include "arm_neon_2regscalar.h"
 #include "arm_opcode.h"
 #include <cerfengine/arm/decoded_insn.h>
-#include <cerfengine/arm/place_fns.h>
+#include <cerfengine/arm/block_context.h>
 
 namespace cerfengine {
 
@@ -18,7 +18,7 @@ bool ArmNeon2RegScalarDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         insn->cond      = 14;
         insn->immediate = op.word;
         insn->op1       = ArmNeon2RegScalarMul::kMla;
-        insn->place_fn  = &PlaceNeonData2RegScalarMul;
+        insn->kind      = ArmInsnKind::kNeonData2RegScalarMul;
         return true;
     }
     /* A=010F: VMLS by scalar T1/A1 (A8.8.338, op=1). */
@@ -26,7 +26,7 @@ bool ArmNeon2RegScalarDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         insn->cond      = 14;
         insn->immediate = op.word;
         insn->op1       = ArmNeon2RegScalarMul::kMls;
-        insn->place_fn  = &PlaceNeonData2RegScalarMul;
+        insn->kind      = ArmInsnKind::kNeonData2RegScalarMul;
         return true;
     }
     /* A=100F: VMUL by scalar T1/A1 (A8.8.352). */
@@ -34,7 +34,7 @@ bool ArmNeon2RegScalarDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         insn->cond      = 14;
         insn->immediate = op.word;
         insn->op1       = ArmNeon2RegScalarMul::kMul;
-        insn->place_fn  = &PlaceNeonData2RegScalarMul;
+        insn->kind      = ArmInsnKind::kNeonData2RegScalarMul;
         return true;
     }
     /* A=0010: VMLAL by scalar (A8.8.338 T2/A2, op=0). */
@@ -42,7 +42,7 @@ bool ArmNeon2RegScalarDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         insn->cond      = 14;
         insn->immediate = op.word;
         insn->op1       = ArmNeon2RegScalar::kS2sMlal;
-        insn->place_fn  = &PlaceNeonData2RegScalarLong;
+        insn->kind      = ArmInsnKind::kNeonData2RegScalarLong;
         return true;
     }
     /* A=0110: VMLSL by scalar (A8.8.338 T2/A2, op=1). */
@@ -50,7 +50,7 @@ bool ArmNeon2RegScalarDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         insn->cond      = 14;
         insn->immediate = op.word;
         insn->op1       = ArmNeon2RegScalar::kS2sMlsl;
-        insn->place_fn  = &PlaceNeonData2RegScalarLong;
+        insn->kind      = ArmInsnKind::kNeonData2RegScalarLong;
         return true;
     }
     /* A=1010: VMULL by scalar (A8.8.352 T2/A2). Long form, U selects signedness. */
@@ -58,7 +58,7 @@ bool ArmNeon2RegScalarDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         insn->cond      = 14;
         insn->immediate = op.word;
         insn->op1       = ArmNeon2RegScalar::kS2sMull;
-        insn->place_fn  = &PlaceNeonData2RegScalarLong;
+        insn->kind      = ArmInsnKind::kNeonData2RegScalarLong;
         return true;
     }
     /* A=0011: VQDMLAL by scalar (A8.8.371 T2/A2, op=0). Signed only. */
@@ -66,7 +66,7 @@ bool ArmNeon2RegScalarDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         insn->cond      = 14;
         insn->immediate = op.word;
         insn->op1       = ArmNeon2RegScalar::kS2sVqdmlal;
-        insn->place_fn  = &PlaceNeonData2RegScalarMulSat;
+        insn->kind      = ArmInsnKind::kNeonData2RegScalarMulSat;
         return true;
     }
     /* A=0111: VQDMLSL by scalar (A8.8.371 T2/A2, op=1). Signed only. */
@@ -74,7 +74,7 @@ bool ArmNeon2RegScalarDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         insn->cond      = 14;
         insn->immediate = op.word;
         insn->op1       = ArmNeon2RegScalar::kS2sVqdmlsl;
-        insn->place_fn  = &PlaceNeonData2RegScalarMulSat;
+        insn->kind      = ArmInsnKind::kNeonData2RegScalarMulSat;
         return true;
     }
     /* A=1011: VQDMULL by scalar (A8.8.373 T2/A2). Signed only, no accum. */
@@ -82,7 +82,7 @@ bool ArmNeon2RegScalarDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         insn->cond      = 14;
         insn->immediate = op.word;
         insn->op1       = ArmNeon2RegScalar::kS2sVqdmull;
-        insn->place_fn  = &PlaceNeonData2RegScalarMulSat;
+        insn->kind      = ArmInsnKind::kNeonData2RegScalarMulSat;
         return true;
     }
     /* A=1100: VQDMULH by scalar (A8.8.372 T2/A2). Signed only. */
@@ -90,7 +90,7 @@ bool ArmNeon2RegScalarDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         insn->cond      = 14;
         insn->immediate = op.word;
         insn->op1       = ArmNeon2RegScalar::kS2sVqdmulh;
-        insn->place_fn  = &PlaceNeonData2RegScalarMulhSat;
+        insn->kind      = ArmInsnKind::kNeonData2RegScalarMulhSat;
         return true;
     }
     /* A=1101: VQRDMULH by scalar (A8.8.376 T2/A2). Signed only, rounding. */
@@ -98,7 +98,7 @@ bool ArmNeon2RegScalarDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         insn->cond      = 14;
         insn->immediate = op.word;
         insn->op1       = ArmNeon2RegScalar::kS2sVqrdmulh;
-        insn->place_fn  = &PlaceNeonData2RegScalarMulhSat;
+        insn->kind      = ArmInsnKind::kNeonData2RegScalarMulhSat;
         return true;
     }
     /* ARM DDI 0406C.c Table A7-11 (p. A7-265) allocates A = 0x0x, 0x10, 0x11,
@@ -106,7 +106,7 @@ bool ArmNeon2RegScalarDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
        encodings in this space are UNDEFINED." */
     insn->cond      = 14;
     insn->immediate = op.word;
-    insn->place_fn  = &EmitRaiseUndAndReturn;
+    insn->kind      = ArmInsnKind::kUndefined;
     return true;
 }
 

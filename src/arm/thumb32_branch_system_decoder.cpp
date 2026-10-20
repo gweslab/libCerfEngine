@@ -2,7 +2,7 @@
 
 #include <cerfengine/engine.h>
 #include <cerfengine/arm/decoded_insn.h>
-#include <cerfengine/arm/place_fns.h>
+#include <cerfengine/arm/block_context.h>
 #include "thumb32_fatal.h"
 
 namespace cerfengine {
@@ -48,7 +48,7 @@ bool Thumb32BranchSystemDecoder::DecodeConditionalBranch(DecodedInsn* insn,
     insn->l            = 0u;
     insn->offset       = static_cast<int32_t>(value << 11) >> 11;
     insn->r15_modified = true;
-    insn->place_fn     = &PlaceBranch;
+    insn->kind         = ArmInsnKind::kBranch;
     return true;
 }
 
@@ -56,7 +56,7 @@ bool Thumb32BranchSystemDecoder::DecodeBranch(DecodedInsn* insn, uint32_t op) {
     insn->l            = 0u;
     insn->offset       = BranchOffset25(op);
     insn->r15_modified = true;
-    insn->place_fn     = &PlaceBranch;
+    insn->kind         = ArmInsnKind::kBranch;
     return true;
 }
 
@@ -74,11 +74,11 @@ bool Thumb32BranchSystemDecoder::DecodeBranchLink(DecodedInsn* insn,
         const uint32_t value  = (s << 24) | (i1 << 23) | (i2 << 22) |
                                 (imm10h << 12) | (imm10l << 2);
         insn->offset   = static_cast<int32_t>(value << 7) >> 7;
-        insn->place_fn = &PlaceThumbBlxImm;
+        insn->kind     = ArmInsnKind::kThumbBlxImm;
     } else {
         insn->l        = 1u;
         insn->offset   = BranchOffset25(op);
-        insn->place_fn = &PlaceBranch;
+        insn->kind     = ArmInsnKind::kBranch;
     }
     insn->r15_modified = true;
     return true;
@@ -111,7 +111,7 @@ bool Thumb32BranchSystemDecoder::DecodeMoveToSpecial(DecodedInsn* insn,
     /* QEMU ARM translate.c trans_MSR_reg -> gen_set_psr ->
        gen_lookup_tb (DISAS_EXIT). */
     insn->context_sync = true;
-    insn->place_fn = &PlaceMRSorMSR;
+    insn->kind         = ArmInsnKind::kMrsOrMsr;
     return true;
 }
 
@@ -139,7 +139,7 @@ bool Thumb32BranchSystemDecoder::DecodeMoveFromSpecial(DecodedInsn* insn,
     insn->s        = 0u;
     insn->n        = (op >> 20) & 0x1u;
     insn->rd       = rd;
-    insn->place_fn = &PlaceMRSorMSR;
+    insn->kind     = ArmInsnKind::kMrsOrMsr;
     return true;
 }
 
@@ -164,7 +164,7 @@ bool Thumb32BranchSystemDecoder::DecodeChangeProcessorState(DecodedInsn* insn,
     /* QEMU ARM translate.c trans_CPS -> gen_set_psr_im ->
        gen_lookup_tb (DISAS_EXIT). */
     insn->context_sync = true;
-    insn->place_fn  = &PlaceCps;
+    insn->kind         = ArmInsnKind::kCps;
     return true;
 }
 
@@ -184,10 +184,10 @@ bool Thumb32BranchSystemDecoder::DecodeCpsAndHints(DecodedInsn* insn,
     }
     if (hint_op2 == 0x03u) {
         /* A8.8.425 WFI p. A8-1106. */
-        insn->place_fn = &PlaceWfi;
+        insn->kind = ArmInsnKind::kWfi;
         return true;
     }
-    insn->place_fn = &PlaceNop;
+    insn->kind = ArmInsnKind::kNop;
     return true;
 }
 
@@ -208,7 +208,7 @@ bool Thumb32BranchSystemDecoder::DecodeControlInstructions(DecodedInsn* insn,
             return false;
         }
         insn->und_in_it = 1u;
-        insn->place_fn  = &PlaceNop;
+        insn->kind      = ArmInsnKind::kNop;
         return true;
     case 0x1u:
         fatal_->Unimplemented("enter ThumbEE state (A6-237)", insn, op);
@@ -218,7 +218,7 @@ bool Thumb32BranchSystemDecoder::DecodeControlInstructions(DecodedInsn* insn,
         if (!MiscControlBitsValid(op) || (op & 0xFu) != 0xFu) {
             return false;
         }
-        insn->place_fn = &PlaceClrex;
+        insn->kind = ArmInsnKind::kClrex;
         return true;
     case 0x4u:
     case 0x5u:
@@ -227,7 +227,7 @@ bool Thumb32BranchSystemDecoder::DecodeControlInstructions(DecodedInsn* insn,
         if (!MiscControlBitsValid(op)) {
             return false;
         }
-        insn->place_fn = &PlaceNop;
+        insn->kind = ArmInsnKind::kNop;
         return true;
     case 0x6u:
         /* A8.8.53 ISB p. A8-389; Glossary "Context synchronization
@@ -236,7 +236,7 @@ bool Thumb32BranchSystemDecoder::DecodeControlInstructions(DecodedInsn* insn,
             return false;
         }
         insn->context_sync = true;
-        insn->place_fn     = &PlaceNop;
+        insn->kind         = ArmInsnKind::kNop;
         return true;
     default:
         return false;
@@ -260,7 +260,7 @@ bool Thumb32BranchSystemDecoder::DecodeExceptionReturn(DecodedInsn* insn,
     insn->immediate           = op & 0xFFu;
     insn->r15_modified        = true;
     insn->is_exception_return = true;
-    insn->place_fn            = &PlaceDataProcessing;
+    insn->kind                = ArmInsnKind::kDataProcessing;
     return true;
 }
 

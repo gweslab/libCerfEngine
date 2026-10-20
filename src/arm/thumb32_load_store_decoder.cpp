@@ -2,7 +2,7 @@
 
 #include <cerfengine/engine.h>
 #include <cerfengine/arm/decoded_insn.h>
-#include <cerfengine/arm/place_fns.h>
+#include <cerfengine/arm/block_context.h>
 
 namespace cerfengine {
 
@@ -33,7 +33,7 @@ bool Thumb32LoadStoreDecoder::DecodeLoadLiteral(DecodedInsn* insn,
     insn->offset       = add != 0u ? static_cast<int32_t>(imm12)
                                    : -static_cast<int32_t>(imm12);
     insn->r15_modified = rt == 15u;
-    insn->place_fn     = &PlaceSingleDataTransfer;
+    insn->kind         = ArmInsnKind::kSingleDataTransfer;
     return true;
 }
 
@@ -55,7 +55,7 @@ bool Thumb32LoadStoreDecoder::DecodeLoadImmediate12(DecodedInsn* insn,
     insn->rd           = rt;
     insn->offset       = static_cast<int32_t>(op & 0xFFFu);
     insn->r15_modified = rt == 15u;
-    insn->place_fn     = &PlaceSingleDataTransfer;
+    insn->kind         = ArmInsnKind::kSingleDataTransfer;
     return true;
 }
 
@@ -80,7 +80,7 @@ bool Thumb32LoadStoreDecoder::DecodeLoadImmediate8(DecodedInsn* insn,
     insn->offset       = add != 0u ? static_cast<int32_t>(imm8)
                                    : -static_cast<int32_t>(imm8);
     insn->r15_modified = rt == 15u;
-    insn->place_fn     = &PlaceSingleDataTransfer;
+    insn->kind         = ArmInsnKind::kSingleDataTransfer;
     return true;
 }
 
@@ -105,7 +105,7 @@ bool Thumb32LoadStoreDecoder::DecodeLoadRegister(DecodedInsn* insn,
     insn->op1          = kSrLsl;
     insn->rs           = (op >> 4) & 0x3u;
     insn->r15_modified = rt == 15u;
-    insn->place_fn     = &PlaceSingleDataTransfer;
+    insn->kind         = ArmInsnKind::kSingleDataTransfer;
     return true;
 }
 
@@ -127,7 +127,7 @@ bool Thumb32LoadStoreDecoder::DecodeLoadUnprivileged(DecodedInsn* insn,
     insn->rd           = rt;
     insn->offset       = static_cast<int32_t>(op & 0xFFu);
     insn->r15_modified = false;
-    insn->place_fn     = &PlaceSingleDataTransfer;
+    insn->kind         = ArmInsnKind::kSingleDataTransfer;
     return true;
 }
 
@@ -172,11 +172,11 @@ void Thumb32LoadStoreDecoder::SetStoreTransfer(DecodedInsn* insn,
                                                StoreSize size) {
     if (size == StoreSize::kHalfword) {
         insn->op1      = 1u;
-        insn->place_fn = &PlaceLoadStoreExtension;
+        insn->kind     = ArmInsnKind::kLoadStoreExtension;
         return;
     }
     insn->s        = size == StoreSize::kByte ? 1u : 0u;
-    insn->place_fn = &PlaceSingleDataTransfer;
+    insn->kind     = ArmInsnKind::kSingleDataTransfer;
 }
 
 bool Thumb32LoadStoreDecoder::DecodeStoreImmediate12(DecodedInsn* insn,

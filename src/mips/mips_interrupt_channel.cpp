@@ -38,11 +38,13 @@ void MipsInterruptChannel::SignalIdleWake() {
 
 void MipsInterruptChannel::SetExternalInterruptLevel(uint32_t ip_mask) {
     const uint32_t prev = external_ip_.exchange(ip_mask, std::memory_order_acq_rel);
+    if (ip_mask != prev) RequestChainExit();
     if (ip_mask & ~prev) SignalIdleWake();
 }
 
 void MipsInterruptChannel::RequestDispatch(uint32_t bits) {
     const uint32_t prev = dispatch_request_.fetch_or(bits, std::memory_order_acq_rel);
+    RequestChainExit();
     if (bits & ~prev) SignalIdleWake();
 }
 
@@ -57,7 +59,13 @@ uint32_t MipsInterruptChannel::TakeDispatchRequests() {
 
 void MipsInterruptChannel::SetHostExit(bool requested) {
     host_exit_.store(requested, std::memory_order_release);
-    if (requested) SignalIdleWake();
+    std::atomic_ref<uint32_t> word(cpu_state_->chain_exit_request);
+    if (requested) {
+        word.fetch_or(MipsChainExit::kHost, std::memory_order_acq_rel);
+        SignalIdleWake();
+    } else {
+        word.fetch_and(~MipsChainExit::kHost, std::memory_order_acq_rel);
+    }
 }
 
 bool MipsInterruptChannel::TakeHostRequest() {

@@ -7,8 +7,6 @@
 namespace cerfengine {
 
 class ArmEmitServices;
-class JitBlockIndex;
-struct JitBlock;
 
 /* ARM DDI 0406C.c Table D15-10 (p. D15-2609): "In a Fine page table, each
    entry provides translation information for 1KB of memory." */
@@ -17,21 +15,18 @@ constexpr uint32_t kMaxArmInsnPerBlock = kArmBlockPageBytes / 4u;
 
 struct BlockContext {
     ArmEmitServices* emit;
-    const void* sctlr_write_target;
-    const void* raise_abort_data_helper_target;
 
-    uint8_t* native_start;
-
-    JitBlockIndex* index;
-    JitBlock*      self;
-    uint32_t       guest_start;
-    uint32_t       phys_start;
-    uint32_t       fcse_pid;
-    const void*    jump_cache;
-    bool           thumb;
+    bool thumb;
+    bool alignment_checked;
+    bool unaligned_faults;
 
     DecodedInsn insns[kMaxArmInsnPerBlock];
     uint32_t    num_insns;
 };
+
+/* ARM DDI 0100I A7.1, p. A7-3. */
+inline uint32_t ArmPcReadValue(const DecodedInsn* d, const BlockContext* ctx) {
+    return d->guest_address + (ctx->thumb ? 4u : 8u);
+}
 
 }

@@ -25,6 +25,7 @@ namespace MipsOp {
     constexpr uint32_t kLUI     = 0x0F;
     constexpr uint32_t kCOP0    = 0x10;
     constexpr uint32_t kCOP1    = 0x11;
+    constexpr uint32_t kCOP2    = 0x12;
     constexpr uint32_t kBEQL    = 0x14;
     constexpr uint32_t kBNEL    = 0x15;
     constexpr uint32_t kBLEZL   = 0x16;
@@ -55,9 +56,15 @@ namespace MipsOp {
     constexpr uint32_t kLD      = 0x37;
     constexpr uint32_t kLL      = 0x30;
     constexpr uint32_t kLWC1    = 0x31;
+    constexpr uint32_t kLWC2    = 0x32;
     constexpr uint32_t kPREF    = 0x33;
+    constexpr uint32_t kLDC1    = 0x35;
+    constexpr uint32_t kLDC2    = 0x36;
     constexpr uint32_t kSC      = 0x38;
     constexpr uint32_t kSWC1    = 0x39;
+    constexpr uint32_t kSWC2    = 0x3A;
+    constexpr uint32_t kSDC1    = 0x3D;
+    constexpr uint32_t kSDC2    = 0x3E;
     constexpr uint32_t kSD      = 0x3F;
 }
 

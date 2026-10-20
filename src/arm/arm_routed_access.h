@@ -3,12 +3,14 @@
 #include <cerfengine/calling_convention.h>
 #include <cstdint>
 
+#include <cerfengine/arm/arm_mmu.h>
 #include <cerfengine/engine.h>
 #include <cerfengine/mmio_bus_host.h>
 
+#include <cerfengine/force_inline.h>
+
 namespace cerfengine {
 
-class ArmMmu;
 class ArmTranslator;
 class MmioBus;
 struct ArmCpuState;
@@ -27,11 +29,33 @@ public:
                     bool is_load);
 
     template <MmioWidth kWidth>
-    static uint32_t CERFENGINE_CDECL IoLoadHelper(ArmRoutedAccess* self, uint32_t guest_pc,
-                                                  uint32_t va);
+    CERFENGINE_FORCEINLINE static uint32_t CERFENGINE_CDECL IoLoadHelper(ArmRoutedAccess* self,
+                                                                         uint32_t guest_pc,
+                                                                         uint32_t va) {
+        constexpr uint32_t kBytes = static_cast<uint32_t>(kWidth);
+        const uint32_t pa = self->mmu_->io_pending_address();
+        self->mmu_->ClearIoPending();
+        if constexpr (kBytes > 1u) {
+            if ((pa & (kBytes - 1u)) != 0u) {
+                self->HaltUnalignedRouted(guest_pc, va, kBytes, pa, "load");
+            }
+        }
+        return self->ReadRouted<kWidth>(pa);
+    }
     template <MmioWidth kWidth>
-    static void CERFENGINE_CDECL IoStoreHelper(ArmRoutedAccess* self, uint32_t guest_pc,
-                                               uint32_t va, uint32_t value);
+    CERFENGINE_FORCEINLINE static void CERFENGINE_CDECL IoStoreHelper(ArmRoutedAccess* self,
+                                                                      uint32_t guest_pc,
+                                                                      uint32_t va, uint32_t value) {
+        constexpr uint32_t kBytes = static_cast<uint32_t>(kWidth);
+        const uint32_t pa = self->mmu_->io_pending_address();
+        self->mmu_->ClearIoPending();
+        if constexpr (kBytes > 1u) {
+            if ((pa & (kBytes - 1u)) != 0u) {
+                self->HaltUnalignedRouted(guest_pc, va, kBytes, pa, "store");
+            }
+        }
+        self->WriteRouted<kWidth>(pa, value);
+    }
 
 private:
     uint32_t DispatchRead(uint32_t pa, uint32_t bytes, uint32_t guest_pc,

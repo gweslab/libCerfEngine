@@ -13,6 +13,7 @@ enum class MipsTlbResult {
     kNoMatch,
     kInvalid,
     kModified,
+    kAddressError,
 };
 
 enum class MipsAccess { kFetch, kRead, kWrite };

@@ -184,6 +184,14 @@ constexpr int32_t ArmCpsrDisp() {
     return static_cast<int32_t>(offsetof(ArmCpuState, cpsr));
 }
 
+constexpr int32_t ArmMonitorAddrDisp() {
+    return static_cast<int32_t>(offsetof(ArmCpuState, ldrex_monitor_addr));
+}
+
+constexpr int32_t ArmMonitorArmedDisp() {
+    return static_cast<int32_t>(offsetof(ArmCpuState, ldrex_monitor_armed));
+}
+
 static_assert(offsetof(ArmCpuState, nf) % 4u == 0u,
               "nf must be 4-aligned: emitted code loads the flag quad as one "
               "dword");

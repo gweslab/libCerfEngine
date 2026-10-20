@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <vector>
@@ -11,80 +12,136 @@ namespace cerfengine {
 constexpr uint32_t kJumpCacheSize = 4096;
 
 constexpr uint32_t kBlockUnindexed = 0xFFFFFFFFu;
+
+constexpr uint32_t kBlockPrivileged     = 0;
+constexpr uint32_t kBlockUser           = 1;
+constexpr uint32_t kBlockSupervisor     = 2;
+constexpr uint32_t kBlockPrivilegeCount = 3;
+
+constexpr uint32_t kJumpCacheNoKey = 0xFFFFFFFFu;
+
 struct JumpCacheEntry {
-    uint32_t  folded_va;
-    void*     native;
-    JitBlock* blk;
-    uint32_t  reserved;
+    uint32_t key[kBlockPrivilegeCount];
+    void*    native;
 };
 
-constexpr uint32_t kJumpCacheEntryShift = 4;
+constexpr int32_t JumpCacheKeyDisp(uint32_t privilege) {
+    return static_cast<int32_t>(offsetof(JumpCacheEntry, key) + privilege * sizeof(uint32_t));
+}
 
-struct IsaBlockSpace {
+struct BlockIndexSet {
     JitBlockIndex global;
     JitBlockIndex per_asid[256];
-    uint32_t      asid_populated[8] = {0};
+    uint32_t      asid_populated[8] = {};
+
+    JitBlockIndex& Index(bool global_page, uint8_t asid) {
+        return global_page ? global : per_asid[asid];
+    }
+
+    void MarkPopulated(uint8_t asid) {
+        asid_populated[asid >> 5] |= (1u << (asid & 31u));
+    }
+
+    void Initialize(cerfengine::Engine& engine) {
+        global.Initialize(engine);
+        for (auto& t : per_asid) t.Initialize(engine);
+    }
+
+    void Flush() {
+        global.Flush();
+        for (uint32_t w = 0; w < 8u; ++w) {
+            uint32_t bits = asid_populated[w];
+            if (!bits) continue;
+            for (uint32_t b = 0; b < 32u; ++b) {
+                if (bits & (1u << b)) per_asid[(w << 5) + b].Flush();
+            }
+            asid_populated[w] = 0;
+        }
+    }
+};
+
+struct IsaBlockSpace {
+    BlockIndexSet  indices[kBlockPrivilegeCount];
     JumpCacheEntry jump_cache[kJumpCacheSize];
+    JitBlock*      jump_cache_blk[kJumpCacheSize];
 
     std::vector<JitBlock*> page_heads;
     uint32_t               page_base  = 0;
     uint32_t               page_count = 0;
 
-    void JumpCacheFlush() { std::memset(jump_cache, 0, sizeof(jump_cache)); }
+    static uint32_t JumpCacheIndex(uint32_t folded_va) {
+        return (folded_va >> 2) & (kJumpCacheSize - 1u);
+    }
+
+    static uint32_t JumpCacheLiveKey(const JumpCacheEntry& e) {
+        for (uint32_t key : e.key) {
+            if (key != kJumpCacheNoKey) return key;
+        }
+        return kJumpCacheNoKey;
+    }
+
+    void JumpCacheClearEntry(uint32_t index) {
+        JumpCacheEntry& e = jump_cache[index];
+        for (uint32_t& key : e.key) key = 0;
+        e.native              = nullptr;
+        jump_cache_blk[index] = nullptr;
+    }
+
+    void JumpCacheFlush() {
+        std::memset(jump_cache, 0, sizeof(jump_cache));
+        std::memset(jump_cache_blk, 0, sizeof(jump_cache_blk));
+    }
 
     void JumpCacheClearPage(uint32_t page_va) {
         const uint32_t base = page_va & 0xFFFFF000u;
         for (uint32_t off = 0; off < 0x1000u; off += 4u) {
-            JumpCacheEntry& e =
-                jump_cache[((base + off) >> 2) & (kJumpCacheSize - 1u)];
-            if ((e.folded_va & 0xFFFFF000u) == base) {
-                e.folded_va = 0;
-                e.native    = nullptr;
-                e.blk       = nullptr;
+            const uint32_t index = JumpCacheIndex(base + off);
+            if ((JumpCacheLiveKey(jump_cache[index]) & 0xFFFFF000u) == base) {
+                JumpCacheClearEntry(index);
             }
         }
     }
 
     void JumpCacheClearRange(uint32_t base_va, uint32_t span_bytes);
 
-    void* JumpCacheLookup(uint32_t folded_va) const {
-        const JumpCacheEntry& e = jump_cache[(folded_va >> 2) & (kJumpCacheSize - 1u)];
-        return e.folded_va == folded_va ? e.native : nullptr;
+    void* JumpCacheLookup(uint32_t privilege, uint32_t folded_va) const {
+        const JumpCacheEntry& e = jump_cache[JumpCacheIndex(folded_va)];
+        return e.key[privilege] == folded_va ? e.native : nullptr;
     }
 
-    const JumpCacheEntry* JumpCacheProbe(uint32_t folded_va) const {
-        const JumpCacheEntry& e = jump_cache[(folded_va >> 2) & (kJumpCacheSize - 1u)];
-        return e.folded_va == folded_va ? &e : nullptr;
+    const JumpCacheEntry* JumpCacheProbe(uint32_t privilege, uint32_t folded_va) const {
+        const JumpCacheEntry& e = jump_cache[JumpCacheIndex(folded_va)];
+        return e.key[privilege] == folded_va ? &e : nullptr;
     }
 
-    void JumpCacheInsert(uint32_t folded_va, void* native,
-                         JitBlock* blk = nullptr) {
-        JumpCacheEntry& e = jump_cache[(folded_va >> 2) & (kJumpCacheSize - 1u)];
-        e.folded_va = folded_va;
-        e.native    = native;
-        e.blk       = blk;
+    JitBlock* JumpCacheBlock(const JumpCacheEntry* e) const {
+        return jump_cache_blk[e - jump_cache];
+    }
+
+    void JumpCacheInsert(uint32_t privilege, uint32_t folded_va, void* native, JitBlock* blk) {
+        const uint32_t  index = JumpCacheIndex(folded_va);
+        static_assert(kBlockPrivilegeCount == 3u);
+        JumpCacheEntry& e     = jump_cache[index];
+        e.key[0]              = kJumpCacheNoKey;
+        e.key[1]              = kJumpCacheNoKey;
+        e.key[2]              = kJumpCacheNoKey;
+        e.key[privilege]      = folded_va;
+        e.native              = native;
+        jump_cache_blk[index] = blk;
     }
 
     void Initialize(cerfengine::Engine& engine, uint32_t dram_page_base,
                     uint32_t dram_page_count) {
-        global.Initialize(engine);
-        for (auto& t : per_asid) t.Initialize(engine);
+        for (BlockIndexSet& set : indices) set.Initialize(engine);
         JumpCacheFlush();
         page_base  = dram_page_base;
         page_count = dram_page_count;
         page_heads.assign(dram_page_count, nullptr);
     }
-    void MarkPopulated(uint8_t asid) {
-        asid_populated[asid >> 5] |= (1u << (asid & 31u));
-    }
     static void ClearJcSlot(uint32_t folded_va, void* ctx) {
-        auto* sp = static_cast<IsaBlockSpace*>(ctx);
-        JumpCacheEntry& e = sp->jump_cache[(folded_va >> 2) & (kJumpCacheSize - 1u)];
-        if (e.folded_va == folded_va) {
-            e.folded_va = 0;
-            e.native    = nullptr;
-            e.blk       = nullptr;
-        }
+        auto* const    sp    = static_cast<IsaBlockSpace*>(ctx);
+        const uint32_t index = JumpCacheIndex(folded_va);
+        if (JumpCacheLiveKey(sp->jump_cache[index]) == folded_va) sp->JumpCacheClearEntry(index);
     }
 
     void IndexInsert(JitBlock* outer, JitBlockIndex* owner, uint32_t index_start,
@@ -182,15 +239,7 @@ struct IsaBlockSpace {
         outer->owner->RemoveNode(outer, &ClearJcSlot, this);
     }
     void FlushAll() {
-        global.Flush();
-        for (uint32_t w = 0; w < 8u; ++w) {
-            uint32_t bits = asid_populated[w];
-            if (!bits) continue;
-            for (uint32_t b = 0; b < 32u; ++b) {
-                if (bits & (1u << b)) per_asid[(w << 5) + b].Flush();
-            }
-            asid_populated[w] = 0;
-        }
+        for (BlockIndexSet& set : indices) set.Flush();
         JumpCacheFlush();
         for (auto& h : page_heads) h = nullptr;
     }

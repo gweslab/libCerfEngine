@@ -41,14 +41,14 @@ void ArmTranslationCache::OnReady() {
                    "window at PA 0x%08X\n", page_count, st->code_word_base);
 }
 
-void* ArmTranslationCache::Lookup(bool thumb, uint32_t folded_pc) {
+void* ArmTranslationCache::Lookup(bool thumb, uint32_t privilege, uint32_t folded_pc) {
     if (flush_pending_) {
         flush_pending_ = false;
         std::atomic_ref<uint32_t>(cpu_state_->chain_exit_request)
             .fetch_and(~kChainExitFlush, std::memory_order_acq_rel);
         Flush();
     }
-    return Space(thumb).JumpCacheLookup(folded_pc);
+    return Space(thumb).JumpCacheLookup(privilege, folded_pc);
 }
 
 void ArmTranslationCache::Flush() {
@@ -65,6 +65,7 @@ void ArmTranslationCache::InvalidateVaCachesRange(uint32_t folded_va,
                                                    uint32_t span_bytes) {
     blocks_arm_.JumpCacheClearRange(folded_va, span_bytes);
     blocks_thumb_.JumpCacheClearRange(folded_va, span_bytes);
+    IsaBlockSpace::ClearJcSlot(folded_va - 2u, &blocks_thumb_);
 }
 
 void CERFENGINE_FASTCALL ArmTranslationCache::ContextSwitchFlushHelper(
@@ -102,13 +103,24 @@ void CERFENGINE_FASTCALL ArmTranslationCache::InvalidateDirtyCodePagesHelper(
 
 void CERFENGINE_FASTCALL ArmTranslationCache::ItlbInvalidateAllHelper(
     ArmTranslationCache* tc) {
-    ArmTlbFlushAll(&tc->mmu_->State()->instruction_tlb);
+    tc->mmu_->InvalidateInstructionTlbs();
     tc->InvalidateVaCachesAll();
 }
 
 void CERFENGINE_FASTCALL ArmTranslationCache::DtlbInvalidateAllHelper(
     ArmTranslationCache* tc) {
-    ArmTlbFlushAll(&tc->mmu_->State()->data_tlb);
+    tc->mmu_->InvalidateDataTlbs();
+}
+
+ArmTlbInvalidation ArmTranslationCache::InvalidateTlbsByVa(ArmTlbUnit (&units)[kArmTlbPrivilegeCount],
+                                                          uint32_t mva) {
+    const uint32_t     process_id = mmu_->State()->process_id;
+    ArmTlbInvalidation widest     = ArmTlbInvalidateByVa(&units[0], process_id, mva);
+    for (uint32_t p = 1; p < kArmTlbPrivilegeCount; ++p) {
+        const ArmTlbInvalidation inv = ArmTlbInvalidateByVa(&units[p], process_id, mva);
+        if (inv.span_bytes > widest.span_bytes) widest = inv;
+    }
+    return widest;
 }
 
 void CERFENGINE_FASTCALL ArmTranslationCache::UtlbInvalidateAllHelper(
@@ -119,24 +131,21 @@ void CERFENGINE_FASTCALL ArmTranslationCache::UtlbInvalidateAllHelper(
 
 void CERFENGINE_FASTCALL ArmTranslationCache::ItlbInvalidateMvaHelper(
     uint32_t mva, ArmTranslationCache* tc) {
-    ArmMmuState* st = tc->mmu_->State();
     const ArmTlbInvalidation invalidation =
-        ArmTlbInvalidateByVa(&st->instruction_tlb, st->process_id, mva);
+        tc->InvalidateTlbsByVa(tc->mmu_->State()->instruction_tlb, mva);
     tc->InvalidateVaCachesRange(invalidation.base, invalidation.span_bytes);
 }
 
 void CERFENGINE_FASTCALL ArmTranslationCache::DtlbInvalidateMvaHelper(
     uint32_t mva, ArmTranslationCache* tc) {
-    ArmMmuState* st = tc->mmu_->State();
-    ArmTlbInvalidateByVa(&st->data_tlb, st->process_id, mva);
+    tc->InvalidateTlbsByVa(tc->mmu_->State()->data_tlb, mva);
 }
 
 void CERFENGINE_FASTCALL ArmTranslationCache::UtlbInvalidateMvaHelper(
     uint32_t mva, ArmTranslationCache* tc) {
     ArmMmuState* st = tc->mmu_->State();
-    ArmTlbInvalidateByVa(&st->data_tlb, st->process_id, mva);
-    const ArmTlbInvalidation invalidation =
-        ArmTlbInvalidateByVa(&st->instruction_tlb, st->process_id, mva);
+    tc->InvalidateTlbsByVa(st->data_tlb, mva);
+    const ArmTlbInvalidation invalidation = tc->InvalidateTlbsByVa(st->instruction_tlb, mva);
     tc->InvalidateVaCachesRange(invalidation.base, invalidation.span_bytes);
 }
 

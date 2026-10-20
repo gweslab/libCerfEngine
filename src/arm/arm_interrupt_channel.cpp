@@ -69,20 +69,6 @@ bool ArmInterruptChannel::TakeHostRequest() {
            host_request_.exchange(0u, std::memory_order_acq_rel) != 0u;
 }
 
-ArmInterruptChannel::IrqGate ArmInterruptChannel::EvaluateGate() const {
-    IrqGate gate;
-    gate.level = Level();
-    gate.raise = gate.level != 0u && cpu_state_->cpsr.bits.irq_disable == 0u &&
-                 cpu_state_->deep_sleep == 0u;
-    return gate;
-}
-
-bool ArmInterruptChannel::BackOutForIrq(uint32_t guest_pc) {
-    if (!EvaluateGate().raise) return false;
-    cpu_state_->gprs[ArmGpr::kR15] = guest_pc;
-    return true;
-}
-
 uint32_t CERFENGINE_CDECL ArmInterruptChannel::BackOutForIrqHelper(
     ArmInterruptChannel* channel, uint32_t guest_pc) {
     return channel->BackOutForIrq(guest_pc) ? 1u : 0u;
@@ -126,25 +112,12 @@ void ArmInterruptChannel::StopAfterInsn(uint32_t next_pc) {
     ArmItStoreToCpsr(*cpu_state_, ArmItAdvance(ArmItFromCpsr(*cpu_state_)));
 }
 
-bool ArmInterruptChannel::LeaveAfterAccess(uint32_t next_pc) {
-    const uint32_t exits = std::atomic_ref<uint32_t>(cpu_state_->chain_exit_request)
-                               .load(std::memory_order_acquire);
-    if ((exits & (kChainExitClock | kChainExitIdle)) == 0u) return false;
-    StopAfterInsn(next_pc);
-    return true;
-}
-
 uint32_t CERFENGINE_FASTCALL ArmInterruptChannel::WfiHelper(ArmInterruptChannel* channel,
                                                     uint32_t next_pc) {
     if (channel->WaitForInterrupt()) return 0u;
     channel->EnterIdle();
     channel->StopAfterInsn(next_pc);
     return 1u;
-}
-
-void CERFENGINE_FASTCALL ArmInterruptChannel::StopAfterInsnHelper(ArmInterruptChannel* channel,
-                                                                  uint32_t next_pc) {
-    channel->StopAfterInsn(next_pc);
 }
 
 bool ArmInterruptChannel::ExitPending() {

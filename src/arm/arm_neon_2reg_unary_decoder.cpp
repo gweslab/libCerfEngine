@@ -15,7 +15,7 @@
 #include "arm_neon_2reg_unary_arith.h"
 #include "arm_opcode.h"
 #include <cerfengine/arm/decoded_insn.h>
-#include <cerfengine/arm/place_fns.h>
+#include <cerfengine/arm/block_context.h>
 
 namespace cerfengine {
 
@@ -39,13 +39,13 @@ bool ArmNeon2RegUnaryDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
             if (op_field == 3u) {
                 insn->cond      = 14;
                 insn->immediate = op.word;
-                insn->place_fn  = &EmitRaiseUndAndReturn;
+                insn->kind      = ArmInsnKind::kUndefined;
                 return true;
             }
             insn->cond      = 14;
             insn->immediate = op.word;
             insn->op1       = op_field;
-            insn->place_fn  = &PlaceNeonData2RegReverse;
+            insn->kind      = ArmInsnKind::kNeonData2RegReverse;
             return true;
         }
         /* bits[10:7]=10xx → VCLS/VCLZ/VCNT/VMVN (A8.8.299/302/304/354). */
@@ -54,12 +54,12 @@ bool ArmNeon2RegUnaryDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
             insn->cond      = 14;
             insn->immediate = op.word;
             if (sel == 3u) {
-                insn->place_fn = &PlaceNeonData2RegBitwiseNot;
+                insn->kind = ArmInsnKind::kNeonData2RegBitwiseNot;
             } else {
                 if (sel == 0u)      insn->op1 = ArmNeon2RegBitcount::kCls;
                 else if (sel == 1u) insn->op1 = ArmNeon2RegBitcount::kClz;
                 else                insn->op1 = ArmNeon2RegBitcount::kCnt;
-                insn->place_fn = &PlaceNeonData2RegBitcount;
+                insn->kind = ArmInsnKind::kNeonData2RegBitcount;
             }
             return true;
         }
@@ -68,7 +68,7 @@ bool ArmNeon2RegUnaryDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
             insn->cond      = 14;
             insn->immediate = op.word;
             insn->op1       = ArmNeon2RegPairwiseAddLong::kPaddl;
-            insn->place_fn  = &PlaceNeonData2RegPairwiseAddLong;
+            insn->kind      = ArmInsnKind::kNeonData2RegPairwiseAddLong;
             return true;
         }
         /* bits[10:7]=110x → VPADAL (A8.8.361); bit[7]=U signed/unsigned. */
@@ -76,7 +76,7 @@ bool ArmNeon2RegUnaryDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
             insn->cond      = 14;
             insn->immediate = op.word;
             insn->op1       = ArmNeon2RegPairwiseAddLong::kPadal;
-            insn->place_fn  = &PlaceNeonData2RegPairwiseAddLong;
+            insn->kind      = ArmInsnKind::kNeonData2RegPairwiseAddLong;
             return true;
         }
         /* bits[10:7]=1110 → VQABS (A8.8.369); 1111 → VQNEG (A8.8.375). */
@@ -84,14 +84,14 @@ bool ArmNeon2RegUnaryDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
             insn->cond      = 14;
             insn->immediate = op.word;
             insn->op1       = ArmNeon2RegSatAbsNeg::kQabs;
-            insn->place_fn  = &PlaceNeonData2RegSatAbsNeg;
+            insn->kind      = ArmInsnKind::kNeonData2RegSatAbsNeg;
             return true;
         }
         if (b_high == 0xFu) {
             insn->cond      = 14;
             insn->immediate = op.word;
             insn->op1       = ArmNeon2RegSatAbsNeg::kQneg;
-            insn->place_fn  = &PlaceNeonData2RegSatAbsNeg;
+            insn->kind      = ArmInsnKind::kNeonData2RegSatAbsNeg;
             return true;
         }
         /* ARM DDI 0406C.c Table A7-13 (p. A7-267): A = 00 allocates B = 010xx
@@ -99,7 +99,7 @@ bool ArmNeon2RegUnaryDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
            (p. A7-267): "Other encodings in this space are UNDEFINED." */
         insn->cond      = 14;
         insn->immediate = op.word;
-        insn->place_fn  = &EmitRaiseUndAndReturn;
+        insn->kind      = ArmInsnKind::kUndefined;
         return true;
     }
 
@@ -111,49 +111,49 @@ bool ArmNeon2RegUnaryDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
             insn->cond      = 14;
             insn->immediate = op.word;
             insn->op1       = ArmNeon2RegCompareZero::kCgt;
-            insn->place_fn  = &PlaceNeonData2RegCompareZero;
+            insn->kind      = ArmInsnKind::kNeonData2RegCompareZero;
             return true;
         }
         if (bits_9_7 == 0x1u) {
             insn->cond      = 14;
             insn->immediate = op.word;
             insn->op1       = ArmNeon2RegCompareZero::kCge;
-            insn->place_fn  = &PlaceNeonData2RegCompareZero;
+            insn->kind      = ArmInsnKind::kNeonData2RegCompareZero;
             return true;
         }
         if (bits_9_7 == 0x2u) {
             insn->cond      = 14;
             insn->immediate = op.word;
             insn->op1       = ArmNeon2RegCompareZero::kCeq;
-            insn->place_fn  = &PlaceNeonData2RegCompareZero;
+            insn->kind      = ArmInsnKind::kNeonData2RegCompareZero;
             return true;
         }
         if (bits_9_7 == 0x3u) {
             insn->cond      = 14;
             insn->immediate = op.word;
             insn->op1       = ArmNeon2RegCompareZero::kCle;
-            insn->place_fn  = &PlaceNeonData2RegCompareZero;
+            insn->kind      = ArmInsnKind::kNeonData2RegCompareZero;
             return true;
         }
         if (bits_9_7 == 0x4u) {
             insn->cond      = 14;
             insn->immediate = op.word;
             insn->op1       = ArmNeon2RegCompareZero::kClt;
-            insn->place_fn  = &PlaceNeonData2RegCompareZero;
+            insn->kind      = ArmInsnKind::kNeonData2RegCompareZero;
             return true;
         }
         if (bits_9_7 == 0x6u) {
             insn->cond      = 14;
             insn->immediate = op.word;
             insn->op1       = ArmNeon2RegUnaryArith::kAbs;
-            insn->place_fn  = &PlaceNeonData2RegUnaryArith;
+            insn->kind      = ArmInsnKind::kNeonData2RegUnaryArith;
             return true;
         }
         if (bits_9_7 == 0x7u) {
             insn->cond      = 14;
             insn->immediate = op.word;
             insn->op1       = ArmNeon2RegUnaryArith::kNeg;
-            insn->place_fn  = &PlaceNeonData2RegUnaryArith;
+            insn->kind      = ArmInsnKind::kNeonData2RegUnaryArith;
             return true;
         }
         /* ARM DDI 0406C.c Table A7-13 (p. A7-267): A = 01 allocates B = x000x,
@@ -161,7 +161,7 @@ bool ArmNeon2RegUnaryDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
            A7.4.5 (p. A7-267): "Other encodings in this space are UNDEFINED." */
         insn->cond      = 14;
         insn->immediate = op.word;
-        insn->place_fn  = &EmitRaiseUndAndReturn;
+        insn->kind      = ArmInsnKind::kUndefined;
         return true;
     }
 
@@ -171,7 +171,7 @@ bool ArmNeon2RegUnaryDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         if (b_high == 0x0u) {
             insn->cond      = 14;
             insn->immediate = op.word;
-            insn->place_fn  = &PlaceNeonData2RegSwap;
+            insn->kind      = ArmInsnKind::kNeonData2RegSwap;
             return true;
         }
         /* bits[10:7]=0001 → VTRN (A8.8.420). */
@@ -179,7 +179,7 @@ bool ArmNeon2RegUnaryDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
             insn->cond      = 14;
             insn->immediate = op.word;
             insn->op1       = ArmNeon2RegShuffle::kTrn;
-            insn->place_fn  = &PlaceNeonData2RegShuffle;
+            insn->kind      = ArmInsnKind::kNeonData2RegShuffle;
             return true;
         }
         /* bits[10:7]=0010 → VUZP (A8.8.422). */
@@ -187,7 +187,7 @@ bool ArmNeon2RegUnaryDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
             insn->cond      = 14;
             insn->immediate = op.word;
             insn->op1       = ArmNeon2RegShuffle::kUzp;
-            insn->place_fn  = &PlaceNeonData2RegShuffle;
+            insn->kind      = ArmInsnKind::kNeonData2RegShuffle;
             return true;
         }
         /* bits[10:7]=0011 → VZIP (A8.8.423). */
@@ -195,7 +195,7 @@ bool ArmNeon2RegUnaryDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
             insn->cond      = 14;
             insn->immediate = op.word;
             insn->op1       = ArmNeon2RegShuffle::kZip;
-            insn->place_fn  = &PlaceNeonData2RegShuffle;
+            insn->kind      = ArmInsnKind::kNeonData2RegShuffle;
             return true;
         }
         /* bits[10:7] ∈ {0x4, 0x5} = 5-bit B field 0100x or 0101x →
@@ -205,7 +205,7 @@ bool ArmNeon2RegUnaryDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
             insn->cond      = 14;
             insn->immediate = op.word;
             insn->op1       = (op.word >> 6) & 0x3u;
-            insn->place_fn  = &PlaceNeonData2RegNarrow;
+            insn->kind      = ArmInsnKind::kNeonData2RegNarrow;
             return true;
         }
         /* bits[10:7]=0x6 + bit[6]=0 → VSHLL T2/A2 (A8.8.397). bit[6]=1
@@ -213,7 +213,7 @@ bool ArmNeon2RegUnaryDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         if (b_high == 0x6u && ((op.word >> 6) & 1u) == 0u) {
             insn->cond      = 14;
             insn->immediate = op.word;
-            insn->place_fn  = &PlaceNeonData2RegWiden;
+            insn->kind      = ArmInsnKind::kNeonData2RegWiden;
             return true;
         }
         /* bits[10:7]=11x0 + bit[6]=0 → VCVT half↔single (A8.8.310). bit[8]=op
@@ -222,7 +222,7 @@ bool ArmNeon2RegUnaryDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
             insn->cond      = 14;
             insn->immediate = op.word;
             insn->op1       = (op.word >> 8) & 1u;
-            insn->place_fn  = &PlaceNeonData2RegCvtHalfSingle;
+            insn->kind      = ArmInsnKind::kNeonData2RegCvtHalfSingle;
             return true;
         }
         /* ARM DDI 0406C.c Table A7-13 (p. A7-268): A = 10 allocates B = 0000x,
@@ -230,7 +230,7 @@ bool ArmNeon2RegUnaryDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
            A7.4.5 (p. A7-267): "Other encodings in this space are UNDEFINED." */
         insn->cond      = 14;
         insn->immediate = op.word;
-        insn->place_fn  = &EmitRaiseUndAndReturn;
+        insn->kind      = ArmInsnKind::kUndefined;
         return true;
     }
 
@@ -244,7 +244,7 @@ bool ArmNeon2RegUnaryDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
             insn->immediate = op.word;
             insn->op1       = (op7 == 0u) ? ArmNeon2RegReciprocal::kRecpe
                                           : ArmNeon2RegReciprocal::kRsqrte;
-            insn->place_fn  = &PlaceNeonData2RegReciprocal;
+            insn->kind  = ArmInsnKind::kNeonData2RegReciprocal;
             return true;
         }
         /* bits[10:9]=11 → VCVT int↔fp (A8.8.305). bits[8:7]=op directly. */
@@ -252,7 +252,7 @@ bool ArmNeon2RegUnaryDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
             insn->cond      = 14;
             insn->immediate = op.word;
             insn->op1       = b_high & 0x3u;
-            insn->place_fn  = &PlaceNeonData2RegCvtIntFp;
+            insn->kind      = ArmInsnKind::kNeonData2RegCvtIntFp;
             return true;
         }
         /* ARM DDI 0406C.c Table A7-13 (p. A7-268): A = 11 allocates B = 10x0x
@@ -260,7 +260,7 @@ bool ArmNeon2RegUnaryDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
            "Other encodings in this space are UNDEFINED." */
         insn->cond      = 14;
         insn->immediate = op.word;
-        insn->place_fn  = &EmitRaiseUndAndReturn;
+        insn->kind      = ArmInsnKind::kUndefined;
         return true;
     }
 

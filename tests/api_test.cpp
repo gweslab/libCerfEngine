@@ -11,7 +11,6 @@
 #include <cerfengine/arm/block_context.h>
 #include <cerfengine/arm/cpu_state.h>
 #include <cerfengine/arm/decoded_insn.h>
-#include <cerfengine/arm/place_fns.h>
 #include <cerfengine/calling_convention.h>
 #include <cerfengine/clock_host.h>
 #include <cerfengine/cycle_deadline.h>

@@ -4,7 +4,7 @@
 #include "arm_opcode.h"
 #include <cerfengine/arm/cpu_state.h>
 #include <cerfengine/arm/decoded_insn.h>
-#include <cerfengine/arm/place_fns.h>
+#include <cerfengine/arm/block_context.h>
 
 namespace cerfengine {
 
@@ -25,7 +25,7 @@ bool ArmCoprocSpaceDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
 
     if ((op1 & 0x30u) == 0x30u) {
         insn->r15_modified = true;
-        insn->place_fn     = &PlaceSvc;
+        insn->kind         = ArmInsnKind::kSvc;
         return true;
     }
     if ((op1 & 0x3Eu) == 0x00u) {
@@ -49,7 +49,7 @@ bool ArmCoprocSpaceDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         insn->rn       = rt2;
         insn->cp_num   = cp_num;
         insn->offset   = static_cast<int32_t>(word & 0xFFu);
-        insn->place_fn = &PlaceCoprocExtension;
+        insn->kind     = ArmInsnKind::kCoprocExtension;
         return true;
     }
     if ((op1 & 0x20u) == 0u) {
@@ -68,7 +68,7 @@ bool ArmCoprocSpaceDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
         insn->crd      = (word >> 12) & 0xFu;
         insn->cp_num   = cp_num;
         insn->offset   = insn->u != 0u ? imm32 : -imm32;
-        insn->place_fn = &PlaceCoprocDataTransfer;
+        insn->kind     = ArmInsnKind::kCoprocDataTransfer;
         return true;
     }
     insn->cp_num = cp_num;
@@ -78,7 +78,7 @@ bool ArmCoprocSpaceDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
     if (((word >> 4) & 0x1u) == 0u) {
         insn->cp_opc   = (word >> 20) & 0xFu;
         insn->crd      = (word >> 12) & 0xFu;
-        insn->place_fn = &PlaceCoprocDataOperation;
+        insn->kind     = ArmInsnKind::kCoprocDataOperation;
         return true;
     }
     const uint32_t l  = op1 & 0x1u;
@@ -106,7 +106,7 @@ bool ArmCoprocSpaceDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
        to 0, <CRn> set to c7, <CRm> set to c5, and <opc2> set to 4." */
     insn->context_sync = l == 0u && cp_num == 15u && insn->cp_opc == 0u &&
                          insn->crn == 7u && insn->crm == 5u && insn->cp == 4u;
-    insn->place_fn = &PlaceCoprocRegisterTransfer;
+    insn->kind = ArmInsnKind::kCoprocRegisterTransfer;
     return true;
 }
 

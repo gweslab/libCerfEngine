@@ -8,13 +8,9 @@ void IsaBlockSpace::JumpCacheClearRange(uint32_t base_va,
         JumpCacheClearPage(base_va);
         return;
     }
-    for (JumpCacheEntry& e : jump_cache) {
-        const uint32_t page = e.folded_va & 0xFFFFF000u;
-        if (page - base_va < span_bytes) {
-            e.folded_va = 0;
-            e.native    = nullptr;
-            e.blk       = nullptr;
-        }
+    for (uint32_t index = 0; index < kJumpCacheSize; ++index) {
+        const uint32_t page = JumpCacheLiveKey(jump_cache[index]) & 0xFFFFF000u;
+        if (page - base_va < span_bytes) JumpCacheClearEntry(index);
     }
 }
 

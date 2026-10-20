@@ -77,46 +77,12 @@ void ArmRoutedAccess::DispatchWrite(uint32_t pa, uint32_t bytes, uint32_t value,
     PanicRoutedWidth(guest_pc, va, bytes, pa, "store");
 }
 
-template <MmioWidth kWidth>
-uint32_t ArmRoutedAccess::IoLoadHelper(ArmRoutedAccess* self, uint32_t guest_pc,
-                                       uint32_t va) {
-    constexpr uint32_t kBytes = static_cast<uint32_t>(kWidth);
-    const uint32_t pa = self->mmu_->io_pending_address();
-    self->mmu_->ClearIoPending();
-    if constexpr (kBytes > 1u) {
-        if ((pa & (kBytes - 1u)) != 0u) {
-            self->HaltUnalignedRouted(guest_pc, va, kBytes, pa, "load");
-        }
-    }
-    return self->ReadRouted<kWidth>(pa);
-}
-
-template <MmioWidth kWidth>
-void ArmRoutedAccess::IoStoreHelper(ArmRoutedAccess* self, uint32_t guest_pc, uint32_t va,
-                                    uint32_t value) {
-    constexpr uint32_t kBytes = static_cast<uint32_t>(kWidth);
-    const uint32_t pa = self->mmu_->io_pending_address();
-    self->mmu_->ClearIoPending();
-    if constexpr (kBytes > 1u) {
-        if ((pa & (kBytes - 1u)) != 0u) {
-            self->HaltUnalignedRouted(guest_pc, va, kBytes, pa, "store");
-        }
-    }
-    self->WriteRouted<kWidth>(pa, value);
-}
-
-template uint32_t ArmRoutedAccess::IoLoadHelper<MmioWidth::kByte>(ArmRoutedAccess*, uint32_t,
-                                                                  uint32_t);
-template uint32_t ArmRoutedAccess::IoLoadHelper<MmioWidth::kHalf>(ArmRoutedAccess*, uint32_t,
-                                                                  uint32_t);
-template uint32_t ArmRoutedAccess::IoLoadHelper<MmioWidth::kWord>(ArmRoutedAccess*, uint32_t,
-                                                                  uint32_t);
-template void ArmRoutedAccess::IoStoreHelper<MmioWidth::kByte>(ArmRoutedAccess*, uint32_t,
-                                                               uint32_t, uint32_t);
-template void ArmRoutedAccess::IoStoreHelper<MmioWidth::kHalf>(ArmRoutedAccess*, uint32_t,
-                                                               uint32_t, uint32_t);
-template void ArmRoutedAccess::IoStoreHelper<MmioWidth::kWord>(ArmRoutedAccess*, uint32_t,
-                                                               uint32_t, uint32_t);
+template uint32_t ArmRoutedAccess::ReadRouted<MmioWidth::kByte>(uint32_t);
+template uint32_t ArmRoutedAccess::ReadRouted<MmioWidth::kHalf>(uint32_t);
+template uint32_t ArmRoutedAccess::ReadRouted<MmioWidth::kWord>(uint32_t);
+template void ArmRoutedAccess::WriteRouted<MmioWidth::kByte>(uint32_t, uint32_t);
+template void ArmRoutedAccess::WriteRouted<MmioWidth::kHalf>(uint32_t, uint32_t);
+template void ArmRoutedAccess::WriteRouted<MmioWidth::kWord>(uint32_t, uint32_t);
 
 bool ArmRoutedAccess::Load(uint32_t guest_pc, uint32_t va, uint32_t bytes, uint32_t* out,
                            bool unpriv) {

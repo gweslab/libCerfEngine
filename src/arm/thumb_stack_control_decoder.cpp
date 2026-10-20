@@ -2,7 +2,7 @@
 
 #include <cerfengine/engine.h>
 #include <cerfengine/arm/decoded_insn.h>
-#include <cerfengine/arm/place_fns.h>
+#include "arm_mark_unimplemented.h"
 
 namespace cerfengine {
 
@@ -25,7 +25,7 @@ bool ThumbStackControlDecoder::DecodeAdjustStackPointer(DecodedInsn* insn,
     insn->rn        = 13u;
     insn->rd        = 13u;
     insn->immediate = (op & 0x7Fu) * 4u;
-    insn->place_fn  = &PlaceDataProcessing;
+    insn->kind      = ArmInsnKind::kDataProcessing;
     return true;
 }
 
@@ -39,7 +39,7 @@ bool ThumbStackControlDecoder::DecodeCompareAndBranch(DecodedInsn* insn,
     insn->r15_modified    = true;
     insn->r15_conditional = 1u;
     insn->und_in_it       = 1u;
-    insn->place_fn        = &PlaceCbz;
+    insn->kind            = ArmInsnKind::kCbz;
     return true;
 }
 
@@ -49,10 +49,10 @@ bool ThumbStackControlDecoder::DecodeCompareAndBranch(DecodedInsn* insn,
 bool ThumbStackControlDecoder::DecodeHint(DecodedInsn* insn, uint32_t opa) {
     if (opa == 0x3u) {
         /* A8.8.425 WFI (p. A8-1106). */
-        insn->place_fn = &PlaceWfi;
+        insn->kind = ArmInsnKind::kWfi;
         return true;
     }
-    insn->place_fn = &PlaceNop;
+    insn->kind = ArmInsnKind::kNop;
     return true;
 }
 
@@ -71,7 +71,7 @@ bool ThumbStackControlDecoder::DecodeIfThen(DecodedInsn* insn, uint16_t op) {
     }
     insn->itstate       = (firstcond << 4) | mask;
     insn->itstate_valid = 1u;
-    insn->place_fn      = &PlaceNop;
+    insn->kind          = ArmInsnKind::kNop;
     return true;
 }
 
@@ -90,7 +90,7 @@ bool ThumbStackControlDecoder::DecodeChangeProcessorState(DecodedInsn* insn,
     /* QEMU ARM translate.c trans_CPS -> gen_set_psr_im ->
        gen_lookup_tb (DISAS_EXIT). */
     insn->context_sync = true;
-    insn->place_fn     = &PlaceCps;
+    insn->kind         = ArmInsnKind::kCps;
     return true;
 }
 
@@ -99,10 +99,10 @@ bool ThumbStackControlDecoder::DecodeExtend(DecodedInsn* insn, uint16_t op) {
     insn->rd  =  op       & 0x7u;
     insn->op1 = 0u;
     switch ((op >> 6) & 0x3u) {
-    case 0x0u: insn->place_fn = &PlaceSxth; break;
-    case 0x1u: insn->place_fn = &PlaceSxtb; break;
-    case 0x2u: insn->place_fn = &PlaceUxth; break;
-    default:   insn->place_fn = &PlaceUxtb; break;
+    case 0x0u: insn->kind = ArmInsnKind::kSxth; break;
+    case 0x1u: insn->kind = ArmInsnKind::kSxtb; break;
+    case 0x2u: insn->kind = ArmInsnKind::kUxth; break;
+    default:   insn->kind = ArmInsnKind::kUxtb; break;
     }
     return true;
 }
@@ -112,9 +112,9 @@ bool ThumbStackControlDecoder::DecodeByteReverse(DecodedInsn* insn,
     insn->rm = (op >> 3) & 0x7u;
     insn->rd =  op       & 0x7u;
     switch ((op >> 6) & 0x3u) {
-    case 0x0u: insn->place_fn = &PlaceRev;   break;
-    case 0x1u: insn->place_fn = &PlaceRev16; break;
-    case 0x3u: insn->place_fn = &PlaceRevsh; break;
+    case 0x0u: insn->kind = ArmInsnKind::kRev;   break;
+    case 0x1u: insn->kind = ArmInsnKind::kRev16; break;
+    case 0x3u: insn->kind = ArmInsnKind::kRevsh; break;
     default:   return false;
     }
     return true;
@@ -151,7 +151,7 @@ bool ThumbStackControlDecoder::DecodeStackControlGroup(DecodedInsn* insn,
         insn->w            = 1u;
         insn->s            = 0u;
         insn->r15_modified = load && r != 0u;
-        insn->place_fn     = &PlaceBlockDataTransfer;
+        insn->kind         = ArmInsnKind::kBlockDataTransfer;
         return true;
     }
     case 0x6u: {

@@ -1,7 +1,6 @@
 #include "mips16_decoder.h"
 
 #include "mips_opcode.h"
-#include "mips_place_fns.h"
 
 namespace cerfengine {
 
@@ -28,14 +27,14 @@ Mips16DecodeKind Mips16Decoder::DecodeBase(uint16_t hw0, uint16_t hw1,
             return Mips16DecodeKind::kSynth;
 
         case 0x01:
-            d->rt       = rx;
+            d->rt       = static_cast<uint8_t>(rx);
             d->target   = (base_pc & ~3u) + ((hw0 & 0xFFu) << 2);
-            d->place_fn = &PlaceMips16Addiupc;
+            d->kind     = MipsInsnKind::kMips16Addiupc;
             return Mips16DecodeKind::kDirect;
 
         case 0x02:
             d->target     = pc + 2u + (Sext(hw0 & 0x7FFu, 11) << 1);
-            d->place_fn   = &PlaceMips16B;
+            d->kind       = MipsInsnKind::kMips16B;
             d->ends_block = 1;
             return Mips16DecodeKind::kDirect;
 
@@ -43,16 +42,16 @@ Mips16DecodeKind Mips16Decoder::DecodeBase(uint16_t hw0, uint16_t hw1,
             const uint32_t imm26 =
                 ((hw0 & 0x1Fu) << 21) | (((hw0 >> 5) & 0x1Fu) << 16) | hw1;
             d->target    = ((pc + 4u) & 0xF0000000u) | (imm26 << 2);
-            d->place_fn  = (hw0 & 0x400u) ? &PlaceMips16Jalx : &PlaceMips16Jal;
+            d->kind      = (hw0 & 0x400u) ? MipsInsnKind::kMips16Jalx : MipsInsnKind::kMips16Jal;
             d->is_branch = 1;
             return Mips16DecodeKind::kDirect;
         }
 
         case 0x04:
         case 0x05:
-            d->rs         = rx;
+            d->rs         = static_cast<uint8_t>(rx);
             d->target     = pc + 2u + (Sext(hw0 & 0xFFu, 8) << 1);
-            d->place_fn   = (op == 0x04u) ? &PlaceMips16Beqz : &PlaceMips16Bnez;
+            d->kind       = (op == 0x04u) ? MipsInsnKind::kMips16Beqz : MipsInsnKind::kMips16Bnez;
             d->ends_block = 1;
             return Mips16DecodeKind::kDirect;
 
@@ -105,8 +104,8 @@ Mips16DecodeKind Mips16Decoder::DecodeBase(uint16_t hw0, uint16_t hw1,
                 case 1:
                     d->rs         = 24;
                     d->target     = pc + 2u + (Sext(hw0 & 0xFFu, 8) << 1);
-                    d->place_fn   = (((hw0 >> 8) & 7u) == 0u) ? &PlaceMips16Beqz
-                                                              : &PlaceMips16Bnez;
+                    d->kind       = (((hw0 >> 8) & 7u) == 0u) ? MipsInsnKind::kMips16Beqz
+                                                              : MipsInsnKind::kMips16Bnez;
                     d->ends_block = 1;
                     return Mips16DecodeKind::kDirect;
                 case 2:
@@ -161,9 +160,9 @@ Mips16DecodeKind Mips16Decoder::DecodeBase(uint16_t hw0, uint16_t hw1,
             return Mips16DecodeKind::kSynth;
 
         case 0x16:
-            d->rt       = rx;
+            d->rt       = static_cast<uint8_t>(rx);
             d->target   = (base_pc & ~3u) + ((hw0 & 0xFFu) << 2);
-            d->place_fn = &PlaceMips16Lwpc;
+            d->kind     = MipsInsnKind::kMips16Lwpc;
             return Mips16DecodeKind::kDirect;
 
         case 0x17:
@@ -233,8 +232,8 @@ Mips16DecodeKind Mips16Decoder::DecodeRr(uint16_t hw0, MipsDecodedInsn* d,
                     *synth = R(31, 0, 0, 0, MipsSpecial::kJR);
                     return Mips16DecodeKind::kSynth;
                 case 2:
-                    d->rs        = rx;
-                    d->place_fn  = &PlaceMips16Jalr;
+                    d->rs        = static_cast<uint8_t>(rx);
+                    d->kind      = MipsInsnKind::kMips16Jalr;
                     d->is_branch = 1;
                     return Mips16DecodeKind::kDirect;
                 default:

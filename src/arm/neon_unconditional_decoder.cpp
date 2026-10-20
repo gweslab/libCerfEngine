@@ -9,7 +9,7 @@
 #include "arm_neon_shift_imm_decoder.h"
 #include "arm_opcode.h"
 #include <cerfengine/arm/decoded_insn.h>
-#include <cerfengine/arm/place_fns.h>
+#include <cerfengine/arm/block_context.h>
 
 namespace cerfengine {
 
@@ -48,19 +48,28 @@ bool NeonUnconditionalDecoder::DecodeData3reg(DecodedInsn* insn, ArmOpcode op) {
                 /* VEXT (A8.8.316). */
                 insn->cond      = 14;
                 insn->immediate = op.word;
-                insn->place_fn  = &PlaceNeonDataVext;
+                insn->kind      = ArmInsnKind::kNeonDataVext;
                 return true;
             }
             if ((op.neon_data_3reg.opc & 0xCu) == 0x8u) {
                 insn->cond      = 14;
                 insn->immediate = op.word;
-                insn->place_fn  = &PlaceNeonDataVtbl;
+                insn->kind      = ArmInsnKind::kNeonDataVtbl;
                 return true;
             }
             if ((op.word & 0x00000F90u) == 0x00000C00u) {
                 insn->cond = 14;
                 insn->immediate = op.word;
-                insn->place_fn = &EmitNeonVdupScalar;
+                insn->kind      = ArmInsnKind::kNeonVdupScalar;
+                return true;
+            }
+            /* ARM DDI 0406C.c Table A7-8 (p. A7-261): U = 1, A = 1x11x allocates
+               B = 0xxx, 10xx and 1100 only; "Other encodings in this space are
+               UNDEFINED." */
+            if ((op.word & 0x00000800u) != 0u) {
+                insn->cond      = 14;
+                insn->immediate = op.word;
+                insn->kind      = ArmInsnKind::kUndefined;
                 return true;
             }
             if (two_reg_unary_decoder_->Decode(insn, op)) {
@@ -81,7 +90,7 @@ bool NeonUnconditionalDecoder::DecodeData3reg(DecodedInsn* insn, ArmOpcode op) {
     }
     insn->cond      = 14;
     insn->immediate = op.word;
-    insn->place_fn  = &PlaceNeonUnimplemented;
+    insn->kind      = ArmInsnKind::kNeonUnimplemented;
     return true;
 }
 

@@ -4,7 +4,7 @@
 #include "arm_opcode.h"
 #include <cerfengine/arm/cpu_state.h>
 #include <cerfengine/arm/decoded_insn.h>
-#include <cerfengine/arm/place_fns.h>
+#include <cerfengine/arm/block_context.h>
 
 namespace cerfengine {
 
@@ -53,7 +53,7 @@ bool ArmMultiplySpaceDecoder::Decode(DecodedInsn* insn, ArmOpcode op) {
     insn->rs       = ra;
     insn->rm       = rm;
     insn->rn       = rn;
-    insn->place_fn = &PlaceMultiply;
+    insn->kind     = ArmInsnKind::kMultiply;
     return true;
 }
 
@@ -95,7 +95,7 @@ bool ArmMultiplySpaceDecoder::DecodeHalfword(DecodedInsn* insn, ArmOpcode op) {
     insn->rs       = ra;
     insn->rm       = rm;
     insn->rn       = rn;
-    insn->place_fn = &PlaceHalfwordMultiply;
+    insn->kind     = ArmInsnKind::kHalfwordMultiply;
     return true;
 }
 

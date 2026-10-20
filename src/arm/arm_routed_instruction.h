@@ -9,9 +9,9 @@ namespace cerfengine {
 class ArmCpu;
 class ArmDecoder;
 class ArmMmu;
-class ArmTranslator;
 class ArmRoutedAccess;
 class ArmRoutedAddressing;
+class ArmRoutedTableBranch;
 class Thumb32Decoder;
 class ThumbDecoder;
 struct ArmCpuState;
@@ -24,7 +24,8 @@ public:
     bool ShouldRegister() override;
     void OnReady() override;
 
-    void Complete(uint32_t guest_pc);
+    void Complete(uint32_t guest_pc, uint32_t raw);
+    void CompleteOrRaiseAbort(uint32_t guest_pc, uint32_t raw);
 
 private:
     enum class Outcome { kNextInsn, kPcWritten, kExceptionEntered, kAborted };
@@ -42,12 +43,12 @@ private:
     ArmCpuState*              cpu_state_ = nullptr;
     ArmDecoder*               decoder_   = nullptr;
     ArmMmu*                   mmu_       = nullptr;
-    ArmTranslator*            translator_ = nullptr;
     const cerfengine::ArmFeatures*       config_    = nullptr;
     ArmRoutedAccess*          access_     = nullptr;
     ArmRoutedAddressing*      addressing_ = nullptr;
     ThumbDecoder*             thumb_     = nullptr;
     Thumb32Decoder*           thumb32_   = nullptr;
+    ArmRoutedTableBranch*     table_branch_ = nullptr;
 };
 
 }

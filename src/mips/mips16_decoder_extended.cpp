@@ -1,7 +1,6 @@
 #include "mips16_decoder.h"
 
 #include "mips_opcode.h"
-#include "mips_place_fns.h"
 
 namespace cerfengine {
 
@@ -20,20 +19,20 @@ Mips16DecodeKind Mips16Decoder::DecodeExtended(uint16_t ext_hw, uint16_t insn_hw
             *synth = I(MipsOp::kADDIU, 29, rx, imm16);
             return Mips16DecodeKind::kSynth;
         case 0x01:
-            d->rt       = rx;
+            d->rt       = static_cast<uint8_t>(rx);
             d->target   = (base_pc & ~3u) + Sext(imm16, 16);
-            d->place_fn = &PlaceMips16Addiupc;
+            d->kind     = MipsInsnKind::kMips16Addiupc;
             return Mips16DecodeKind::kDirect;
         case 0x02:
             d->target     = pc + 4u + (Sext(imm16, 16) << 1);
-            d->place_fn   = &PlaceMips16B;
+            d->kind       = MipsInsnKind::kMips16B;
             d->ends_block = 1;
             return Mips16DecodeKind::kDirect;
         case 0x04:
         case 0x05:
-            d->rs         = rx;
+            d->rs         = static_cast<uint8_t>(rx);
             d->target     = pc + 4u + (Sext(imm16, 16) << 1);
-            d->place_fn   = (op == 0x04u) ? &PlaceMips16Beqz : &PlaceMips16Bnez;
+            d->kind       = (op == 0x04u) ? MipsInsnKind::kMips16Beqz : MipsInsnKind::kMips16Bnez;
             d->ends_block = 1;
             return Mips16DecodeKind::kDirect;
         case 0x06: {
@@ -94,9 +93,9 @@ Mips16DecodeKind Mips16Decoder::DecodeExtended(uint16_t ext_hw, uint16_t insn_hw
                 case 1:
                     d->rs         = 24;
                     d->target     = pc + 4u + (Sext(imm16, 16) << 1);
-                    d->place_fn   = (((insn_hw >> 8) & 7u) == 0u)
-                                        ? &PlaceMips16Beqz
-                                        : &PlaceMips16Bnez;
+                    d->kind       = (((insn_hw >> 8) & 7u) == 0u)
+                                        ? MipsInsnKind::kMips16Beqz
+                                        : MipsInsnKind::kMips16Bnez;
                     d->ends_block = 1;
                     return Mips16DecodeKind::kDirect;
                 case 2:
@@ -137,9 +136,9 @@ Mips16DecodeKind Mips16Decoder::DecodeExtended(uint16_t ext_hw, uint16_t insn_hw
             *synth = I(MipsOp::kLHU, rx, ry, imm16);
             return Mips16DecodeKind::kSynth;
         case 0x16:
-            d->rt       = rx;
+            d->rt       = static_cast<uint8_t>(rx);
             d->target   = (base_pc & ~3u) + Sext(imm16, 16);
-            d->place_fn = &PlaceMips16Lwpc;
+            d->kind     = MipsInsnKind::kMips16Lwpc;
             return Mips16DecodeKind::kDirect;
         case 0x17:
             if (!has_64bit_) return Mips16DecodeKind::kReserved;
@@ -221,19 +220,19 @@ Mips16DecodeKind Mips16Decoder::DecodeI64(uint32_t funct, uint32_t ry_field,
                     Load Doubleword is extendable only as EXT-RRI (Table 3-13
                     p69) */
             if (extended) return Mips16DecodeKind::kReserved;
-            d->rt       = ry;
+            d->rt       = static_cast<uint8_t>(ry);
             d->target   = (base_pc & ~7u) + (off5 << 3);
-            d->place_fn = &PlaceMips16Ldpc;
+            d->kind     = MipsInsnKind::kMips16Ldpc;
             return Mips16DecodeKind::kDirect;
         case 5:
             *synth = I(MipsOp::kDADDIU, ry, ry,
                        extended ? ext_imm16 : Sext(off5, 5));
             return Mips16DecodeKind::kSynth;
         case 6:
-            d->rt     = ry;
+            d->rt     = static_cast<uint8_t>(ry);
             d->target = (base_pc & ~3u) +
                         (extended ? Sext(ext_imm16, 16) : off5 << 2);
-            d->place_fn = &PlaceMips16Addiupc;
+            d->kind     = MipsInsnKind::kMips16Addiupc;
             return Mips16DecodeKind::kDirect;
         case 7:
             *synth = I(MipsOp::kDADDIU, 29, ry,

@@ -36,7 +36,7 @@ uint32_t  LastErrorCode();
 struct HostFault {
     uint32_t    code;
     const void* address;
-    uint32_t    eax, ecx, edx, ebx, esp, ebp, esi, edi, eip, eflags;
+    char        registers[160];
 };
 
 int CaptureFault(void* exception_pointers, HostFault& fault);

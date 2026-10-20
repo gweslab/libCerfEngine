@@ -5,6 +5,7 @@
 #include <cstdint>
 
 #include <cerfengine/engine.h>
+#include "../cerfir/cerfir_guest_model.h"
 #include "mips_block_context.h"
 
 namespace cerfengine {
@@ -14,8 +15,12 @@ struct JitBlock;
 
 class MipsExceptionDelivery;
 class MipsInsnDecoder;
+class MipsIrCodegen;
 class MipsMmu;
 class MipsTranslationCache;
+class JitBlockIndex;
+struct BlockIndexSet;
+struct IsaBlockSpace;
 
 class MipsBlockCompiler : public cerfengine::EngineService {
 public:
@@ -26,8 +31,11 @@ public:
         return engine_.GetSetup().isa == cerfengine::Isa::kMips;
     }
 
-    void* FindBlockNativeStart(uint32_t guest_pc);
-    void* Compile(uint32_t guest_pc);
+    void* FindBlockNativeStart(uint32_t guest_pc, uint32_t privilege);
+    void* Compile(uint32_t guest_pc, uint32_t privilege);
+    void* CompilePendingEntry(uint32_t guest_pc, uint32_t privilege);
+
+    void SetPredecessor(uint32_t guest_pc) { predecessor_va_ = guest_pc; }
 
     static void CERFENGINE_CDECL UnimplementedHelper(MipsBlockCompiler* c, uint32_t pc,
                                                      uint32_t raw);
@@ -45,11 +53,28 @@ public:
                                                        MipsBlockCompiler* c);
 
 private:
-    bool   TailStillMapped(const JitBlock* blk);
-    size_t GenerateCode(uint8_t* code_location);
-    size_t GenerateCodeChecked(uint8_t* code_location);
+    struct IrIndex {
+        IsaBlockSpace* space;
+        BlockIndexSet* set;
+        JitBlockIndex* idx;
+        bool           outer_global;
+        uint8_t        asid;
+    };
 
-    MipsBlockContext block_ctx_{};
+    bool   TailStillMapped(const JitBlock* blk, uint32_t privilege);
+    bool   TranslateEntry(uint32_t guest_pc, uint32_t privilege, uint32_t* phys_start);
+    bool   DecodeBlock(uint32_t guest_pc, uint32_t privilege);
+    void*  EmitIrBlock(uint32_t guest_pc, uint32_t phys_start, const IrIndex* index,
+                       uint32_t privilege, bool pending, uint64_t start_ns);
+    size_t GenerateIrChecked(uint8_t* code, uint8_t* code_end, bool pending);
+
+    void   FillLink(const IrIndex* index, JitBlock* stored, uint32_t guest_pc,
+                    uint32_t phys_start, uint8_t* code, uint32_t privilege);
+
+    MipsBlockContext  block_ctx_{};
+    MipsIrCodegen*    ir_codegen_     = nullptr;
+    cerfir::BlockLink link_{};
+    uint32_t          predecessor_va_ = 0;
 
     cerfengine::EngineHost* host_      = nullptr;
     bool                   report_compiles_ = false;

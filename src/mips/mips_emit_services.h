@@ -6,7 +6,6 @@ namespace cerfengine {
 
 struct MipsCpuState;
 
-class MipsCp0Emitter;
 class MipsCpu;
 class MipsExceptionDelivery;
 class MipsInterruptChannel;
@@ -28,7 +27,6 @@ public:
     MipsCpuState*                   CpuState()   { return cpu_state_; }
     MipsMmu*                        Mmu()        { return mmu_; }
     const cerfengine::MipsFeatures* CpuConfig()  { return cpu_config_; }
-    MipsCp0Emitter*                 Cp0Emitter() { return cp0_emitter_; }
 
     MipsTranslationCache*  TranslationCache() { return cache_; }
     MipsMemoryAccess*      Memory()           { return memory_access_; }
@@ -41,7 +39,6 @@ private:
     MipsCpuState*                   cpu_state_   = nullptr;
     MipsMmu*                        mmu_         = nullptr;
     const cerfengine::MipsFeatures* cpu_config_  = nullptr;
-    MipsCp0Emitter*                 cp0_emitter_ = nullptr;
 
     MipsTranslationCache*  cache_         = nullptr;
     MipsMemoryAccess*      memory_access_ = nullptr;

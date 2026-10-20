@@ -2,7 +2,7 @@
 
 #include <cerfengine/engine.h>
 #include <cerfengine/arm/decoded_insn.h>
-#include <cerfengine/arm/place_fns.h>
+#include <cerfengine/arm/block_context.h>
 
 namespace cerfengine {
 
@@ -35,7 +35,7 @@ bool Thumb32LoadHalfwordDecoder::DecodeLiteral(DecodedInsn* insn, uint32_t op,
     insn->rd       = rt;
     insn->offset   = add != 0u ? static_cast<int32_t>(imm12)
                                : -static_cast<int32_t>(imm12);
-    insn->place_fn = &PlaceLoadStoreExtension;
+    insn->kind = ArmInsnKind::kLoadStoreExtension;
     return true;
 }
 
@@ -57,7 +57,7 @@ bool Thumb32LoadHalfwordDecoder::DecodeImmediate12(DecodedInsn* insn,
     insn->rn       = (op >> 16) & 0xFu;
     insn->rd       = rt;
     insn->offset   = static_cast<int32_t>(op & 0xFFFu);
-    insn->place_fn = &PlaceLoadStoreExtension;
+    insn->kind     = ArmInsnKind::kLoadStoreExtension;
     return true;
 }
 
@@ -84,7 +84,7 @@ bool Thumb32LoadHalfwordDecoder::DecodeImmediate8(DecodedInsn* insn,
     insn->rd       = rt;
     insn->offset   = add != 0u ? static_cast<int32_t>(imm8)
                                : -static_cast<int32_t>(imm8);
-    insn->place_fn = &PlaceLoadStoreExtension;
+    insn->kind = ArmInsnKind::kLoadStoreExtension;
     return true;
 }
 
@@ -107,7 +107,7 @@ bool Thumb32LoadHalfwordDecoder::DecodeRegister(DecodedInsn* insn, uint32_t op,
     insn->rd       = rt;
     insn->rm       = rm;
     insn->rs       = (op >> 4) & 0x3u;
-    insn->place_fn = &PlaceLoadStoreExtension;
+    insn->kind     = ArmInsnKind::kLoadStoreExtension;
     return true;
 }
 
@@ -129,7 +129,7 @@ bool Thumb32LoadHalfwordDecoder::DecodeUnprivileged(DecodedInsn* insn,
     insn->rn       = (op >> 16) & 0xFu;
     insn->rd       = rt;
     insn->offset   = static_cast<int32_t>(op & 0xFFu);
-    insn->place_fn = &PlaceLoadStoreExtension;
+    insn->kind     = ArmInsnKind::kLoadStoreExtension;
     return true;
 }
 
@@ -144,7 +144,7 @@ bool Thumb32LoadHalfwordDecoder::DecodeLoadHalfwordMemoryHints(
     if (rt == 0xFu &&
         (rn == 0xFu || op1 == 0x1u || op1 == 0x3u || op2 == 0x00u ||
          (op2 & 0x3Cu) == 0x30u)) {
-        insn->place_fn = &PlaceNop;
+        insn->kind = ArmInsnKind::kNop;
         return true;
     }
 
