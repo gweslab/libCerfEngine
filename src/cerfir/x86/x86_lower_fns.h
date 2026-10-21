@@ -7,8 +7,10 @@
 #include <cerfengine/force_inline.h>
 #include "../../x86_emit.h"
 #include "../../x86_emit_alu.h"
+#include "../../x86_emit_pointer.h"
 #include "../../x86_emit_shift.h"
 #include "../cerfir_op.h"
+#include "x86_host_abi.h"
 #include "x86_lowering.h"
 
 namespace cerfengine::cerfir {
@@ -131,8 +133,20 @@ CERFENGINE_FORCEINLINE void X86EmitPushCallArg(uint8_t*& c, const CallArg& a) {
     }
 }
 
+CERFENGINE_FORCEINLINE void X86LoadCallArg(uint8_t*& c, const CallArg& a, uint8_t reg) {
+    switch (a.kind) {
+    case CallArgKind::kImm:         x86::EmitMovRegImm32(c, reg, X86CallArgImm(a)); return;
+    case CallArgKind::kHostAddress: x86::EmitMovPtrRegImm(c, reg, a.Host()); return;
+    case CallArgKind::kHostWord:    x86::EmitMovRegDwordPtr(c, reg, a.Host()); return;
+    }
+    throw EmitFault("CerfIR x86 lowering: a call argument has no load");
+}
+
 bool X86EmitLeanCall(X86Lowering& lowering, const X86CallSite& site);
 void X86EmitCall(X86Lowering& lowering, const X86CallSite& site);
+bool X86EmitLeanCall32(X86Lowering& lowering, const X86CallSite& site);
+void X86EmitCall32(X86Lowering& lowering, const X86CallSite& site);
+void X86EmitCallX64(X86Lowering& lowering, const X86CallSite& site);
 void X86LowerCall(X86Lowering& lowering, Ref ref);
 void X86LowerLoad(X86Lowering& lowering, Ref ref);
 void X86LowerSwap(X86Lowering& lowering, Ref ref);

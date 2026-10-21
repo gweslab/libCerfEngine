@@ -249,9 +249,15 @@ void PushDouble(std::vector<uint32_t>& p, std::mt19937& rng, const Entry& e) {
 }
 
 void PushDataTransfer(std::vector<uint32_t>& p, std::mt19937& rng, const Entry& e) {
-    p.push_back(Cond(rng) | 0x0D000000u | (RigPick(rng, 2u) << 23) | (RigPick(rng, 2u) << 22) |
-                (RigPick(rng, 2u) << 21) | (RigPick(rng, 2u) << 20) | (RigPick(rng, 16u) << 16) |
-                (e.crd << 12) | (e.cp << 8) | RigPick(rng, 256u));
+    const uint32_t cond = Cond(rng);
+    const uint32_t u    = RigPick(rng, 2u);
+    const uint32_t d    = RigPick(rng, 2u);
+    const uint32_t w    = RigPick(rng, 2u);
+    const uint32_t l    = RigPick(rng, 2u);
+    const uint32_t rn   = RigPick(rng, 16u);
+    const uint32_t imm8 = RigPick(rng, 256u);
+    p.push_back(cond | 0x0D000000u | (u << 23) | (d << 22) | (w << 21) | (l << 20) | (rn << 16) |
+                (e.crd << 12) | (e.cp << 8) | imm8);
 }
 
 void PushDataOperation(std::vector<uint32_t>& p, std::mt19937& rng, const Entry& e) {
@@ -262,13 +268,17 @@ void PushDataOperation(std::vector<uint32_t>& p, std::mt19937& rng, const Entry&
 void PushInstruction(std::vector<uint32_t>& p, std::mt19937& rng, const std::vector<Entry>& es) {
     const uint32_t pick = RigPick(rng, 16u);
     if (pick == 0u) {
-        p.push_back(0xE1500000u | (RigPick(rng, 15u) << 16) | RigPick(rng, 15u));
+        const uint32_t rn = RigPick(rng, 15u);
+        const uint32_t rm = RigPick(rng, 15u);
+        p.push_back(0xE1500000u | (rn << 16) | rm);
         return;
     }
     if (pick == 1u) {
         const uint32_t vfp_cp = 10u + RigPick(rng, 2u);
-        p.push_back(Cond(rng) | 0x0E000010u | (RigPick(rng, 2u) << 20) | (RigPick(rng, 15u) << 12) |
-                    (vfp_cp << 8));
+        const uint32_t cond   = Cond(rng);
+        const uint32_t l      = RigPick(rng, 2u);
+        const uint32_t rt     = RigPick(rng, 15u);
+        p.push_back(cond | 0x0E000010u | (l << 20) | (rt << 12) | (vfp_cp << 8));
         return;
     }
     const Entry& e = es[RigPick(rng, static_cast<uint32_t>(es.size()))];

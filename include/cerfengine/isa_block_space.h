@@ -23,7 +23,13 @@ constexpr uint32_t kJumpCacheNoKey = 0xFFFFFFFFu;
 struct JumpCacheEntry {
     uint32_t key[kBlockPrivilegeCount];
     void*    native;
+#if UINTPTR_MAX > 0xFFFFFFFFu
+    uint64_t pad;
+#endif
 };
+
+static_assert((sizeof(JumpCacheEntry) & (sizeof(JumpCacheEntry) - 1u)) == 0u,
+              "a jump-cache entry has a power-of-two size");
 
 constexpr int32_t JumpCacheKeyDisp(uint32_t privilege) {
     return static_cast<int32_t>(offsetof(JumpCacheEntry, key) + privilege * sizeof(uint32_t));

@@ -21,16 +21,40 @@ namespace cerfengine {
 
 CERFENGINE_REGISTER_AS(MipsJit, GuestEngine);
 
+#if CERFENGINE_BACKEND_X86_WIN32
 int MipsJit::DispatchFaultFilter(void* exception_pointers, uint32_t guest_pc) {
     platform::HostFault fault;
     const int disposition = platform::CaptureFault(exception_pointers, fault);
     if (fault.code == platform::kHaltUnwindCode || fault.code == platform::kGuestUnwindCode) {
         return disposition;
     }
+    ReportHostFault(fault.code, fault.address, fault.registers, guest_pc);
+}
+#endif
+
+void MipsJit::ReportHostFault(uint32_t code, const void* address, const char* registers,
+                              uint32_t guest_pc) {
     CERFENGINE_LOG(engine_, kCaution,
                    "MipsJit: host exception 0x%08X at host addr %p while running guest PC "
-                   "0x%08X\n", fault.code, fault.address, guest_pc);
+                   "0x%08X\n", code, address, guest_pc);
+    CERFENGINE_LOG(engine_, kCaution, "MipsJit:   %s\n", registers);
     engine_.Panic("MipsJit: host exception while running guest PC 0x%08X", guest_pc);
+}
+
+namespace {
+
+#if CERFENGINE_BACKEND_X86_64_SYSV
+struct MipsBlockEntry {
+    void* native;
+    void* state;
+};
+
+void EnterMipsBlock(void* context) {
+    const MipsBlockEntry& entry = *static_cast<const MipsBlockEntry*>(context);
+    cerfir::HostEnterBlock(entry.native, entry.state);
+}
+#endif
+
 }
 
 void MipsJit::OnReady() {
@@ -130,6 +154,18 @@ dispatch:
         if (_exception_code() == platform::kHaltUnwindCode) return RunStatus::kHalted;
     }
     return RunStatus::kRunning;
+#elif CERFENGINE_BACKEND_X86_64_SYSV
+    {
+        MipsBlockEntry      entry{native, cpu_state_};
+        platform::HostFault fault{};
+        const uint32_t      code = platform::CallDispatchGuarded(&EnterMipsBlock, &entry, fault);
+        if (code == 0u || code == platform::kGuestUnwindCode) return RunStatus::kRunning;
+        if (code == platform::kHaltUnwindCode) return RunStatus::kHalted;
+        if (code != platform::kHostFaultCode) {
+            engine_.Panic("MipsJit: unwind code 0x%08X while running guest PC 0x%08X", code, pc);
+        }
+        ReportHostFault(fault.code, fault.address, fault.registers, pc);
+    }
 #else
     engine_.Panic("MipsJit: guest PC 0x%08X reached dispatch in a build without an execution "
                   "backend", pc);

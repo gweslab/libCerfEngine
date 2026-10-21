@@ -31,9 +31,10 @@ uint32_t NeonData(std::mt19937& rng) {
 
 uint32_t NeonLoadStore(std::mt19937& rng) {
     static constexpr uint32_t kRm[] = {13u, 15u, 0u, 1u, 2u, 3u};
-    const uint32_t rm = kRm[RigPick(rng, 6u)];
-    return 0xF4000000u | (static_cast<uint32_t>(rng()) & 0x00F0FFF0u) | (BaseRegister(rng) << 16) |
-           rm;
+    const uint32_t rm   = kRm[RigPick(rng, 6u)];
+    const uint32_t bits = static_cast<uint32_t>(rng()) & 0x00F0FFF0u;
+    const uint32_t rn   = BaseRegister(rng);
+    return 0xF4000000u | bits | (rn << 16) | rm;
 }
 
 uint32_t VfpDataOperation(std::mt19937& rng) {
@@ -41,7 +42,9 @@ uint32_t VfpDataOperation(std::mt19937& rng) {
 }
 
 uint32_t VfpLoadStore(std::mt19937& rng) {
-    return 0xEC000A00u | (static_cast<uint32_t>(rng()) & 0x01F0F1FFu) | (BaseRegister(rng) << 16);
+    const uint32_t bits = static_cast<uint32_t>(rng()) & 0x01F0F1FFu;
+    const uint32_t rn   = BaseRegister(rng);
+    return 0xEC000A00u | bits | (rn << 16);
 }
 
 uint32_t VfpRegisterTransfer(std::mt19937& rng) {
@@ -49,9 +52,12 @@ uint32_t VfpRegisterTransfer(std::mt19937& rng) {
 }
 
 uint32_t VfpTwoRegisterTransfer(std::mt19937& rng) {
-    return 0xEC400A10u | (RigPick(rng, 2u) << 20) | (RigPick(rng, 15u) << 16) |
-           (RigPick(rng, 15u) << 12) | (RigPick(rng, 2u) << 8) |
-           (static_cast<uint32_t>(rng()) & 0x2Fu);
+    const uint32_t op   = RigPick(rng, 2u);
+    const uint32_t rt2  = RigPick(rng, 15u);
+    const uint32_t rt   = RigPick(rng, 15u);
+    const uint32_t c    = RigPick(rng, 2u);
+    const uint32_t bits = static_cast<uint32_t>(rng()) & 0x2Fu;
+    return 0xEC400A10u | (op << 20) | (rt2 << 16) | (rt << 12) | (c << 8) | bits;
 }
 
 uint32_t ArmWord(std::mt19937& rng) {
@@ -135,7 +141,9 @@ void TestSimd(const Config& config) {
         for (uint32_t i = 10; i < 15u; ++i) initial.gprs[i] = static_cast<uint32_t>(rng());
         initial.gprs[15] = kRigRamBase;
         for (uint64_t& d : initial.vfp_d) {
-            d = (static_cast<uint64_t>(rng()) << 32) | static_cast<uint32_t>(rng());
+            const uint64_t high = static_cast<uint32_t>(rng());
+            const uint64_t low  = static_cast<uint32_t>(rng());
+            d = (high << 32) | low;
         }
         initial.fpscr = static_cast<uint32_t>(rng()) & 0x03C0009Fu;
         initial.fpexc = 0x40000000u;

@@ -103,7 +103,9 @@ private:
         uint32_t funct = kNarrow[Pick(17u)];
         if (wide_ && Pick(3u) == 0u) funct = kWide[Pick(9u)];
         if (Pick(40u) == 0u) funct = kRare[Pick(5u)];
-        return Op(0x1Du, (X() << 8) | (X() << 5) | funct);
+        const uint32_t rx = X();
+        const uint32_t ry = X();
+        return Op(0x1Du, (rx << 8) | (ry << 5) | funct);
     }
 
     uint16_t Simple() {
@@ -111,10 +113,21 @@ private:
         const uint32_t y = X();
         switch (Pick(wide_ ? 18u : 15u)) {
         case 0u: return Op(0x00u, (x << 8) | Imm8());
-        case 1u: return Op(0x06u, (x << 8) | (y << 5) | (Pick(8u) << 2) | ShiftFunct());
-        case 2u: return Op(0x08u, (x << 8) | (y << 5) | ((wide_ ? Pick(2u) : 0u) << 4) | Pick(16u));
+        case 1u: {
+            const uint32_t sa    = Pick(8u);
+            const uint32_t funct = ShiftFunct();
+            return Op(0x06u, (x << 8) | (y << 5) | (sa << 2) | funct);
+        }
+        case 2u: {
+            const uint32_t wide = wide_ ? Pick(2u) : 0u;
+            const uint32_t imm  = Pick(16u);
+            return Op(0x08u, (x << 8) | (y << 5) | (wide << 4) | imm);
+        }
         case 3u: return Op(0x09u, (x << 8) | Imm8());
-        case 4u: return Op(Pick(2u) == 0u ? 0x0Au : 0x0Bu, (x << 8) | Imm8());
+        case 4u: {
+            const uint32_t op = Pick(2u) == 0u ? 0x0Au : 0x0Bu;
+            return Op(op, (x << 8) | Imm8());
+        }
         case 5u: {
             static constexpr uint32_t kMinor[] = {2u, 3u, 5u, 5u, 7u, 7u, 4u, 6u};
             const uint32_t minor = kMinor[Pick(Pick(8u) == 0u ? 8u : 6u)];
@@ -126,22 +139,36 @@ private:
             if (minor == 7u) imm = (y << 5) | Pick(32u);
             return Op(0x0Cu, (minor << 8) | imm);
         }
-        case 6u: return Op(Pick(2u) == 0u ? 0x0Du : 0x0Eu, (x << 8) | Imm8());
+        case 6u: {
+            const uint32_t op = Pick(2u) == 0u ? 0x0Du : 0x0Eu;
+            return Op(op, (x << 8) | Imm8());
+        }
         case 7u:
         case 8u:
         case 9u: {
             static constexpr uint32_t kOps[] = {0x10u, 0x11u, 0x13u, 0x14u, 0x15u,
                                                 0x18u, 0x19u, 0x1Bu};
-            return Op(kOps[Pick(8u)], (x << 8) | (y << 5) | Pick(32u));
+            const uint32_t op  = kOps[Pick(8u)];
+            const uint32_t imm = Pick(32u);
+            return Op(op, (x << 8) | (y << 5) | imm);
         }
-        case 10u: return Op(Pick(2u) == 0u ? 0x12u : 0x1Au, (x << 8) | Imm8());
-        case 11u: return Op(0x1Cu, (x << 8) | (y << 5) | (X() << 2) | (wide_ ? Pick(4u) : 1u + 2u * Pick(2u)));
+        case 10u: {
+            const uint32_t op = Pick(2u) == 0u ? 0x12u : 0x1Au;
+            return Op(op, (x << 8) | Imm8());
+        }
+        case 11u: {
+            const uint32_t rz = X();
+            const uint32_t f  = wide_ ? Pick(4u) : 1u + 2u * Pick(2u);
+            return Op(0x1Cu, (x << 8) | (y << 5) | (rz << 2) | f);
+        }
         case 12u:
         case 13u:
         case 14u: return Rr();
         case 15u: {
             static constexpr uint32_t kOps[] = {0x07u, 0x0Fu, 0x17u};
-            return Op(kOps[Pick(3u)], (x << 8) | (y << 5) | Pick(32u));
+            const uint32_t op  = kOps[Pick(3u)];
+            const uint32_t imm = Pick(32u);
+            return Op(op, (x << 8) | (y << 5) | imm);
         }
         default: {
             static constexpr uint32_t kFunct[] = {0u, 1u, 2u, 5u, 7u, 3u};
@@ -157,11 +184,26 @@ private:
                                                0x15u, 0x18u, 0x19u, 0x1Au, 0x1Bu};
         static constexpr uint32_t kWide[]   = {0x07u, 0x0Fu, 0x17u, 0x1Du, 0x1Fu};
         const uint32_t op  = wide_ && Pick(4u) == 0u ? kWide[Pick(5u)] : kNarrow[Pick(19u)];
-        uint32_t       mid = (X() << 8) | (X() << 5);
+        const uint32_t rx  = X();
+        const uint32_t ry  = X();
+        uint32_t       mid = (rx << 8) | (ry << 5);
         if (op == 0x06u) mid |= ShiftFunct();
-        if (op == 0x0Cu) mid = ((2u + Pick(Pick(8u) == 0u ? 6u : 2u)) << 8) | (X() << 5);
-        if (op == 0x1Du) mid = (Pick(8u) == 0u ? (X() << 8) : 0u) | (X() << 5) | (Pick(2u) == 0u ? 0x08u : 0x13u);
-        if (op == 0x1Fu) mid = (Pick(8u) << 8) | (X() << 5);
+        if (op == 0x0Cu) {
+            const uint32_t minor = 2u + Pick(Pick(8u) == 0u ? 6u : 2u);
+            const uint32_t r     = X();
+            mid = (minor << 8) | (r << 5);
+        }
+        if (op == 0x1Du) {
+            const uint32_t hi    = Pick(8u) == 0u ? (X() << 8) : 0u;
+            const uint32_t r     = X();
+            const uint32_t funct = Pick(2u) == 0u ? 0x08u : 0x13u;
+            mid = hi | (r << 5) | funct;
+        }
+        if (op == 0x1Fu) {
+            const uint32_t minor = Pick(8u);
+            const uint32_t r     = X();
+            mid = (minor << 8) | (r << 5);
+        }
         const uint32_t ext = static_cast<uint32_t>(rng_()) & 0x7FFu;
         const uint32_t low = op == 0x1Du ? (mid & 0x1Fu) : Pick(32u);
         Emit32(static_cast<uint16_t>(0xF000u | ext),
@@ -177,7 +219,12 @@ private:
             return;
         case 1u: {
             const bool bt = Pick(2u) == 0u;
-            Emit16(bt ? Op(0x0Cu, Pick(2u) << 8) : Op(0x04u + Pick(2u), X() << 8));
+            if (bt) {
+                Emit16(Op(0x0Cu, Pick(2u) << 8));
+            } else {
+                const uint32_t op = 0x04u + Pick(2u);
+                Emit16(Op(op, X() << 8));
+            }
             fixups_.push_back(Fixup{at, static_cast<uint32_t>(starts_.size()), FixKind::kBz16});
             return;
         }
@@ -233,7 +280,9 @@ private:
         const uint32_t scale = op == 0x10u || op == 0x14u || op == 0x18u ? 1u
                                : op == 0x13u || op == 0x1Bu               ? 4u
                                                                          : 2u;
-        Emit16(Op(op, (base << 8) | (X() << 5) | (Pick(32u) & ~(scale - 1u))));
+        const uint32_t ry  = X();
+        const uint32_t imm = Pick(32u) & ~(scale - 1u);
+        Emit16(Op(op, (base << 8) | (ry << 5) | imm));
     }
 
     static constexpr uint32_t kMipsGenBaseData = 28u;

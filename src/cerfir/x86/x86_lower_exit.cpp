@@ -10,6 +10,7 @@
 #include "../../emit_fault.h"
 #include "../../x86_emit.h"
 #include "../../x86_emit_alu.h"
+#include "../../x86_emit_pointer.h"
 #include "../../x86_emit_shift.h"
 #include "x86_copy_lanes.h"
 #include "x86_lower_fns.h"
@@ -18,12 +19,10 @@ namespace cerfengine::cerfir {
 
 namespace {
 
-constexpr uint32_t kJumpCacheEntryShift = 4;
+constexpr uint32_t kJumpCacheEntryShift = x86::kX64 ? 5u : 4u;
 
-#if CERFENGINE_BACKEND_X86_WIN32
 static_assert(sizeof(JumpCacheEntry) == (1u << kJumpCacheEntryShift),
               "emitted jump-cache probes scale the index by a shift");
-#endif
 
 uint32_t FoldKey(const ExitModel& e, const BlockLink& link, uint32_t va) {
     if (e.fold_mask == 0u) return va;
@@ -117,14 +116,20 @@ void EmitProbeBytes(uint8_t*& c, const ExitModel& e, const BlockLink& link, int3
     EmitMovRegReg(c, kEcx, kEax);
     EmitShrReg32Imm(c, kEcx, 2);
     EmitAndRegImm32(c, kEcx, kJumpCacheSize - 1u);
-    EmitShlReg32Imm(c, kEcx, kJumpCacheEntryShift);
-    EmitAddRegImm32(c, kEcx, static_cast<uint32_t>(reinterpret_cast<uintptr_t>(link.jump_cache)));
+    EmitShlReg32Imm(c, kEcx, static_cast<uint8_t>(kJumpCacheEntryShift));
+    if constexpr (kX64) {
+        EmitMovPtrRegImm(c, kAddressReg, link.jump_cache);
+        EmitAddPtrRegReg(c, kEcx, kAddressReg);
+    } else {
+        EmitAddRegImm32(c, kEcx,
+                        static_cast<uint32_t>(reinterpret_cast<uintptr_t>(link.jump_cache)));
+    }
 
     EmitCmpRegBaseDisp32(c, kEax, kEcx, link.jump_cache_key_disp);
     miss[n++] = EmitJnzLabel32(c);
 
-    EmitMovRegBaseDisp32(c, kEcx, kEcx, static_cast<int32_t>(offsetof(JumpCacheEntry, native)));
-    EmitTestRegReg(c, kEcx, kEcx);
+    EmitMovPtrRegBaseDisp32(c, kEcx, kEcx, static_cast<int32_t>(offsetof(JumpCacheEntry, native)));
+    EmitTestPtrRegReg(c, kEcx, kEcx);
     miss[n++] = EmitJzLabel32(c);
 
     /* JMP r/m32 - FF /4 (SDM Vol. 2A 3-552 JMP, Op/En M). */

@@ -1,6 +1,7 @@
 #include "../../emit_fault.h"
 #include "../../x86_emit.h"
 #include "../../x86_emit_alu.h"
+#include "../../x86_emit_pointer.h"
 #include "x86_lower_fns.h"
 #include "x86_memory_operands.h"
 #include "x86_soft_tlb.h"
@@ -71,7 +72,7 @@ void X86EmitTransferWords(X86Lowering& l, uint32_t attr, uint32_t list) {
             at = w.offset[k];
         }
         c = X86EmitTlbLookup(l, c, m, access);
-        EmitTestRegReg(c, kEax, kEax);
+        EmitTestPtrRegReg(c, kEax, kEax);
         uint8_t* const site = EmitJzLabel32(c);
         if (k == 0u) {
             first = site;

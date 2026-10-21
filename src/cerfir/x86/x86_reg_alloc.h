@@ -14,10 +14,11 @@ namespace cerfengine::cerfir {
 
 constexpr uint32_t RegBit(uint8_t reg) { return 1u << reg; }
 
-constexpr uint32_t kX86ScratchRegs = RegBit(0) | RegBit(1) | RegBit(2);
-constexpr uint32_t kX86SavedRegs   = RegBit(5) | RegBit(7);
+constexpr uint32_t kX86ScratchRegs = RegBit(x86::kEax) | RegBit(x86::kEcx) | RegBit(x86::kEdx);
+constexpr uint32_t kX86SavedRegs   = RegBit(x86::kSavedRegA) | RegBit(x86::kSavedRegB);
 constexpr uint32_t kX86AllocRegs   = kX86ScratchRegs | kX86SavedRegs;
 constexpr uint32_t kX86ByteRegs    = kX86ScratchRegs;
+constexpr uint32_t kX86RegCount    = x86::kX64 ? 16u : 8u;
 
 /* SDM Vol. 2D B.1.4.7 Table B-10 (p. B-6): the tttn field; "the n part
    indicates whether to use the condition (n = 0) or its negation (n = 1)". */
@@ -177,6 +178,7 @@ public:
     uint8_t  TakeOrCopySlow(Ref src, Ref def, uint32_t allowed);
     uint8_t  CopyIntoFixed(Ref src, uint8_t reg);
     uint8_t  AllocTemp(uint32_t allowed);
+    void     CopyOut(Ref src, uint8_t reg);
 
     CERFENGINE_FORCEINLINE uint8_t ClaimFixed(uint8_t reg) {
         if ((locked_ & RegBit(reg)) != 0u) FixedRegisterBusy(reg);
@@ -292,7 +294,7 @@ private:
             if ((free & kX86ScratchRegs) != 0u) {
                 return static_cast<uint8_t>(LowestSetBit(free & kX86ScratchRegs));
             }
-            return (free & RegBit(7)) != 0u ? uint8_t{7} : uint8_t{5};
+            return (free & RegBit(x86::kSavedRegA)) != 0u ? x86::kSavedRegA : x86::kSavedRegB;
         }
         return PickRegByEviction(allowed);
     }
@@ -331,7 +333,7 @@ private:
     std::vector<Ref>      flag_values_;
     uint32_t              lazy_count_ = 0;
     uint32_t              flag_count_ = 0;
-    Ref                   owner_[8]{};
+    Ref                   owner_[kX86RegCount]{};
     uint32_t              owned_      = 0;
     uint32_t              homed_      = 0;
     uint32_t              locked_     = 0;

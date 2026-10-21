@@ -47,19 +47,26 @@ CERFENGINE_FORCEINLINE void X86Lowering::EmitCallConst(const CallSpec& spec, uin
         EmitCallConstBusy(spec, num_args, a0, a1, a2, a3);
         return;
     }
-    uint8_t*       c        = cursor_;
-    const bool     fastcall = spec.conv == CallConv::kFastcall;
-    const uint32_t in_regs  = fastcall ? (num_args < 2u ? num_args : 2u) : 0u;
+    uint8_t* c = cursor_;
     if (spec.store_pc) x86::EmitMovBaseDisp32Imm32(c, x86::kStateReg, block_->PcSlot(), spec.pc);
-    if (num_args > 3u) x86::EmitPush32(c, X86CallArgImm(a3));
-    if (num_args > 2u) x86::EmitPush32(c, X86CallArgImm(a2));
-    if (num_args > 1u && in_regs < 2u) x86::EmitPush32(c, X86CallArgImm(a1));
-    if (num_args > 0u && in_regs < 1u) x86::EmitPush32(c, X86CallArgImm(a0));
-    if (in_regs > 0u) x86::EmitMovRegImm32(c, x86::kEcx, X86CallArgImm(a0));
-    if (in_regs > 1u) x86::EmitMovRegImm32(c, x86::kEdx, X86CallArgImm(a1));
-    x86::EmitCall(c, spec.fn);
-    const uint32_t arg_bytes = num_args * 4u;
-    if (!fastcall && arg_bytes != 0u) x86::EmitAddRegImm32(c, x86::kEsp, arg_bytes);
+    if constexpr (x86::kX64) {
+        X86RequireKnownCallAbi();
+        const CallArg args[4] = {a0, a1, a2, a3};
+        for (uint32_t i = 0; i < num_args; ++i) X86LoadCallArg(c, args[i], kX86ArgRegs[i]);
+        x86::EmitCall(c, spec.fn);
+    } else {
+        const bool     fastcall = spec.conv == CallConv::kFastcall;
+        const uint32_t in_regs  = fastcall ? (num_args < 2u ? num_args : 2u) : 0u;
+        if (num_args > 3u) x86::EmitPush32(c, X86CallArgImm(a3));
+        if (num_args > 2u) x86::EmitPush32(c, X86CallArgImm(a2));
+        if (num_args > 1u && in_regs < 2u) x86::EmitPush32(c, X86CallArgImm(a1));
+        if (num_args > 0u && in_regs < 1u) x86::EmitPush32(c, X86CallArgImm(a0));
+        if (in_regs > 0u) x86::EmitMovRegImm32(c, x86::kEcx, X86CallArgImm(a0));
+        if (in_regs > 1u) x86::EmitMovRegImm32(c, x86::kEdx, X86CallArgImm(a1));
+        x86::EmitCall(c, spec.fn);
+        const uint32_t arg_bytes = num_args * 4u;
+        if (!fastcall && arg_bytes != 0u) x86::EmitAddRegImm32(c, x86::kEsp, arg_bytes);
+    }
     cursor_ = c;
     ClearFlagSource();
 }

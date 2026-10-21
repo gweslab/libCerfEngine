@@ -57,6 +57,8 @@ public:
 
 private:
     int  DispatchFaultFilter(void* exception_pointers, uint32_t guest_pc);
+    [[noreturn]] void ReportHostFault(uint32_t code, const void* address, const char* registers,
+                                      uint32_t guest_pc);
     void LogEmittedBytesAroundFault(uintptr_t fault);
 
     ArmCpuState* cpu_state_ = nullptr;

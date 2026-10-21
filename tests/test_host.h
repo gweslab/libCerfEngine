@@ -18,6 +18,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <functional>
 #include <utility>
 #include <vector>
@@ -45,7 +46,12 @@
 class TestHost : public cerfengine::EngineHost, public cerfengine::ClockHost {
 public:
     TestHost(uint32_t ram_base, uint32_t ram_size, uint32_t mmio_pa)
-        : ram_base_(ram_base), ram_(ram_size, 0), mmio_pa_(mmio_pa) {}
+        : ram_base_(ram_base), ram_(ram_size, 0), data_(ram_.data()), mmio_pa_(mmio_pa) {}
+
+    void MoveRamTo(uint8_t* backing) {
+        std::memcpy(backing, data_, ram_.size());
+        data_ = backing;
+    }
 
     void Attach(cerfengine::Setup& setup) {
         setup.host                  = this;
@@ -57,7 +63,7 @@ public:
 
     void LoadWords(uint32_t pa, const uint32_t* words, size_t count) {
         TEST_CHECK(pa >= ram_base_ && pa - ram_base_ + count * 4u <= ram_.size());
-        uint8_t* out = ram_.data() + (pa - ram_base_);
+        uint8_t* out = data_ + (pa - ram_base_);
         for (size_t i = 0; i < count; ++i) cerfengine::le::Put32(out + i * 4u, words[i]);
     }
 
@@ -87,7 +93,10 @@ public:
         mmio_reads_ = 0u;
     }
     const std::vector<MmioAccess>& MmioLog() const { return mmio_log_; }
-    const std::vector<uint8_t>&    Ram() const { return ram_; }
+    const std::vector<uint8_t>& Ram() const {
+        TEST_CHECK(data_ == ram_.data());
+        return ram_;
+    }
 
     bool     MmioWritten() const { return mmio_written_; }
     uint64_t MmioValue() const { return mmio_value_; }
@@ -261,11 +270,12 @@ private:
 
     uint8_t* Backing(uint32_t pa) {
         if (pa < ram_base_ || pa - ram_base_ >= ram_.size()) return nullptr;
-        return ram_.data() + (pa - ram_base_);
+        return data_ + (pa - ram_base_);
     }
 
     uint32_t              ram_base_;
     std::vector<uint8_t>  ram_;
+    uint8_t*              data_;
     uint32_t              mmio_pa_;
     std::atomic<uint32_t> generation_{0};
     bool                  mmio_written_    = false;

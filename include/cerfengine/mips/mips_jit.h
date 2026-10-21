@@ -60,6 +60,8 @@ public:
 private:
     void DeliverReset();
     int  DispatchFaultFilter(void* exception_pointers, uint32_t guest_pc);
+    [[noreturn]] void ReportHostFault(uint32_t code, const void* address, const char* registers,
+                                      uint32_t guest_pc);
 
     MipsCpuState* cpu_state_      = nullptr;
     uint32_t      predecessor_va_ = 0;

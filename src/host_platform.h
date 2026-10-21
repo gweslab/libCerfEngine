@@ -9,9 +9,10 @@ namespace cerfengine::platform {
 
 inline constexpr uint32_t kGuestUnwindCode = 0xE0000001u;
 inline constexpr uint32_t kHaltUnwindCode  = 0xE0000002u;
+inline constexpr uint32_t kHostFaultCode   = 0xE0000003u;
 
 void* AllocateExecutable(size_t bytes);
-void  FreeExecutable(void* base);
+void  FreeExecutable(void* base, size_t bytes);
 
 [[noreturn]] void RaiseUnwind(uint32_t code);
 
@@ -36,9 +37,15 @@ uint32_t  LastErrorCode();
 struct HostFault {
     uint32_t    code;
     const void* address;
-    char        registers[160];
+    char        registers[448];
 };
 
+#if CERFENGINE_BACKEND_X86_WIN32
 int CaptureFault(void* exception_pointers, HostFault& fault);
+#endif
+
+#if CERFENGINE_BACKEND_X86_64_SYSV
+uint32_t CallDispatchGuarded(void (*fn)(void* context), void* context, HostFault& fault);
+#endif
 
 }

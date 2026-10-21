@@ -46,6 +46,8 @@ private:
                         size_t* call_rel) const;
     uint8_t* EmitMiss(uint8_t* cursor, uint32_t privilege, TlbAccess access) const;
     uint8_t* EmitFold(uint8_t* cursor) const;
+    [[nodiscard]] uint8_t* EmitHelperCall(uint8_t* cursor, const void* helper) const;
+    [[nodiscard]] uint8_t* EmitInlineHelperCall(uint8_t* cursor, const void* helper) const;
 
     SoftTlbModel model_{};
     uint32_t     set_shift_ = 0;

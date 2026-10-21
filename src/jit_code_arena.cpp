@@ -7,7 +7,7 @@ namespace cerfengine {
 
 JitCodeArena::~JitCodeArena() {
     if (region_start_) {
-        cerfengine::platform::FreeExecutable(region_start_);
+        cerfengine::platform::FreeExecutable(region_start_, region_size_);
     }
 }
 
@@ -29,7 +29,7 @@ void JitCodeArena::Initialize(cerfengine::Engine& engine) {
 }
 
 uint8_t* JitCodeArena::Allocate(size_t size) {
-    const size_t aligned = (size + 3u) & ~static_cast<size_t>(3u);
+    const size_t aligned = (size + kAlignment - 1u) & ~(kAlignment - 1u);
     if (aligned < size) {
         engine_->Panic("JitCodeArena::Allocate: size overflow (%zu)", size);
     }
@@ -47,8 +47,8 @@ void JitCodeArena::FreeUnusedTail(uint8_t* start_of_free) {
                        start_of_free, flush_floor_, cursor_);
     }
     cursor_ = reinterpret_cast<uint8_t*>(
-        (reinterpret_cast<uintptr_t>(start_of_free) + 3u) &
-        ~static_cast<uintptr_t>(3u));
+        (reinterpret_cast<uintptr_t>(start_of_free) + kAlignment - 1u) &
+        ~static_cast<uintptr_t>(kAlignment - 1u));
 }
 
 uint8_t* JitCodeArena::AllocatePermanent(size_t size) {

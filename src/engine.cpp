@@ -6,7 +6,7 @@
 
 #include "host_platform.h"
 
-#if CERFENGINE_BACKEND_X86_WIN32
+#if CERFENGINE_EXECUTION_BACKEND
 #include "mips/mips_translation_cache.h"
 #endif
 
@@ -34,7 +34,7 @@ Engine::~Engine() {
     TearDown();
 }
 
-#if CERFENGINE_BACKEND_X86_WIN32
+#if CERFENGINE_EXECUTION_BACKEND
 bool Engine::ValidateSetup(std::string& error) {
     if (setup_.host == nullptr || setup_.mmio.generation == nullptr) {
         error = "the setup needs a host and the MMIO bus generation counter";
@@ -69,7 +69,7 @@ bool Engine::ValidateSetup(std::string& error) {
 #endif
 
 bool Engine::Start(std::string& error) {
-#if CERFENGINE_BACKEND_X86_WIN32
+#if CERFENGINE_EXECUTION_BACKEND
     if (!ValidateSetup(error)) return false;
     Bootstrap();
     return true;

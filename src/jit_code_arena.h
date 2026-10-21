@@ -35,6 +35,7 @@ public:
 
 private:
     static constexpr size_t kRegionSize = 32u * 1024u * 1024u;
+    static constexpr size_t kAlignment  = alignof(void*);
 
     cerfengine::Engine* engine_ = nullptr;
 

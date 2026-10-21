@@ -6,7 +6,9 @@
 #include "../../lowest_set_bit.h"
 #include "../../x86_emit.h"
 #include "../../x86_emit_alu.h"
+#include "../../x86_emit_pointer.h"
 #include "../../x86_emit_shift.h"
+#include "x86_host_abi.h"
 
 namespace cerfengine::cerfir {
 
@@ -64,7 +66,7 @@ uint8_t* X86SoftTlb::EmitDirect(uint8_t* cursor, uint32_t privilege, TlbAccess a
     EmitShrReg32Imm  (cursor, kEdx, static_cast<uint8_t>(model_.page_shift));
     EmitAndRegImm32  (cursor, kEdx, model_.set_mask);
     EmitShlReg32Imm  (cursor, kEdx, static_cast<uint8_t>(set_shift_));
-    EmitAddReg32Reg32(cursor, kEdx, kMmuReg);
+    EmitAddPtrRegReg (cursor, kEdx, kMmuReg);
 
     EmitAndRegImm32     (cursor, kEax, PageMask(model_));
     EmitCmpRegBaseDisp32(cursor, kEax, kEdx, e.tag);
@@ -91,15 +93,15 @@ uint8_t* X86SoftTlb::EmitDirect(uint8_t* cursor, uint32_t privilege, TlbAccess a
             EmitCmpRegBaseDisp32(cursor, kEax, kMmuReg, model_.watch_top_aux);
             uint8_t* above = EmitJaeLabel32(cursor);
 
-            EmitSubRegBaseDisp32(cursor, kEax, kMmuReg, model_.watch_base_aux);
-            EmitPushReg         (cursor, kEcx);
-            EmitMovRegBaseDisp32(cursor, kEcx, kMmuReg, model_.watch_words_aux);
-            EmitShrReg32Imm     (cursor, kEax, 2);
-            EmitBtMemReg        (cursor, kEcx, kEax);
+            EmitSubRegBaseDisp32   (cursor, kEax, kMmuReg, model_.watch_base_aux);
+            EmitPushReg            (cursor, kEcx);
+            EmitMovPtrRegBaseDisp32(cursor, kEcx, kMmuReg, model_.watch_words_aux);
+            EmitShrReg32Imm        (cursor, kEax, 2);
+            EmitBtMemReg           (cursor, kEcx, kEax);
             uint8_t* restore = EmitJncLabel32(cursor);
-            EmitShrReg32Imm     (cursor, kEax, 10);
-            EmitMovRegBaseDisp32(cursor, kEcx, kMmuReg, model_.watch_dirty_aux);
-            EmitBtsMemReg       (cursor, kEcx, kEax);
+            EmitShrReg32Imm        (cursor, kEax, 10);
+            EmitMovPtrRegBaseDisp32(cursor, kEcx, kMmuReg, model_.watch_dirty_aux);
+            EmitBtsMemReg          (cursor, kEcx, kEax);
             FixupLabel32(restore, cursor);
             EmitPopReg          (cursor, kEcx);
             FixupLabel32(below, cursor);
@@ -108,12 +110,12 @@ uint8_t* X86SoftTlb::EmitDirect(uint8_t* cursor, uint32_t privilege, TlbAccess a
     }
 
     cursor = EmitFold(cursor);
-    EmitAddRegBaseDisp32(cursor, kEax, kEdx, e.addend);
+    EmitAddPtrRegBaseDisp32(cursor, kEax, kEdx, e.addend);
     uint8_t* hit_done = EmitJmpLabel(cursor);
 
     for (int i = 0; i < nmiss; ++i) FixupLabel32(miss[i], cursor);
     *call_rel = static_cast<size_t>(cursor - start) + 1u;
-    EmitCall(cursor, miss_[privilege][static_cast<size_t>(access)]);
+    EmitOpcodeRel32(cursor, 0xE8, miss_[privilege][static_cast<size_t>(access)]);
     FixupLabel(hit_done, cursor);
     return cursor;
 }
@@ -157,32 +159,45 @@ uint8_t* X86SoftTlb::EmitMiss(uint8_t* cursor, uint32_t privilege, TlbAccess acc
         for (int i = 0; i < n_io_miss; ++i) FixupLabel32(io_miss[i], cursor);
     }
     EmitPushReg(cursor, kEcx);
-    EmitMovRegImm32(cursor, kEdx, static_cast<uint32_t>(reinterpret_cast<uintptr_t>(model_.context)));
-    EmitCall(cursor, model_.miss_helper[static_cast<size_t>(access)]);
+    cursor = EmitHelperCall(cursor, model_.miss_helper[static_cast<size_t>(access)]);
     EmitPopReg(cursor, kEcx);
     EmitRet(cursor);
     return cursor;
 }
 
-uint8_t* X86SoftTlb::EmitUserLookup(uint8_t* cursor, TlbAccess access) const {
+uint8_t* X86SoftTlb::EmitHelperCall(uint8_t* cursor, const void* helper) const {
     using namespace x86;
-    if (access == TlbAccess::kReadWrite) {
-        throw EmitFault("CerfIR x86 soft TLB: no unprivileged read-write lookup exists");
+    if constexpr (kX64) {
+        X86RequireKnownCallAbi();
+        EmitMovRegReg(cursor, kX86ArgRegs[0], kEcx);
+        EmitMovPtrRegImm(cursor, kX86ArgRegs[1], model_.context);
+    } else {
+        EmitMovRegImm32(cursor, kEdx,
+                        static_cast<uint32_t>(reinterpret_cast<uintptr_t>(model_.context)));
     }
+    EmitCall(cursor, helper);
+    return cursor;
+}
+
+uint8_t* X86SoftTlb::EmitInlineHelperCall(uint8_t* cursor, const void* helper) const {
+    using namespace x86;
     EmitPushReg(cursor, kEcx);
-    EmitMovRegImm32(cursor, kEdx, static_cast<uint32_t>(reinterpret_cast<uintptr_t>(model_.context)));
-    EmitCall(cursor, model_.user_helper[access == TlbAccess::kRead ? 0u : 1u]);
+    if constexpr (kX64) EmitSubPtrRegImm32(cursor, kEsp, 8u);
+    cursor = EmitHelperCall(cursor, helper);
+    if constexpr (kX64) EmitAddPtrRegImm32(cursor, kEsp, 8u);
     EmitPopReg(cursor, kEcx);
     return cursor;
 }
 
+uint8_t* X86SoftTlb::EmitUserLookup(uint8_t* cursor, TlbAccess access) const {
+    if (access == TlbAccess::kReadWrite) {
+        throw EmitFault("CerfIR x86 soft TLB: no unprivileged read-write lookup exists");
+    }
+    return EmitInlineHelperCall(cursor, model_.user_helper[access == TlbAccess::kRead ? 0u : 1u]);
+}
+
 uint8_t* X86SoftTlb::EmitMissCall(uint8_t* cursor, TlbAccess access) const {
-    using namespace x86;
-    EmitPushReg(cursor, kEcx);
-    EmitMovRegImm32(cursor, kEdx, static_cast<uint32_t>(reinterpret_cast<uintptr_t>(model_.context)));
-    EmitCall(cursor, model_.miss_helper[static_cast<size_t>(access)]);
-    EmitPopReg(cursor, kEcx);
-    return cursor;
+    return EmitInlineHelperCall(cursor, model_.miss_helper[static_cast<size_t>(access)]);
 }
 
 void X86SoftTlb::Build(const SoftTlbModel& model, uint8_t* region) {

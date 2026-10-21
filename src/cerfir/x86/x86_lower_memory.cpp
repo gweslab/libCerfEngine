@@ -2,6 +2,7 @@
 #include <cerfengine/force_inline.h>
 #include "../../x86_emit.h"
 #include "../../x86_emit_alu.h"
+#include "../../x86_emit_pointer.h"
 #include "../../x86_emit_shift.h"
 #include "x86_lower_fns.h"
 #include "x86_memory_operands.h"
@@ -117,7 +118,7 @@ CERFENGINE_FORCEINLINE void LeanLoad(X86Lowering& l, const MemAttr& m) {
     EmitBasedAddress(c, m);
     EmitSlowChecks(c, m, t);
     c = X86EmitTlbLookup(l, c, m,TlbAccess::kRead);
-    x86::EmitTestRegReg(c, kEax, kEax);
+    x86::EmitTestPtrRegReg(c, kEax, kEax);
     t.abort = x86::EmitJzLabel32(c);
     EmitHostLoad(c, m.width_bytes, m.sign);
     t.resume = c;
@@ -140,7 +141,7 @@ CERFENGINE_FORCEINLINE void LeanStore(X86Lowering& l, const MemAttr& m, Ref valu
     EmitBasedAddress(c, m);
     EmitSlowChecks(c, m, t);
     c = X86EmitTlbLookup(l, c, m,TlbAccess::kWrite);
-    x86::EmitTestRegReg(c, kEax, kEax);
+    x86::EmitTestPtrRegReg(c, kEax, kEax);
     t.abort = x86::EmitJzLabel32(c);
     X86LoadOperand(c, t.value, kEdx);
     EmitHostStore(c, m.width_bytes);
@@ -176,7 +177,7 @@ void SoftTlbLoad(X86Lowering& l, Ref ref, Ref address, Ref writeback, const MemA
     if (based) EmitBasedAddress(c, m);
     EmitSlowChecks(c, m, t);
     c = X86EmitTlbLookup(l, c, m,TlbAccess::kRead);
-    x86::EmitTestRegReg(c, kEax, kEax);
+    x86::EmitTestPtrRegReg(c, kEax, kEax);
     t.abort = x86::EmitJzLabel32(c);
     EmitHostLoad(c, m.width_bytes, m.sign);
     EmitSuccessWriteback(c, m, based, t.wb);
@@ -217,7 +218,7 @@ void SoftTlbStore(X86Lowering& l, Ref address, Ref value, Ref writeback, const M
     if (based) EmitBasedAddress(c, m);
     EmitSlowChecks(c, m, t);
     c = X86EmitTlbLookup(l, c, m,TlbAccess::kWrite);
-    x86::EmitTestRegReg(c, kEax, kEax);
+    x86::EmitTestPtrRegReg(c, kEax, kEax);
     t.abort = x86::EmitJzLabel32(c);
     X86LoadOperand(c, t.value, kEdx);
     EmitHostStore(c, m.width_bytes);
@@ -250,7 +251,7 @@ void SoftTlbSwap(X86Lowering& l, Ref ref) {
     uint8_t* c = l.Cursor();
     EmitSlowChecks(c, m, t);
     c = X86EmitTlbLookup(l, c, m,TlbAccess::kReadWrite);
-    EmitTestRegReg(c, kEax, kEax);
+    EmitTestPtrRegReg(c, kEax, kEax);
     t.abort = EmitJzLabel32(c);
     if (m.width_bytes == 1u) {
         EmitMovzxRegByteBase(c, kEdx, kEax);

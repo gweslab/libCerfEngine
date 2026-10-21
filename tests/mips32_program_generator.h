@@ -70,13 +70,20 @@ private:
     }
     uint32_t Src() { return Pick(32u); }
 
+    uint32_t SrcSrcDest(uint32_t funct) {
+        const uint32_t rs = Src();
+        const uint32_t rt = Src();
+        const uint32_t rd = Dest();
+        return MipsGenR(rs, rt, rd, 0u, funct);
+    }
+
     uint32_t Alu() {
         namespace S = cerfengine::MipsSpecial;
         static constexpr uint32_t kNarrow[] = {S::kADDU, S::kSUBU, S::kAND, S::kOR,
                                                S::kXOR,  S::kNOR,  S::kSLT, S::kSLTU};
         static constexpr uint32_t kWide[]   = {S::kDADDU, S::kDSUBU};
         const uint32_t funct = wide_ && Pick(4u) == 0u ? kWide[Pick(2u)] : kNarrow[Pick(8u)];
-        return MipsGenR(Src(), Src(), Dest(), 0u, funct);
+        return SrcSrcDest(funct);
     }
 
     uint32_t Shift() {
@@ -87,12 +94,19 @@ private:
                                              S::kDSLL32, S::kDSRL32, S::kDSRA32};
         static constexpr uint32_t kWVar[] = {S::kDSLLV, S::kDSRLV, S::kDSRAV};
         const uint32_t rs_field = Pick(64u) == 0u ? 1u : 0u;
-        switch (Pick(wide_ ? 4u : 2u)) {
-        case 0u: return MipsGenR(rs_field, Src(), Dest(), Pick(32u), kImm[Pick(3u)]);
-        case 1u: return MipsGenR(Src(), Src(), Dest(), 0u, kVar[Pick(3u)]);
-        case 2u: return MipsGenR(rs_field, Src(), Dest(), Pick(32u), kWImm[Pick(6u)]);
-        default: return MipsGenR(Src(), Src(), Dest(), 0u, kWVar[Pick(3u)]);
+        const uint32_t form     = Pick(wide_ ? 4u : 2u);
+        if (form == 1u || form == 3u) {
+            const uint32_t rs    = Src();
+            const uint32_t rt    = Src();
+            const uint32_t rd    = Dest();
+            const uint32_t funct = form == 1u ? kVar[Pick(3u)] : kWVar[Pick(3u)];
+            return MipsGenR(rs, rt, rd, 0u, funct);
         }
+        const uint32_t rt    = Src();
+        const uint32_t rd    = Dest();
+        const uint32_t sa    = Pick(32u);
+        const uint32_t funct = form == 0u ? kImm[Pick(3u)] : kWImm[Pick(6u)];
+        return MipsGenR(rs_field, rt, rd, sa, funct);
     }
 
     uint32_t Immediate() {
@@ -101,20 +115,25 @@ private:
                                             O::kORI,   O::kXORI, O::kLUI};
         const uint32_t op  = wide_ && Pick(6u) == 0u ? O::kDADDIU : kOps[Pick(7u)];
         const uint32_t imm = Pick(4u) == 0u ? Pick(8u) - 4u : static_cast<uint32_t>(rng_());
-        return MipsGenI(op, op == O::kLUI ? 0u : Src(), Dest(), imm);
+        const uint32_t rs  = op == O::kLUI ? 0u : Src();
+        const uint32_t rt  = Dest();
+        return MipsGenI(op, rs, rt, imm);
     }
 
     uint32_t Trapping() {
         namespace O = cerfengine::MipsOp;
         namespace S = cerfengine::MipsSpecial;
         if (Pick(3u) == 0u) {
-            const uint32_t op = wide_ && Pick(2u) == 0u ? O::kDADDI : O::kADDI;
-            return MipsGenI(op, Src(), Dest(), static_cast<uint32_t>(rng_()));
+            const uint32_t op  = wide_ && Pick(2u) == 0u ? O::kDADDI : O::kADDI;
+            const uint32_t rs  = Src();
+            const uint32_t rt  = Dest();
+            const uint32_t imm = static_cast<uint32_t>(rng_());
+            return MipsGenI(op, rs, rt, imm);
         }
         static constexpr uint32_t kNarrow[] = {S::kADD, S::kSUB};
         static constexpr uint32_t kWide[]   = {S::kDADD, S::kDSUB};
         const uint32_t funct = wide_ && Pick(2u) == 0u ? kWide[Pick(2u)] : kNarrow[Pick(2u)];
-        return MipsGenR(Src(), Src(), Dest(), 0u, funct);
+        return SrcSrcDest(funct);
     }
 
     uint32_t MulDiv() {
@@ -123,17 +142,26 @@ private:
         static constexpr uint32_t kWide[]   = {S::kDMULT, S::kDMULTU, S::kDDIV, S::kDDIVU};
         static constexpr uint32_t kMove[]   = {S::kMFHI, S::kMFLO, S::kMTHI, S::kMTLO};
         switch (Pick(madd_ ? 4u : 3u)) {
-        case 0u:
-            if (wide_ && Pick(3u) == 0u) return MipsGenR(Src(), Src(), 0u, 0u, kWide[Pick(4u)]);
-            return MipsGenR(Src(), Src(), 0u, 0u, kNarrow[Pick(4u)]);
+        case 0u: {
+            const bool     wide  = wide_ && Pick(3u) == 0u;
+            const uint32_t rs    = Src();
+            const uint32_t rt    = Src();
+            const uint32_t funct = wide ? kWide[Pick(4u)] : kNarrow[Pick(4u)];
+            return MipsGenR(rs, rt, 0u, 0u, funct);
+        }
         case 1u:
         case 2u: {
             const uint32_t funct = kMove[Pick(4u)];
             const bool     to    = funct == S::kMTHI || funct == S::kMTLO;
             return to ? MipsGenR(Src(), 0u, 0u, 0u, funct) : MipsGenR(0u, 0u, Dest(), 0u, funct);
         }
-        default:
-            return (cerfengine::MipsOp::kSPECIAL2 << 26) | MipsGenR(Src(), Src(), Dest(), 0u, Pick(2u));
+        default: {
+            const uint32_t rs    = Src();
+            const uint32_t rt    = Src();
+            const uint32_t rd    = Dest();
+            const uint32_t funct = Pick(2u);
+            return (cerfengine::MipsOp::kSPECIAL2 << 26) | MipsGenR(rs, rt, rd, 0u, funct);
+        }
         }
     }
 
@@ -164,10 +192,16 @@ private:
             const uint32_t width = m == O::kLW || m == O::kSW                   ? 4u
                                    : m == O::kLB || m == O::kLBU || m == O::kSB ? 1u
                                                                                 : 2u;
-            return MipsGenI(m, kMipsGenMmioReg, IsStore(m) ? Src() : Dest(), Pick(16u) * width);
+            const uint32_t reg   = IsStore(m) ? Src() : Dest();
+            const uint32_t slot  = Pick(16u);
+            return MipsGenI(m, kMipsGenMmioReg, reg, slot * width);
         }
         case 2u: return MipsGenI(op, 0u, rt, static_cast<uint32_t>(rng_()));
-        case 3u: return MipsGenI(op, Src(), rt, static_cast<uint32_t>(rng_()));
+        case 3u: {
+            const uint32_t rs  = Src();
+            const uint32_t imm = static_cast<uint32_t>(rng_());
+            return MipsGenI(op, rs, rt, imm);
+        }
         default: {
             const uint32_t offset = Pick(8u) == 0u ? Pick(0x800u) : Pick(0x200u) & ~3u;
             return MipsGenI(op, kMipsGenDataReg, rt, offset);
@@ -209,7 +243,9 @@ private:
 
     uint32_t BreakOrSyscall() {
         namespace S = cerfengine::MipsSpecial;
-        return MipsGenR(0u, 0u, 0u, Pick(1024u) >> 4, Pick(2u) == 0u ? S::kBREAK : S::kSYSCALL);
+        const uint32_t code  = Pick(1024u) >> 4;
+        const uint32_t funct = Pick(2u) == 0u ? S::kBREAK : S::kSYSCALL;
+        return MipsGenR(0u, 0u, 0u, code, funct);
     }
 
     uint32_t Unusual() {
@@ -220,7 +256,12 @@ private:
                    (Pick(2u) == 0u ? cerfengine::MipsCop0Funct::kWAIT
                                    : (wide_ ? cerfengine::MipsCop0Funct::kRFE
                                             : cerfengine::MipsCop0Funct::kERET));
-        case 1u: return MipsGenI(Pick(2u) == 0u ? O::kLL : O::kSC, kMipsGenDataReg, Dest(), Pick(0x80u) * 4u);
+        case 1u: {
+            const uint32_t op   = Pick(2u) == 0u ? O::kLL : O::kSC;
+            const uint32_t rt   = Dest();
+            const uint32_t slot = Pick(0x80u);
+            return MipsGenI(op, kMipsGenDataReg, rt, slot * 4u);
+        }
         default: return (O::kCOP1 << 26) | (static_cast<uint32_t>(rng_()) & 0x03FFFFFFu);
         }
     }
@@ -237,7 +278,10 @@ private:
         if (pick < 89u) return System();
         if (pick < 92u && movz_) {
             namespace S = cerfengine::MipsSpecial;
-            return MipsGenR(Src(), Src(), Dest(), 0u, Pick(2u) == 0u ? S::kMOVZ : S::kMOVN);
+            const uint32_t rs = Src();
+            const uint32_t rt = Src();
+            const uint32_t rd = Dest();
+            return MipsGenR(rs, rt, rd, 0u, Pick(2u) == 0u ? S::kMOVZ : S::kMOVN);
         }
         if (pick == 95u) return BreakOrSyscall();
         if (pick == 96u && Pick(4u) == 0u) return Unusual();
@@ -254,18 +298,24 @@ private:
         case 0u: {
             static constexpr uint32_t kOps[] = {O::kBEQ, O::kBNE, O::kBEQL, O::kBNEL};
             const uint32_t src = Pick(4u) == 0u ? 0u : Src();
-            words_.push_back(MipsGenI(kOps[Pick(4u)], Src(), src, offset));
+            const uint32_t op  = kOps[Pick(4u)];
+            const uint32_t rs  = Src();
+            words_.push_back(MipsGenI(op, rs, src, offset));
             break;
         }
         case 1u: {
             static constexpr uint32_t kOps[] = {O::kBLEZ, O::kBGTZ, O::kBLEZL, O::kBGTZL};
-            words_.push_back(MipsGenI(kOps[Pick(4u)], Src(), 0u, offset));
+            const uint32_t op = kOps[Pick(4u)];
+            const uint32_t rs = Src();
+            words_.push_back(MipsGenI(op, rs, 0u, offset));
             break;
         }
         case 2u: {
             static constexpr uint32_t kRt[] = {G::kBLTZ,  G::kBGEZ,   G::kBLTZL,
                                                G::kBGEZL, G::kBLTZAL, G::kBGEZAL};
-            words_.push_back(MipsGenI(O::kREGIMM, Src(), kRt[Pick(6u)], offset));
+            const uint32_t rs = Src();
+            const uint32_t rt = kRt[Pick(6u)];
+            words_.push_back(MipsGenI(O::kREGIMM, rs, rt, offset));
             break;
         }
         default:

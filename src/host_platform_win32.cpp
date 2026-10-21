@@ -13,7 +13,7 @@ void* AllocateExecutable(size_t bytes) {
     return VirtualAlloc(nullptr, bytes, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
 }
 
-void FreeExecutable(void* base) {
+void FreeExecutable(void* base, size_t) {
     VirtualFree(base, 0, MEM_RELEASE);
 }
 

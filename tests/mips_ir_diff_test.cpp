@@ -38,7 +38,9 @@ uint64_t RandomValue(std::mt19937& rng, bool wide) {
         return wide ? special : Sext(static_cast<uint32_t>(special));
     }
     if (!wide || pick < 5u) return Sext(rng());
-    return (static_cast<uint64_t>(rng()) << 32) | rng();
+    const uint64_t high = rng();
+    const uint64_t low  = rng();
+    return (high << 32) | low;
 }
 
 uint32_t StartVa(std::mt19937& rng, uint32_t page_shift, uint32_t length, bool mips16) {
@@ -47,7 +49,9 @@ uint32_t StartVa(std::mt19937& rng, uint32_t page_shift, uint32_t length, bool m
         const uint32_t boundary = kMipsRigVaBase + (1u << page_shift) * (1u + MipsRigPick(rng, 4u));
         return boundary - unit * MipsRigPick(rng, mips16 ? 2u * length : length);
     }
-    return kMipsRigVaBase + 4u * MipsRigPick(rng, 64u) + (mips16 ? 2u * MipsRigPick(rng, 2u) : 0u);
+    const uint32_t word = MipsRigPick(rng, 64u);
+    const uint32_t half = mips16 ? MipsRigPick(rng, 2u) : 0u;
+    return kMipsRigVaBase + 4u * word + 2u * half;
 }
 
 Prepared Prepare(std::mt19937& rng, const Config& cfg, Mips32ProgramGenerator& gen32,

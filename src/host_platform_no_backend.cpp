@@ -18,7 +18,7 @@ namespace {
 
 void* AllocateExecutable(size_t) { NoBackend("AllocateExecutable"); }
 
-void FreeExecutable(void*) { NoBackend("FreeExecutable"); }
+void FreeExecutable(void*, size_t) { NoBackend("FreeExecutable"); }
 
 void RaiseUnwind(uint32_t) { NoBackend("RaiseUnwind"); }
 
@@ -29,7 +29,5 @@ WakeEvent CreateWakeEvent() { NoBackend("CreateWakeEvent"); }
 void CloseWakeEvent(const WakeEvent&) { NoBackend("CloseWakeEvent"); }
 
 uint32_t LastErrorCode() { NoBackend("LastErrorCode"); }
-
-int CaptureFault(void*, HostFault&) { NoBackend("CaptureFault"); }
 
 }

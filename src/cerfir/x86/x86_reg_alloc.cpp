@@ -25,8 +25,10 @@ void SwapRemove(std::vector<Ref>& list, uint32_t& count, Ref r) {
     }
 }
 
-constexpr uint8_t kScratchOrder[] = {x86::kEax, x86::kEcx, x86::kEdx, x86::kEdi, x86::kEbp};
-constexpr uint8_t kSavedOrder[]   = {x86::kEdi, x86::kEbp, x86::kEax, x86::kEcx, x86::kEdx};
+constexpr uint8_t kScratchOrder[] = {x86::kEax, x86::kEcx, x86::kEdx, x86::kSavedRegA,
+                                     x86::kSavedRegB};
+constexpr uint8_t kSavedOrder[]   = {x86::kSavedRegA, x86::kSavedRegB, x86::kEax, x86::kEcx,
+                                     x86::kEdx};
 
 }
 
@@ -114,9 +116,9 @@ uint8_t X86RegAlloc::PickRegByEviction(uint32_t allowed) {
     char text[160];
     std::snprintf(text, sizeof(text),
                   "CerfIR x86 register allocation: no allocatable register (allowed 0x%X locked "
-                  "0x%X owners eax %u ecx %u edx %u ebp %u edi %u)",
+                  "0x%X owners scratch %u %u %u saved %u %u)",
                   allowed, locked_, owner_[x86::kEax], owner_[x86::kEcx], owner_[x86::kEdx],
-                  owner_[x86::kEbp], owner_[x86::kEdi]);
+                  owner_[x86::kSavedRegA], owner_[x86::kSavedRegB]);
     throw EmitFault(text);
 }
 
@@ -273,6 +275,14 @@ uint8_t X86RegAlloc::CopyIntoFixed(Ref src, uint8_t reg) {
     return reg;
 }
 
+void X86RegAlloc::CopyOut(Ref src, uint8_t reg) {
+    if (loc_[src].kind == Kind::kFlags || (loc_[src].kind == Kind::kReg && !loc_[src].wide)) {
+        MaterializeWide(src, kX86SavedRegs);
+    }
+    CopyValue(src, reg);
+    Consume(src);
+}
+
 void X86RegAlloc::FixedRegisterBusy(uint8_t reg) {
     Fault("fixed register already in use by this op", reg);
 }
@@ -358,7 +368,8 @@ X86RegAlloc::Loc X86RegAlloc::PreserveAcrossCalls(Ref r) {
     }
     const uint32_t free = kX86SavedRegs & ~locked_ & FreeMask();
     if (free != 0u) {
-        const uint8_t to = (free & RegBit(x86::kEdi)) != 0u ? x86::kEdi : x86::kEbp;
+        const uint8_t to =
+            (free & RegBit(x86::kSavedRegA)) != 0u ? x86::kSavedRegA : x86::kSavedRegB;
         LoadInto(r, to);
         Lock(to);
         return l;

@@ -3,6 +3,7 @@
 #include "../../emit_fault.h"
 #include "../../x86_emit.h"
 #include "../../x86_emit_alu.h"
+#include "x86_host_abi.h"
 #include "x86_lower_fns.h"
 
 namespace cerfengine::cerfir {

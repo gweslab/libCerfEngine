@@ -8,76 +8,55 @@ namespace cerfengine {
 
 namespace x86 {
 
-/* SHL r/m32, imm8 - C1 /4 ib, register-direct (SDM Vol. 2B 4-600 SHL). */
-CERFENGINE_FORCEINLINE void EmitShlReg32Imm(uint8_t*& c, uint8_t reg, uint8_t imm8) {
+CERFENGINE_FORCEINLINE void EmitShiftRegImm(uint8_t*& c, uint8_t ext, uint8_t reg, uint8_t imm8) {
     uint8_t* p = c;
-    Emit8(p, 0xC1);
-    EmitModRmReg(p, 3, reg, 4);
+    EmitOpModRm(p, 0xC1, 3, reg, ext);
     Emit8(p, imm8);
     c = p;
+}
+
+/* SHL r/m32, imm8 - C1 /4 ib, register-direct (SDM Vol. 2B 4-600 SHL). */
+CERFENGINE_FORCEINLINE void EmitShlReg32Imm(uint8_t*& c, uint8_t reg, uint8_t imm8) {
+    EmitShiftRegImm(c, 4, reg, imm8);
 }
 
 /* SHL r/m32, CL - D3 /4, register-direct; count masked to 5 bits, and
    "If the count is 0, the flags are not affected" (SDM Vol. 2B 4-600,
    4-602 SHL). */
 CERFENGINE_FORCEINLINE void EmitShlReg32Cl(uint8_t*& c, uint8_t reg) {
-    uint8_t* p = c;
-    Emit8(p, 0xD3);
-    EmitModRmReg(p, 3, reg, 4);
-    c = p;
+    EmitOpModRm(c, 0xD3, 3, reg, 4);
 }
 
 /* SHR r/m32, CL - D3 /5, register-direct (SDM Vol. 2B 4-600 SHR). */
 CERFENGINE_FORCEINLINE void EmitShrReg32Cl(uint8_t*& c, uint8_t reg) {
-    uint8_t* p = c;
-    Emit8(p, 0xD3);
-    EmitModRmReg(p, 3, reg, 5);
-    c = p;
+    EmitOpModRm(c, 0xD3, 3, reg, 5);
 }
 
 /* SAR r/m32, CL - D3 /7, register-direct (SDM Vol. 2B 4-599 SAR). */
 CERFENGINE_FORCEINLINE void EmitSarReg32Cl(uint8_t*& c, uint8_t reg) {
-    uint8_t* p = c;
-    Emit8(p, 0xD3);
-    EmitModRmReg(p, 3, reg, 7);
-    c = p;
+    EmitOpModRm(c, 0xD3, 3, reg, 7);
 }
 
 /* SHR r/m32, imm8 - C1 /5 ib, register-direct (SDM Vol. 2B 4-600 SHR). */
 CERFENGINE_FORCEINLINE void EmitShrReg32Imm(uint8_t*& c, uint8_t reg, uint8_t imm8) {
-    uint8_t* p = c;
-    Emit8(p, 0xC1);
-    EmitModRmReg(p, 3, reg, 5);
-    Emit8(p, imm8);
-    c = p;
+    EmitShiftRegImm(c, 5, reg, imm8);
 }
 
 /* SAR r/m32, imm8 - C1 /7 ib, register-direct (SDM Vol. 2B 4-599 SAR). */
 CERFENGINE_FORCEINLINE void EmitSarReg32Imm(uint8_t*& c, uint8_t reg, uint8_t imm8) {
-    uint8_t* p = c;
-    Emit8(p, 0xC1);
-    EmitModRmReg(p, 3, reg, 7);
-    Emit8(p, imm8);
-    c = p;
+    EmitShiftRegImm(c, 7, reg, imm8);
 }
 
 /* ROR r/m32, imm8 - C1 /1 ib, register-direct
    (SDM Vol. 2B 4-533 RCL/RCR/ROL/ROR). */
 CERFENGINE_FORCEINLINE void EmitRorReg32Imm(uint8_t*& c, uint8_t reg, uint8_t imm8) {
-    uint8_t* p = c;
-    Emit8(p, 0xC1);
-    EmitModRmReg(p, 3, reg, 1);
-    Emit8(p, imm8);
-    c = p;
+    EmitShiftRegImm(c, 1, reg, imm8);
 }
 
 /* ROR r/m32, CL - D3 /1, register-direct
    (SDM Vol. 2B 4-533 RCL/RCR/ROL/ROR). */
 CERFENGINE_FORCEINLINE void EmitRorReg32Cl(uint8_t*& c, uint8_t reg) {
-    uint8_t* p = c;
-    Emit8(p, 0xD3);
-    EmitModRmReg(p, 3, reg, 1);
-    c = p;
+    EmitOpModRm(c, 0xD3, 3, reg, 1);
 }
 
 /* SHRD r/m32, r32, imm8 - 0F AC /r ib, register-direct: shift dst right
@@ -85,9 +64,7 @@ CERFENGINE_FORCEINLINE void EmitRorReg32Cl(uint8_t*& c, uint8_t reg) {
 CERFENGINE_FORCEINLINE void EmitShrdReg32Reg32Imm8(uint8_t*& c, uint8_t dst, uint8_t src,
                                    uint8_t imm8) {
     uint8_t* p = c;
-    Emit8(p, 0x0F);
-    Emit8(p, 0xAC);
-    EmitModRmReg(p, 3, dst, src);
+    EmitOp0FModRm(p, 0xAC, 3, dst, src);
     Emit8(p, imm8);
     c = p;
 }
@@ -95,10 +72,7 @@ CERFENGINE_FORCEINLINE void EmitShrdReg32Reg32Imm8(uint8_t*& c, uint8_t dst, uin
 /* RCR r/m32, 1 - D1 /3, register-direct, "Rotate 33 bits (CF, r/m32)
    right once" (SDM Vol. 2B 4-532 RCL/RCR/ROL/ROR). */
 CERFENGINE_FORCEINLINE void EmitRcrReg32By1(uint8_t*& c, uint8_t reg) {
-    uint8_t* p = c;
-    Emit8(p, 0xD1);
-    EmitModRmReg(p, 3, reg, 3);
-    c = p;
+    EmitOpModRm(c, 0xD1, 3, reg, 3);
 }
 
 }

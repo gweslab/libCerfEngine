@@ -82,8 +82,10 @@ uint32_t RandomBlockTransfer(std::mt19937& rng) {
         }
         if (RigPick(rng, 6u) == 0u) list |= 0x8000u;
     }
-    return (cond << 28) | (4u << 25) | (RigPick(rng, 2u) << 24) | (RigPick(rng, 2u) << 23) |
-           (s << 22) | (w << 21) | (l << 20) | (rn << 16) | list;
+    const uint32_t p = RigPick(rng, 2u);
+    const uint32_t u = RigPick(rng, 2u);
+    return (cond << 28) | (4u << 25) | (p << 24) | (u << 23) | (s << 22) | (w << 21) | (l << 20) |
+           (rn << 16) | list;
 }
 
 void PushExclusive(std::mt19937& rng, std::vector<uint32_t>& program) {
@@ -176,7 +178,8 @@ void RunConfig(const Config& config, uint32_t seed, uint32_t programs) {
         initial.zf       = static_cast<uint8_t>(RigPick(rng, 2u));
         initial.cf       = static_cast<uint8_t>(RigPick(rng, 2u));
         initial.vf       = static_cast<uint8_t>(RigPick(rng, 2u));
-        const uint32_t spsr = (RigPick(rng, 16u) << 28) | (RigPick(rng, 2u) == 0u ? 0x10u : 0x13u);
+        const uint32_t nzcv = RigPick(rng, 16u);
+        const uint32_t spsr = (nzcv << 28) | (RigPick(rng, 2u) == 0u ? 0x10u : 0x13u);
         const uint32_t mode = RigPick(rng, 4u) == 0u ? 0x13u : 0u;
 
         const std::vector<uint32_t> data = DataPattern(n);

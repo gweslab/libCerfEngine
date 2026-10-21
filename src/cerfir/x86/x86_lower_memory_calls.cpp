@@ -16,6 +16,8 @@ using x86::kEcx;
 using x86::kEdx;
 using x86::kStateReg;
 
+constexpr uint8_t kAddressArg = x86::kX64 ? kX86ArgRegs[0] : kEcx;
+
 CERFENGINE_FORCEINLINE void BeginCallAccess(X86Lowering& l, const MemAttr& m) {
     const Block&             b  = l.GetBlock();
     const HelperMemoryModel& h  = l.Target().model->helper;
@@ -79,11 +81,11 @@ CERFENGINE_FORCEINLINE void EmitLeanCallAddress(X86Lowering& l, uint8_t*& c, Ref
                                                 const Access& m) {
     using namespace x86;
     if (address != kNoRef) {
-        EmitMovRegImm32(c, kEcx, static_cast<uint32_t>(l.GetBlock().ConstValue(address)));
+        EmitMovRegImm32(c, kAddressArg, static_cast<uint32_t>(l.GetBlock().ConstValue(address)));
         return;
     }
-    EmitMovRegBaseDisp32(c, kEcx, kStateReg, m.base_slot);
-    if (m.offset != 0) EmitAddRegImm32(c, kEcx, static_cast<uint32_t>(m.offset));
+    EmitMovRegBaseDisp32(c, kAddressArg, kStateReg, m.base_slot);
+    if (m.offset != 0) EmitAddRegImm32(c, kAddressArg, static_cast<uint32_t>(m.offset));
 }
 
 template <typename Access>
@@ -108,7 +110,12 @@ CERFENGINE_FORCEINLINE void EmitLeanCallLoad(X86Lowering& l, Ref address, const 
     uint8_t*                 c = l.Cursor();
     EmitLeanCallPc(l, c, m);
     EmitLeanCallAddress(l, c, address, m);
-    EmitMovRegImm32(c, kEdx, static_cast<uint32_t>(reinterpret_cast<uintptr_t>(h.context)));
+    if constexpr (kX64) {
+        X86RequireKnownCallAbi();
+        EmitMovPtrRegImm(c, kX86ArgRegs[1], h.context);
+    } else {
+        EmitMovRegImm32(c, kEdx, static_cast<uint32_t>(reinterpret_cast<uintptr_t>(h.context)));
+    }
     EmitCall(c, LoadHelper(l, m.width_bytes));
     EmitCallResult(c, m);
     l.Cursor() = c;
@@ -121,14 +128,19 @@ CERFENGINE_FORCEINLINE void EmitLeanCallStore(X86Lowering& l, Ref address, Ref v
     using namespace x86;
     const HelperMemoryModel& h = l.Target().model->helper;
     uint8_t*                 c = l.Cursor();
+    constexpr uint8_t value_reg = kX64 ? kX86ArgRegs[1] : kEdx;
+    if constexpr (kX64) X86RequireKnownCallAbi();
     EmitLeanCallPc(l, c, m);
-    EmitPush32(c, static_cast<uint32_t>(reinterpret_cast<uintptr_t>(h.context)));
+    if constexpr (!kX64) {
+        EmitPush32(c, static_cast<uint32_t>(reinterpret_cast<uintptr_t>(h.context)));
+    }
     EmitLeanCallAddress(l, c, address, m);
     if (IsConstRef(value)) {
-        EmitMovRegImm32(c, kEdx, static_cast<uint32_t>(l.GetBlock().ConstValue(value)));
+        EmitMovRegImm32(c, value_reg, static_cast<uint32_t>(l.GetBlock().ConstValue(value)));
     } else {
-        EmitMovRegBaseDisp32(c, kEdx, kStateReg, SlotRefDisp(value));
+        EmitMovRegBaseDisp32(c, value_reg, kStateReg, SlotRefDisp(value));
     }
+    if constexpr (kX64) EmitMovPtrRegImm(c, kX86ArgRegs[2], h.context);
     EmitCall(c, StoreHelper(l, m.width_bytes));
     l.Cursor() = c;
     l.ClearFlagSource();
@@ -155,7 +167,13 @@ void X86CallLoad(X86Lowering& l, Ref ref, Ref address, const MemAttr& m) {
     PlaceCallAddress(l, address, m);
     ra.ClaimFixed(kEdx);
     uint8_t*& c = l.Cursor();
-    EmitMovRegImm32(c, kEdx, static_cast<uint32_t>(reinterpret_cast<uintptr_t>(h.context)));
+    if constexpr (kX64) {
+        X86RequireKnownCallAbi();
+        EmitMovRegReg(c, kX86ArgRegs[0], kEcx);
+        EmitMovPtrRegImm(c, kX86ArgRegs[1], h.context);
+    } else {
+        EmitMovRegImm32(c, kEdx, static_cast<uint32_t>(reinterpret_cast<uintptr_t>(h.context)));
+    }
     EmitCall(c, LoadHelper(l, m.width_bytes));
     ra.ReleaseTemp(kEcx);
     ra.ReleaseTemp(kEdx);
@@ -179,9 +197,18 @@ void X86CallStore(X86Lowering& l, Ref address, Ref value, const MemAttr& m) {
     }
 
     BeginCallAccess(l, m);
-    EmitPush32(l.Cursor(), static_cast<uint32_t>(reinterpret_cast<uintptr_t>(h.context)));
+    if constexpr (!kX64) {
+        EmitPush32(l.Cursor(), static_cast<uint32_t>(reinterpret_cast<uintptr_t>(h.context)));
+    }
     PlaceCallAddress(l, address, m);
     ra.CopyIntoFixed(value, kEdx);
+    if constexpr (kX64) {
+        X86RequireKnownCallAbi();
+        uint8_t*& c = l.Cursor();
+        EmitMovRegReg(c, kX86ArgRegs[0], kEcx);
+        EmitMovRegReg(c, kX86ArgRegs[1], kEdx);
+        EmitMovPtrRegImm(c, kX86ArgRegs[2], h.context);
+    }
     EmitCall(l.Cursor(), StoreHelper(l, m.width_bytes));
     ra.ReleaseTemp(kEcx);
     ra.ReleaseTemp(kEdx);

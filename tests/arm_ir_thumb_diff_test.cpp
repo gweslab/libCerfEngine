@@ -42,7 +42,9 @@ void AppendInstruction(std::mt19937& rng, const cerfengine::ArmFeatures& f,
                        std::vector<uint16_t>& p) {
     const uint32_t pick = RigPick(rng, 20u);
     if (f.thumb2 && pick < 6u) {
-        AppendWide(p, 0xE800u + RigPick(rng, 0x1800u), RigPick(rng, 0x10000u));
+        const uint32_t hw1 = 0xE800u + RigPick(rng, 0x1800u);
+        const uint32_t hw2 = RigPick(rng, 0x10000u);
+        AppendWide(p, hw1, hw2);
         return;
     }
     if (pick == 6u) {
@@ -52,25 +54,31 @@ void AppendInstruction(std::mt19937& rng, const cerfengine::ArmFeatures& f,
         return;
     }
     if (pick == 7u) {
-        p.push_back(static_cast<uint16_t>((RigPick(rng, 2u) != 0u ? 0xF000u : 0xF800u) |
-                                          RigPick(rng, 0x800u)));
+        const uint32_t high   = RigPick(rng, 2u) != 0u ? 0xF000u : 0xF800u;
+        const uint32_t offset = RigPick(rng, 0x800u);
+        p.push_back(static_cast<uint16_t>(high | offset));
         return;
     }
     if (f.thumb2 && pick == 8u) {
-        p.push_back(static_cast<uint16_t>(0xB100u | (RigPick(rng, 2u) << 11) |
-                                          (RigPick(rng, 2u) << 9) | (RigPick(rng, 32u) << 3) |
-                                          RigPick(rng, 8u)));
+        const uint32_t op  = RigPick(rng, 2u);
+        const uint32_t i   = RigPick(rng, 2u);
+        const uint32_t imm = RigPick(rng, 32u);
+        const uint32_t rn  = RigPick(rng, 8u);
+        p.push_back(static_cast<uint16_t>(0xB100u | (op << 11) | (i << 9) | (imm << 3) | rn));
         return;
     }
     if (f.thumb2 && pick == 9u) {
         uint32_t rn = RigPick(rng, 16u);
         if (rn == 13u) rn = 14u;
-        AppendWide(p, 0xE8D0u | rn, 0xF000u | (RigPick(rng, 2u) << 4) | RigPick(rng, 13u));
+        const uint32_t h  = RigPick(rng, 2u);
+        const uint32_t rm = RigPick(rng, 13u);
+        AppendWide(p, 0xE8D0u | rn, 0xF000u | (h << 4) | rm);
         return;
     }
     if (pick == 10u) {
-        p.push_back(static_cast<uint16_t>(0xB660u | (RigPick(rng, 2u) << 4) |
-                                          (1u + RigPick(rng, 7u))));
+        const uint32_t e   = RigPick(rng, 2u);
+        const uint32_t aif = 1u + RigPick(rng, 7u);
+        p.push_back(static_cast<uint16_t>(0xB660u | (e << 4) | aif));
         return;
     }
     if (f.thumb2 && pick == 11u) {
@@ -78,8 +86,9 @@ void AppendInstruction(std::mt19937& rng, const cerfengine::ArmFeatures& f,
         return;
     }
     if (pick == 12u) {
-        p.push_back(static_cast<uint16_t>(0xBF00u | (RigPick(rng, 15u) << 4) |
-                                          (1u + RigPick(rng, 15u))));
+        const uint32_t firstcond = RigPick(rng, 15u);
+        const uint32_t mask      = 1u + RigPick(rng, 15u);
+        p.push_back(static_cast<uint16_t>(0xBF00u | (firstcond << 4) | mask));
         return;
     }
     p.push_back(static_cast<uint16_t>(RigPick(rng, 0xE800u)));

@@ -86,8 +86,10 @@ void TestWfi() {
 
 uint32_t FrameWord(std::mt19937& rng) {
     static constexpr uint32_t kModes[] = {0x10u, 0x11u, 0x12u, 0x13u, 0x17u, 0x1Bu, 0x1Fu};
-    return (RigPick(rng, 16u) << 28) | (RigPick(rng, 4u) << 6) | (RigPick(rng, 2u) << 5) |
-           kModes[RigPick(rng, 7u)];
+    const uint32_t nzcv = RigPick(rng, 16u);
+    const uint32_t af   = RigPick(rng, 4u);
+    const uint32_t t    = RigPick(rng, 2u);
+    return (nzcv << 28) | (af << 6) | (t << 5) | kModes[RigPick(rng, 7u)];
 }
 
 uint32_t FramePointer(std::mt19937& rng) {

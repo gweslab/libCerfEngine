@@ -120,8 +120,30 @@ CERFENGINE_FORCEINLINE void X86PushSlowOperand(uint8_t*& c, const X86Operand& o)
         x86::EmitPushDwordPtr(c, o.spill);
         return;
     case X86OperandKind::kReg:
-        if (o.reg != x86::kEdi && o.reg != x86::kEbp) break;
+        if (o.reg != x86::kSavedRegA && o.reg != x86::kSavedRegB) break;
         x86::EmitPushReg(c, o.reg);
+        return;
+    case X86OperandKind::kNone:
+        break;
+    }
+    X86SlowOperandFault();
+}
+
+CERFENGINE_FORCEINLINE void X86LoadSlowOperand(uint8_t*& c, const X86Operand& o, uint8_t reg) {
+    switch (o.kind) {
+    case X86OperandKind::kConst:
+        x86::EmitMovRegImm32(c, reg, o.imm);
+        return;
+    case X86OperandKind::kSlot:
+    case X86OperandKind::kRecompute:
+        x86::EmitMovRegBaseDisp32(c, reg, x86::kStateReg, o.disp);
+        return;
+    case X86OperandKind::kSpill:
+        x86::EmitMovRegDwordPtr(c, reg, o.spill);
+        return;
+    case X86OperandKind::kReg:
+        if (o.reg != x86::kSavedRegA && o.reg != x86::kSavedRegB) break;
+        x86::EmitMovRegReg(c, reg, o.reg);
         return;
     case X86OperandKind::kNone:
         break;

@@ -65,7 +65,13 @@ struct ArmTlbEntry {
     uint8_t   global;
     uint8_t   writable;
     uint8_t   span_shift;
+#if UINTPTR_MAX > 0xFFFFFFFFu
+    uint64_t  pad;
+#endif
 };
+
+static_assert((sizeof(ArmTlbEntry) & (sizeof(ArmTlbEntry) - 1u)) == 0u,
+              "a soft-TLB entry has a power-of-two size");
 
 constexpr uint32_t kArmTlbWays       = 4;
 constexpr uint32_t kArmTlbSets       = 256;

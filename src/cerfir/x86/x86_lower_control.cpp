@@ -173,7 +173,95 @@ void X86EmitSetSlot(X86Lowering& l, Ref value, int32_t disp, bool sext) {
     X86StoreSlot(l, value, disp);
 }
 
+namespace {
+
+void LoadCallSource(X86Lowering& l, const X86CallSite& s, uint32_t i, uint8_t reg) {
+    uint8_t*& c = l.Cursor();
+    if (i >= s.num_args) {
+        X86LoadCallArg(c, s.extra[i - s.num_args], reg);
+        return;
+    }
+    if (i >= 3u) throw EmitFault("CerfIR x86 lowering: a call site names more than three value arguments");
+    const Block& b   = l.GetBlock();
+    const Ref    arg = s.args[i];
+    if (IsConstRef(arg)) {
+        const uint64_t v = b.ConstValue(arg);
+        if (b.ConstType(arg) == Type::kPtr) {
+            x86::EmitMovPtrRegImm(c, reg, reinterpret_cast<const void*>(static_cast<uintptr_t>(v)));
+        } else {
+            x86::EmitMovRegImm32(c, reg, static_cast<uint32_t>(v));
+        }
+        return;
+    }
+    if (IsSlotRef(arg)) {
+        x86::EmitMovRegBaseDisp32(c, reg, x86::kStateReg, SlotRefDisp(arg));
+        return;
+    }
+    l.Regs().CopyOut(arg, reg);
+}
+
+}
+
+void X86EmitCallX64(X86Lowering& l, const X86CallSite& s) {
+    X86RequireKnownCallAbi();
+    const Block& b  = l.GetBlock();
+    X86RegAlloc& ra = l.Regs();
+    uint8_t*&    c  = l.Cursor();
+    for (uint32_t i = 0; i < s.num_args; ++i) {
+        if (b.TypeOf(s.args[i]) == Type::kI64) {
+            throw EmitFault("CerfIR x86 lowering: 64-bit helper argument");
+        }
+    }
+    if (s.store_pc) {
+        ra.BeforeSlotWrite(b.PcSlot(), 4u);
+        x86::EmitMovBaseDisp32Imm32(c, x86::kStateReg, b.PcSlot(), s.pc);
+    }
+    ra.BeforeFlagsClobber();
+    ra.BeforeStateWrite();
+    ra.UnlockAll();
+    ra.Evict(kX86ScratchRegs);
+
+    const uint32_t total  = s.num_args + s.num_extra;
+    const uint32_t stack  = total > kX86ArgRegCount ? total - kX86ArgRegCount : 0u;
+    const uint32_t padded = stack + (stack & 1u);
+    if (padded != stack) x86::EmitSubPtrRegImm32(c, x86::kEsp, 8u);
+    for (uint32_t i = total; i-- > kX86ArgRegCount;) {
+        LoadCallSource(l, s, i, x86::kR10);
+        x86::EmitPushReg(c, x86::kR10);
+    }
+    const uint32_t in_regs = total < kX86ArgRegCount ? total : kX86ArgRegCount;
+    for (uint32_t i = 0; i < in_regs; ++i) LoadCallSource(l, s, i, kX86ArgRegs[i]);
+    x86::EmitCall(c, s.fn);
+    if (padded != 0u) x86::EmitAddPtrRegImm32(c, x86::kEsp, padded * 8u);
+    ra.UnlockAll();
+    l.ClearFlagSource();
+    if (s.result_type == Type::kI64) {
+        x86::EmitMovPtrRegReg(c, x86::kEdx, x86::kEax);
+        x86::EmitShrReg64Imm(c, x86::kEdx, 32u);
+        ra.DefineInReg(s.result, x86::kEax, true);
+        ra.DefineInReg(l.HiHalf(s.result), x86::kEdx, true);
+    } else if (s.result_type != Type::kVoid) {
+        ra.DefineInReg(s.result, x86::kEax, s.result_type != Type::kI1);
+    }
+}
+
 bool X86EmitLeanCall(X86Lowering& l, const X86CallSite& s) {
+    if constexpr (x86::kX64) {
+        return false;
+    } else {
+        return X86EmitLeanCall32(l, s);
+    }
+}
+
+void X86EmitCall(X86Lowering& l, const X86CallSite& s) {
+    if constexpr (x86::kX64) {
+        X86EmitCallX64(l, s);
+    } else {
+        X86EmitCall32(l, s);
+    }
+}
+
+bool X86EmitLeanCall32(X86Lowering& l, const X86CallSite& s) {
     const Block& b = l.GetBlock();
     if (!l.Regs().Idle() || s.result_type != Type::kVoid) return false;
     for (uint32_t i = 0; i < s.num_args; ++i) {
@@ -209,7 +297,7 @@ bool X86EmitLeanCall(X86Lowering& l, const X86CallSite& s) {
     return true;
 }
 
-void X86EmitCall(X86Lowering& l, const X86CallSite& s) {
+void X86EmitCall32(X86Lowering& l, const X86CallSite& s) {
     const Block& b  = l.GetBlock();
     X86RegAlloc& ra = l.Regs();
     uint8_t*&    c  = l.Cursor();

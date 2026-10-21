@@ -28,8 +28,13 @@ struct X86MemoryTail {
 };
 
 CERFENGINE_FORCEINLINE void X86ChainLabelSite(uint8_t*& head, uint8_t* site) {
-    le::Put32(site, static_cast<uint32_t>(reinterpret_cast<uintptr_t>(head)));
+    le::Put32(site, head != nullptr ? static_cast<uint32_t>(site - head) : 0u);
     head = site;
+}
+
+CERFENGINE_FORCEINLINE uint8_t* X86NextChainedSite(const uint8_t* site) {
+    const uint32_t back = le::U32(site);
+    return back != 0u ? const_cast<uint8_t*>(site) - back : nullptr;
 }
 
 class X86MemoryTails {

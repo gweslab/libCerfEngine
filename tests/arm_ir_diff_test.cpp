@@ -12,15 +12,24 @@ uint32_t RandomDataProcessing(std::mt19937& rng) {
     uint32_t       rn     = move ? 0u : RigPick(rng, 16u);
     const uint32_t head   = (cond << 28) | (opcode << 21) | (s << 20) | (rd << 12);
     switch (RigPick(rng, 3u)) {
-    case 0u:
-        return head | (1u << 25) | (rn << 16) | (RigPick(rng, 16u) << 8) | RigPick(rng, 256u);
-    case 1u:
-        return head | (rn << 16) | (RigPick(rng, 32u) << 7) | (RigPick(rng, 4u) << 5) |
-               RigPick(rng, 16u);
-    default:
+    case 0u: {
+        const uint32_t rotate = RigPick(rng, 16u);
+        const uint32_t imm8   = RigPick(rng, 256u);
+        return head | (1u << 25) | (rn << 16) | (rotate << 8) | imm8;
+    }
+    case 1u: {
+        const uint32_t imm5 = RigPick(rng, 32u);
+        const uint32_t type = RigPick(rng, 4u);
+        const uint32_t rm   = RigPick(rng, 16u);
+        return head | (rn << 16) | (imm5 << 7) | (type << 5) | rm;
+    }
+    default: {
         if (rn == 15u) rn = RigPick(rng, 15u);
-        return head | (rn << 16) | (RigPick(rng, 15u) << 8) | (RigPick(rng, 4u) << 5) |
-               (1u << 4) | RigPick(rng, 15u);
+        const uint32_t rs   = RigPick(rng, 15u);
+        const uint32_t type = RigPick(rng, 4u);
+        const uint32_t rm   = RigPick(rng, 15u);
+        return head | (rn << 16) | (rs << 8) | (type << 5) | (1u << 4) | rm;
+    }
     }
 }
 
@@ -50,9 +59,14 @@ uint32_t RandomPcWrite(std::mt19937& rng) {
     const uint32_t head   = (cond << 28) | (opcode << 21) | (RigPick(rng, 2u) << 20) | (rn << 16) |
                           (15u << 12);
     if (RigPick(rng, 2u) == 0u) {
-        return head | (1u << 25) | (RigPick(rng, 16u) << 8) | RigPick(rng, 256u);
+        const uint32_t rotate = RigPick(rng, 16u);
+        const uint32_t imm8   = RigPick(rng, 256u);
+        return head | (1u << 25) | (rotate << 8) | imm8;
     }
-    return head | (RigPick(rng, 32u) << 7) | (RigPick(rng, 4u) << 5) | RigPick(rng, 16u);
+    const uint32_t imm5 = RigPick(rng, 32u);
+    const uint32_t type = RigPick(rng, 4u);
+    const uint32_t rm   = RigPick(rng, 16u);
+    return head | (imm5 << 7) | (type << 5) | rm;
 }
 
 uint32_t RandomExit(std::mt19937& rng) {
@@ -62,8 +76,11 @@ uint32_t RandomExit(std::mt19937& rng) {
         return (cond << 28) | 0x012FFF10u | RigPick(rng, 16u);
     case 1u:
         return (cond << 28) | 0x012FFF30u | RigPick(rng, 16u);
-    case 2u:
-        return 0xFA000000u | (RigPick(rng, 2u) << 24) | RigPick(rng, 0x1000000u);
+    case 2u: {
+        const uint32_t h      = RigPick(rng, 2u);
+        const uint32_t offset = RigPick(rng, 0x1000000u);
+        return 0xFA000000u | (h << 24) | offset;
+    }
     case 3u:
         return (cond << 28) | 0x0F000000u | RigPick(rng, 0x1000000u);
     default:
@@ -79,7 +96,10 @@ uint32_t RandomFieldMask(std::mt19937& rng) {
 uint32_t RandomPsrImmediate(std::mt19937& rng) {
     static constexpr uint32_t kModes[] = {0x10u, 0x11u, 0x12u, 0x13u, 0x17u, 0x1Bu, 0x1Fu};
     switch (RigPick(rng, 3u)) {
-    case 0u:  return (RigPick(rng, 4u) << 6) | kModes[RigPick(rng, 7u)];
+    case 0u: {
+        const uint32_t flags = RigPick(rng, 4u);
+        return (flags << 6) | kModes[RigPick(rng, 7u)];
+    }
     case 1u:  return (2u << 8) | RigPick(rng, 16u);
     default:  return RigPick(rng, 0x1000u);
     }
@@ -91,9 +111,11 @@ uint32_t RandomStatusRegister(std::mt19937& rng, bool v7) {
     switch (RigPick(rng, 3u)) {
     case 0u:
         return (cond << 28) | 0x010F0000u | (r << 22) | (RandomRegister(rng) << 12);
-    case 1u:
-        return (cond << 28) | 0x0120F000u | (r << 22) | (RandomFieldMask(rng) << 16) |
-               RandomRegister(rng);
+    case 1u: {
+        const uint32_t mask = RandomFieldMask(rng);
+        const uint32_t rn   = RandomRegister(rng);
+        return (cond << 28) | 0x0120F000u | (r << 22) | (mask << 16) | rn;
+    }
     default: {
         uint32_t mask = RandomFieldMask(rng);
         if (v7 && r == 0u && mask == 0u) mask = 8u;
@@ -106,15 +128,20 @@ uint32_t RandomBitCount(std::mt19937& rng) {
     static constexpr uint32_t kOps[] = {0x016F0F10u, 0x06BF0F30u, 0x06BF0FB0u, 0x06FF0FB0u,
                                         0x06FF0F30u};
     const uint32_t cond = RigPick(rng, 4u) == 0u ? RigPick(rng, 15u) : 14u;
-    return (cond << 28) | kOps[RigPick(rng, 5u)] | (RandomRegister(rng) << 12) |
-           RandomRegister(rng);
+    const uint32_t op   = kOps[RigPick(rng, 5u)];
+    const uint32_t rd   = RandomRegister(rng);
+    const uint32_t rm   = RandomRegister(rng);
+    return (cond << 28) | op | (rd << 12) | rm;
 }
 
 uint32_t RandomExtend(std::mt19937& rng) {
     static constexpr uint32_t kOps[] = {0x06AF0070u, 0x06BF0070u, 0x06EF0070u, 0x06FF0070u};
-    const uint32_t cond = RigPick(rng, 4u) == 0u ? RigPick(rng, 15u) : 14u;
-    return (cond << 28) | kOps[RigPick(rng, 4u)] | (RandomRegister(rng) << 12) |
-           (RigPick(rng, 4u) << 10) | RandomRegister(rng);
+    const uint32_t cond   = RigPick(rng, 4u) == 0u ? RigPick(rng, 15u) : 14u;
+    const uint32_t op     = kOps[RigPick(rng, 4u)];
+    const uint32_t rd     = RandomRegister(rng);
+    const uint32_t rotate = RigPick(rng, 4u);
+    const uint32_t rm     = RandomRegister(rng);
+    return (cond << 28) | op | (rd << 12) | (rotate << 10) | rm;
 }
 
 uint32_t RandomBitfield(std::mt19937& rng) {
@@ -132,15 +159,20 @@ uint32_t RandomBitfield(std::mt19937& rng) {
 
 uint32_t RandomSaturating(std::mt19937& rng) {
     const uint32_t cond = RigPick(rng, 4u) == 0u ? RigPick(rng, 15u) : 14u;
-    return (cond << 28) | 0x01000050u | (RigPick(rng, 4u) << 21) | (RandomRegister(rng) << 16) |
-           (RandomRegister(rng) << 12) | RandomRegister(rng);
+    const uint32_t op   = RigPick(rng, 4u);
+    const uint32_t rn   = RandomRegister(rng);
+    const uint32_t rd   = RandomRegister(rng);
+    const uint32_t rm   = RandomRegister(rng);
+    return (cond << 28) | 0x01000050u | (op << 21) | (rn << 16) | (rd << 12) | rm;
 }
 
 uint32_t RandomDspMultiply(std::mt19937& rng) {
     const uint32_t cond = RigPick(rng, 4u) == 0u ? RigPick(rng, 15u) : 14u;
     uint32_t       ra   = RandomRegister(rng);
-    const uint32_t regs = (RandomRegister(rng) << 16) | (RandomRegister(rng) << 8) |
-                          RandomRegister(rng);
+    const uint32_t rd   = RandomRegister(rng);
+    const uint32_t rm   = RandomRegister(rng);
+    const uint32_t rn   = RandomRegister(rng);
+    const uint32_t regs = (rd << 16) | (rm << 8) | rn;
     switch (RigPick(rng, 3u)) {
     case 0u: {
         const uint32_t row = RigPick(rng, 4u);
@@ -149,10 +181,13 @@ uint32_t RandomDspMultiply(std::mt19937& rng) {
         return (cond << 28) | 0x01000080u | (row << 21) | regs | (ra << 12) |
                (RigPick(rng, 2u) << 6) | (n << 5);
     }
-    case 1u:
+    case 1u: {
         if (RigPick(rng, 4u) == 0u) ra = 15u;
-        return (cond << 28) | 0x07000010u | (RigPick(rng, 2u) << 22) | regs | (ra << 12) |
-               (RigPick(rng, 2u) << 6) | (RigPick(rng, 2u) << 5);
+        const uint32_t op = RigPick(rng, 2u);
+        const uint32_t s  = RigPick(rng, 2u);
+        const uint32_t m  = RigPick(rng, 2u);
+        return (cond << 28) | 0x07000010u | (op << 22) | regs | (ra << 12) | (s << 6) | (m << 5);
+    }
     default: {
         const uint32_t sub = RigPick(rng, 2u);
         if (sub == 0u && RigPick(rng, 4u) == 0u) ra = 15u;
@@ -166,14 +201,19 @@ uint32_t RandomSignedSaturate(std::mt19937& rng) {
     const uint32_t cond    = RigPick(rng, 4u) == 0u ? RigPick(rng, 15u) : 14u;
     const uint32_t sat_imm = RigPick(rng, 4u) == 0u ? 31u : RigPick(rng, 32u);
     const uint32_t imm5    = RigPick(rng, 2u) == 0u ? 0u : RigPick(rng, 32u);
-    return (cond << 28) | 0x06A00010u | (sat_imm << 16) | (RandomRegister(rng) << 12) |
-           (imm5 << 7) | (RigPick(rng, 2u) << 6) | RandomRegister(rng);
+    const uint32_t rd      = RandomRegister(rng);
+    const uint32_t sh      = RigPick(rng, 2u);
+    const uint32_t rn      = RandomRegister(rng);
+    return (cond << 28) | 0x06A00010u | (sat_imm << 16) | (rd << 12) | (imm5 << 7) | (sh << 6) |
+           rn;
 }
 
 uint32_t RandomSpsr(std::mt19937& rng) {
     static constexpr uint32_t kModes[] = {0x10u, 0x1Fu, 0x13u, 0x12u};
-    return (RigPick(rng, 16u) << 28) | (RigPick(rng, 4u) << 6) | (RigPick(rng, 2u) << 5) |
-           kModes[RigPick(rng, 4u)];
+    const uint32_t nzcv = RigPick(rng, 16u);
+    const uint32_t af   = RigPick(rng, 4u);
+    const uint32_t t    = RigPick(rng, 2u);
+    return (nzcv << 28) | (af << 6) | (t << 5) | kModes[RigPick(rng, 4u)];
 }
 
 uint32_t RandomValue(std::mt19937& rng) {
