@@ -1,5 +1,6 @@
 #pragma once
 
+#include "state_digest.h"
 #include "test_host.h"
 
 #include <cerfengine/guest_engine.h>
@@ -223,6 +224,46 @@ private:
     cerfengine::MipsCpu*                cpu_   = nullptr;
     cerfengine::GuestEngine*            guest_ = nullptr;
 };
+
+inline void MipsRigDigestRun(StateDigest& d, const MipsIrRig& rig,
+                             cerfengine::GuestEngine::RunStatus status) {
+    const cerfengine::MipsCpuState& s = rig.State();
+    d.Add32(static_cast<uint32_t>(status));
+    for (uint64_t v : s.gpr) d.Add64(v);
+    d.Add64(s.hi);
+    d.Add64(s.lo);
+    d.Add32(s.pc);
+    d.Add32(s.isa_mode);
+    d.Add32(s.branch_state);
+    d.Add32(s.btarget);
+    d.Add32(s.bcond);
+    d.Add32(s.btarget_isa);
+    d.Add32(s.branch_len);
+    d.Add32(s.idle_wait);
+    d.Add32(s.cp0_status);
+    d.Add32(s.cp0_cause);
+    d.Add32(s.cp0_epc);
+    d.Add32(s.cp0_badvaddr);
+    d.Add32(s.guest_cycle_counter);
+    const std::vector<uint8_t>& ram = rig.Host().Ram();
+    d.AddBytes(ram.data(), ram.size());
+    for (const TestHost::MmioAccess& a : rig.Host().MmioLog()) {
+        d.Add32(a.pa);
+        d.Add32(a.value);
+        d.Add32(a.width);
+        d.Add32(a.cycles);
+        d.Add32(a.write ? 1u : 0u);
+    }
+    const MipsRigEvents& e = rig.Events();
+    d.Add32(e.exceptions);
+    d.Add32(e.last_cause);
+    d.Add32(e.mmu_faults);
+    d.Add32(e.count);
+    for (uint32_t v : e.tlb_ops) d.Add32(v);
+    d.Add32(e.erets);
+    d.Add32(e.rfes);
+    d.Add32(e.power_downs);
+}
 
 inline uint32_t MipsRigPick(std::mt19937& rng, uint32_t n) {
     return static_cast<uint32_t>(rng() % n);

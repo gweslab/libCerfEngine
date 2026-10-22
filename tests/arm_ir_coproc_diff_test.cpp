@@ -329,6 +329,7 @@ void TestCoprocessors(const char* name, const cerfengine::ArmFeatures& features,
 
     constexpr uint32_t kPrograms = 6000u;
     uint32_t halts = 0, undefined = 0, exits = 0, flushed = 0;
+    StateDigest digest;
     for (uint32_t n = 0; n < kPrograms; ++n) {
         std::vector<uint32_t> program;
         const uint32_t length = 1u + RigPick(rng, 5u);
@@ -368,6 +369,14 @@ void TestCoprocessors(const char* name, const cerfengine::ArmFeatures& features,
             RigDump("unverified", b.State());
             TestFail("CerfIR differs between verify modes");
         }
+        RigDigestRun(digest, a, status[0]);
+        const cerfengine::ArmMmuState& mmu = *a.Engine().Get<cerfengine::ArmMmu>().State();
+        digest.Add32(mmu.control_register.word);
+        digest.Add32(mmu.coprocessor_access);
+        digest.Add32(mmu.contextidr);
+        digest.Add32(mmu.process_id);
+        digest.Add32(mmu.fcse_fold_id);
+        digest.Add32(EntryBlockCached(a, mode) ? 1u : 0u);
         if (status[0] == RunStatus::kHalted) {
             ++halts;
             for (Lane& lane : lanes) {
@@ -385,8 +394,8 @@ void TestCoprocessors(const char* name, const cerfengine::ArmFeatures& features,
         }
     }
     std::printf("coprocessor %s: %u programs agree in both verify modes (exits %u, undefined %u, "
-                "halts %u, entry block flushed %u)\n", name, kPrograms, exits, undefined, halts,
-                flushed);
+                "halts %u, entry block flushed %u), digest %016llX\n", name, kPrograms, exits,
+                undefined, halts, flushed, digest.Value());
     RigPrintCompileStats("  cerfir verified  ", lanes[0].rig->Host());
     RigPrintCompileStats("  cerfir unverified", lanes[1].rig->Host());
 }

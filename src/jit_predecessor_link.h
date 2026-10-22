@@ -2,11 +2,12 @@
 
 #include <cstdint>
 
-#include <cerfengine/byte_order.h>
 #include <cerfengine/jit_block.h>
 #include <cerfengine/jit_block_index.h>
 
 #include <cerfengine/force_inline.h>
+
+#include "chain_jump_patch.h"
 
 namespace cerfengine {
 
@@ -23,8 +24,7 @@ CERFENGINE_FORCEINLINE void LinkPredecessor(JitBlockIndex& index, uint32_t prede
             src->chain_pending_va[s] != dest->guest_start) {
             continue;
         }
-        le::Put32(src->chain_site[s],
-                  static_cast<uint32_t>(dest->native_start - (src->chain_site[s] + 4)));
+        PatchChainJump(src->chain_site[s], dest->native_start);
         index.LinkChain(src, s, dest, src->chain_site[s], src->chain_fallback[s]);
     }
 }

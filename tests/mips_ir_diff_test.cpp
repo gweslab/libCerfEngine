@@ -172,6 +172,7 @@ void RunConfig(const Config& cfg) {
     c.Load(kMipsRigEndVa, end_loops);
     u.Load(kMipsRigEndVa, end_loops);
     uint32_t mips16 = 0, pending = 0, exceptions = 0, halts = 0, idles = 0, power = 0, tlb = 0;
+    StateDigest digest;
     for (uint32_t p = 0; p < cfg.programs; ++p) {
         const Prepared prog = Prepare(rng, cfg, gen32, gen16);
         std::vector<uint32_t> data(0x200u);
@@ -191,9 +192,11 @@ void RunConfig(const Config& cfg) {
         pending += prog.init.branch_state != MipsBranch::kNone ? 1u : 0u;
         uint32_t step   = 0;
         bool     halted = false;
+        auto     last   = cerfengine::GuestEngine::RunStatus::kRunning;
         for (; step < 400u && !c.Finished(); ++step) {
             const auto sc = c.Step();
             const auto su = u.Step();
+            last          = sc;
             halted        = sc == cerfengine::GuestEngine::RunStatus::kHalted;
             if (!SameStep(c, sc, u, su)) Report(c, u, prog, cfg.name, p, step, halted);
             if (halted) {
@@ -203,14 +206,17 @@ void RunConfig(const Config& cfg) {
             }
         }
         if (!SameEnd(c, u)) Report(c, u, prog, cfg.name, p, step, halted);
+        MipsRigDigestRun(digest, c, last);
+        digest.Add32(step);
         exceptions += c.Events().exceptions;
         power += c.Events().power_downs;
         idles += c.State().idle_wait != 0u ? 1u : 0u;
         for (uint32_t k : c.Events().tlb_ops) tlb += k;
     }
     std::printf("%s: %u programs agree in both verify modes (%u mips16, %u pending entries, "
-                "%u exceptions, %u halts, %u idle, %u power-down, %u tlb ops)\n",
-                cfg.name, cfg.programs, mips16, pending, exceptions, halts, idles, power, tlb);
+                "%u exceptions, %u halts, %u idle, %u power-down, %u tlb ops), digest %016llX\n",
+                cfg.name, cfg.programs, mips16, pending, exceptions, halts, idles, power, tlb,
+                digest.Value());
 }
 
 }

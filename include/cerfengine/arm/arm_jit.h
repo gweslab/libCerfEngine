@@ -73,6 +73,7 @@ private:
     HostRequestChannel*     host_requests_ = nullptr;
     cerfengine::EngineHost* host_     = nullptr;
     ClockHost*              clock_    = nullptr;
+    const void*             entry_stub_ = nullptr;
 };
 
 }

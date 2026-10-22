@@ -4,6 +4,7 @@
 #include <cstddef>
 
 #include "../emit_fault.h"
+#include "../host_platform.h"
 #include "../jit_predecessor_link.h"
 #include "../steady_clock_ns.h"
 #include <cerfengine/byte_order.h>
@@ -266,6 +267,7 @@ void* ArmBlockCompiler::Compile(uint32_t guest_pc) {
             space.JumpCacheInsert(privilege, folded_pc, ex->native_start, ex);
             return ex->native_start;
         }
+        const platform::CodeWriteScope write;
         space.RemoveBlock(ex);
     }
 
@@ -290,6 +292,7 @@ void* ArmBlockCompiler::Compile(uint32_t guest_pc) {
         engine_.Panic("ArmBlockCompiler::Compile: decoded 0 insns at 0x%08X", guest_pc);
     }
 
+    const platform::CodeWriteScope write;
     for (int attempt = 0; attempt < 2; ++attempt) {
         const size_t slab_size = arena.Remaining();
         uint8_t*     slab      = arena.Allocate(slab_size);
@@ -323,6 +326,7 @@ void* ArmBlockCompiler::Compile(uint32_t guest_pc) {
             const size_t code_size = GenerateCodeChecked(code, slab + slab_size);
             if (code_size != 0u) {
                 arena.FreeUnusedTail(code + code_size);
+                platform::FlushInstructionCache(code, code_size);
                 space.JumpCacheInsert(privilege, folded_pc, stored->native_start, stored);
                 if (report_compiles_) {
                     host_->OnBlockCompiled(BlockCompileStats{

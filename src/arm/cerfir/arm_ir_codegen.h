@@ -38,6 +38,8 @@ public:
 
     size_t Generate(const ArmIrBlockInput& in, uint8_t* code, uint8_t* code_end);
 
+    const void* EntryStub() const { return target_.entry_stub; }
+
 private:
     void TranslateBlock(const ArmIrBlockInput& in);
     template <bool kUniform, bool kTraced>

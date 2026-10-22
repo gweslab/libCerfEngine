@@ -120,6 +120,7 @@ void TestThumb(const Config& config) {
     constexpr uint32_t kPrograms = 30000u;
     uint32_t           und_exits = 0;
     uint32_t           halts     = 0;
+    StateDigest        digest;
     for (uint32_t n = 0; n < kPrograms; ++n) {
         std::vector<uint16_t> halfwords;
         const uint32_t        length = 1u + RigPick(rng, 8u);
@@ -160,6 +161,7 @@ void TestThumb(const Config& config) {
             RigDump("unverified", b.State());
             TestFail("CerfIR differs between verify modes in Thumb state");
         }
+        RigDigestRun(digest, a, status[0]);
         if (halted) {
             ++halts;
             for (auto& rig : rigs) {
@@ -170,8 +172,9 @@ void TestThumb(const Config& config) {
         }
         if (a.State().cpsr.bits.mode == cerfengine::ArmMode::kUndefined) ++und_exits;
     }
-    std::printf("thumb %s: %u programs agree in both verify modes (undefined %u, halts %u)\n",
-                config.name, kPrograms, und_exits, halts);
+    std::printf("thumb %s: %u programs agree in both verify modes (undefined %u, halts %u), "
+                "digest %016llX\n",
+                config.name, kPrograms, und_exits, halts, digest.Value());
     RigPrintCompileStats("cerfir verified  ", rigs[0]->Host());
     RigPrintCompileStats("cerfir unverified", rigs[1]->Host());
 }

@@ -121,6 +121,10 @@ void FormatFault(HostFault& fault) {
                   static_cast<unsigned long long>(r[REG_EFL]));
 }
 
+void* WakeEventHandle(int descriptor) {
+    return reinterpret_cast<void*>(static_cast<intptr_t>(descriptor) + 1);
+}
+
 int SignalWake(void* handle) {
     const uint64_t one = 1u;
     ssize_t        written;
@@ -201,6 +205,22 @@ void CloseWakeEvent(const WakeEvent& event) {
 
 uint32_t LastErrorCode() {
     return static_cast<uint32_t>(errno);
+}
+
+}
+
+namespace cerfengine {
+
+int WakeEventDescriptor(void* handle) {
+    return static_cast<int>(reinterpret_cast<intptr_t>(handle) - 1);
+}
+
+void ConsumeWakeEvent(void* handle) {
+    uint64_t count = 0;
+    ssize_t  read_bytes;
+    do {
+        read_bytes = ::read(WakeEventDescriptor(handle), &count, sizeof(count));
+    } while (read_bytes < 0 && errno == EINTR);
 }
 
 }

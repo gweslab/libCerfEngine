@@ -114,6 +114,11 @@ struct MemorySlowModel {
 
 enum class MemoryModelKind : uint8_t { kNone, kSoftTlb, kHelper };
 
+struct PinnedSlots {
+    int32_t  base  = 0;
+    uint32_t count = 0;
+};
+
 struct GuestModel {
     int32_t           cycle_slot = 0;
     ExitModel         exits;
@@ -121,6 +126,7 @@ struct GuestModel {
     SoftTlbModel      tlb;
     HelperMemoryModel helper;
     MemorySlowModel   slow;
+    PinnedSlots       pinned;
 };
 
 constexpr uint32_t HelperWidthIndex(uint32_t width_bytes) {

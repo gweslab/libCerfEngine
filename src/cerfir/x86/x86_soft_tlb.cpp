@@ -200,7 +200,8 @@ uint8_t* X86SoftTlb::EmitMissCall(uint8_t* cursor, TlbAccess access) const {
     return EmitInlineHelperCall(cursor, model_.miss_helper[static_cast<size_t>(access)]);
 }
 
-void X86SoftTlb::Build(const SoftTlbModel& model, uint8_t* region) {
+void X86SoftTlb::Build(const GuestModel& guest, uint8_t* region) {
+    const SoftTlbModel& model = guest.tlb;
     if (model.privileges == 0u || model.privileges > kMaxPrivileges) {
         throw EmitFault("CerfIR x86 soft TLB: the model names an unsupported privilege count");
     }

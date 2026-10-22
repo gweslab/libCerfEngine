@@ -152,6 +152,7 @@ void RunConfig(const Config& config, uint32_t seed, uint32_t programs) {
     uint32_t     und_exits     = 0;
     uint32_t     abort_exits   = 0;
     uint32_t     pc_exits      = 0;
+    StateDigest  digest;
     for (uint32_t n = 0; n < programs; ++n) {
         std::vector<uint32_t> program;
         const uint32_t        length = 1u + RigPick(rng, 6u);
@@ -206,6 +207,7 @@ void RunConfig(const Config& config, uint32_t seed, uint32_t programs) {
             RigDump("unverified", rigs[1]->State());
             TestFail("CerfIR differs between verify modes");
         }
+        RigDigestRun(digest, *rigs[0], status[0]);
         const cerfengine::ArmCpuState& s = rigs[0]->State();
         mmio_accesses += static_cast<uint32_t>(rigs[0]->Host().MmioLog().size());
         if (s.cpsr.bits.mode == cerfengine::ArmMode::kUndefined) {
@@ -217,9 +219,9 @@ void RunConfig(const Config& config, uint32_t seed, uint32_t programs) {
         }
     }
     std::printf("%s: %u programs agree in both verify modes (mmio %u, alignment faults %u, "
-                "translation faults %u, undefined %u, abort %u, other exits %u)\n",
+                "translation faults %u, undefined %u, abort %u, other exits %u), digest %016llX\n",
                 config.name, programs, mmio_accesses, rigs[0]->System().AlignmentFaults(),
-                rigs[0]->System().WalkFaults(), und_exits, abort_exits, pc_exits);
+                rigs[0]->System().WalkFaults(), und_exits, abort_exits, pc_exits, digest.Value());
     RigPrintCompileStats("  cerfir verified  ", rigs[0]->Host());
     RigPrintCompileStats("  cerfir unverified", rigs[1]->Host());
 }

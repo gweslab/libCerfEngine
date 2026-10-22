@@ -43,7 +43,7 @@ void MipsJit::ReportHostFault(uint32_t code, const void* address, const char* re
 
 namespace {
 
-#if CERFENGINE_BACKEND_X86_64_SYSV
+#if CERFENGINE_GUARDED_DISPATCH
 struct MipsBlockEntry {
     void* native;
     void* state;
@@ -154,7 +154,7 @@ dispatch:
         if (_exception_code() == platform::kHaltUnwindCode) return RunStatus::kHalted;
     }
     return RunStatus::kRunning;
-#elif CERFENGINE_BACKEND_X86_64_SYSV
+#elif CERFENGINE_GUARDED_DISPATCH
     {
         MipsBlockEntry      entry{native, cpu_state_};
         platform::HostFault fault{};

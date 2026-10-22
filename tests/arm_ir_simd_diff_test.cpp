@@ -9,6 +9,9 @@ namespace {
 constexpr uint32_t kCpacrFullCp10Cp11 = 0x00F00000u;
 constexpr uint16_t kThumbBranchSelf   = 0xE7FEu;
 
+bool     g_trace        = false;
+uint32_t g_dump_program = 0xFFFFFFFFu;
+
 struct Config {
     const char*             name;
     cerfengine::ArmFeatures features;
@@ -129,6 +132,7 @@ void TestSimd(const Config& config) {
     constexpr uint32_t kPrograms = 20000u;
     uint32_t           und_exits = 0;
     uint32_t           halts     = 0;
+    StateDigest        digest;
     for (uint32_t n = 0; n < kPrograms; ++n) {
         const std::vector<uint32_t> program = Program(rng, config.thumb);
         static constexpr uint32_t kModes[] = {0x10u, 0x13u, 0x1Fu, 0xD3u};
@@ -183,6 +187,24 @@ void TestSimd(const Config& config) {
             }
             TestFail("CerfIR differs between verify modes on VFP/NEON");
         }
+        RigDigestRun(digest, a, status[0]);
+        if (g_trace) {
+            StateDigest one;
+            RigDigestRun(one, a, status[0]);
+            std::printf("%s %u %016llX:", config.name, n, one.Value());
+            for (uint32_t w : program) std::printf(" %08X", w);
+            std::printf("\n");
+        }
+        if (n == g_dump_program) {
+            RigDump("initial", initial);
+            RigDump("final  ", a.State());
+            std::printf("fpscr %08X -> %08X\n", initial.fpscr, a.State().fpscr);
+            for (uint32_t i = 0; i < 32u; ++i) {
+                std::printf("d%u %016llX -> %016llX\n", i,
+                            static_cast<unsigned long long>(initial.vfp_d[i]),
+                            static_cast<unsigned long long>(a.State().vfp_d[i]));
+            }
+        }
         if (halted) {
             ++halts;
             for (auto& rig : rigs) {
@@ -193,8 +215,9 @@ void TestSimd(const Config& config) {
         }
         if (a.State().cpsr.bits.mode == cerfengine::ArmMode::kUndefined) ++und_exits;
     }
-    std::printf("simd %s: %u programs agree in both verify modes (undefined %u, halts %u)\n",
-                config.name, kPrograms, und_exits, halts);
+    std::printf("simd %s: %u programs agree in both verify modes (undefined %u, halts %u), "
+                "digest %016llX\n",
+                config.name, kPrograms, und_exits, halts, digest.Value());
     RigPrintCompileStats("cerfir verified  ", rigs[0]->Host());
     RigPrintCompileStats("cerfir unverified", rigs[1]->Host());
 }
@@ -231,7 +254,9 @@ cerfengine::ArmFeatures V7Simd(uint32_t mvfr0, uint32_t mvfr1) {
 
 }
 
-int main() {
+int main(int argc, char** argv) {
+    g_trace = argc == 2;
+    if (argc == 3) g_dump_program = static_cast<uint32_t>(std::strtoul(argv[2], nullptr, 10));
     TestSimd({"arm vfpv3", V7Simd(0x11110222u, 0x00011111u), false, 0x53494D44u});
     TestSimd({"arm vfpv4", V7Simd(0x10110222u, 0x11111111u), false, 0x53494D45u});
     TestSimd({"thumb vfpv3", V7Simd(0x11110222u, 0x00011111u), true, 0x53494D46u});

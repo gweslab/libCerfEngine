@@ -98,7 +98,7 @@ void Engine::Panic(const char* fmt, ...) {
     std::abort();
 }
 
-#if CERFENGINE_X86_TRANSLATOR
+#if CERFENGINE_TRANSLATOR
 void Engine::Halt(HaltReason reason, const char* fmt, ...) {
     halt_.reason = reason;
     va_list args;

@@ -1,9 +1,9 @@
 #pragma once
 
-#include <cmath>
 #include <cstdint>
 
 #include "../host_fp_env.h"
+#include "../host_fp_op.h"
 #include "arm_vfp.h"
 
 namespace cerfengine {
@@ -99,19 +99,21 @@ public:
         return false;
     }
 
-    template <class F, class Fn>
-    static inline typename F::Bits Numeric(uint32_t* fpscr, Fn compute) {
-        const HostFpEnv::Saved saved = HostFpEnv::BeginClean();
-        const typename F::Flt r = compute();
-        uint32_t raised = HostFpEnv::Raised();
+    template <class F, HostFpOp kOp>
+    static inline typename F::Bits Numeric(uint32_t* fpscr, typename F::Bits x,
+                                           typename F::Bits y) {
+        using Flt          = typename F::Flt;
+        const Flt a        = ArmVfp::BitCast<Flt>(x);
+        const Flt b        = ArmVfp::BitCast<Flt>(y);
+        uint32_t  raised   = 0u;
+        const Flt r        = HostFpEnv::Run<kOp>(a, b, &raised);
         typename F::Bits rb = ArmVfp::BitCast<typename F::Bits>(r);
         const typename F::Bits mag = rb & ~F::kSign;
         const bool inexact = (raised & HostFpEnv::kInexact) != 0u;
         bool tiny = mag < F::kMinNo && (mag != 0 || inexact);
         if (mag == F::kMinNo && inexact) {
-            HostFpEnv::RoundTowardZero(saved);
-            const typename F::Bits zb = ArmVfp::BitCast<typename F::Bits>(compute()) & ~F::kSign;
-            HostFpEnv::Restore(saved);
+            const typename F::Bits zb =
+                ArmVfp::BitCast<typename F::Bits>(HostFpEnv::RunTowardZero<kOp>(a, b)) & ~F::kSign;
             tiny = zb < F::kMinNo;
         }
         if (tiny && (*fpscr & ArmVfp::kFpscrFzMask) != 0u) {
@@ -143,9 +145,7 @@ public:
         if ((i1 && !a.sign) || (i2 && !b.sign)) return Inf<F>(false);
         if ((i1 && a.sign)  || (i2 && b.sign))  return Inf<F>(true);
         if (z1 && z2 && a.sign == b.sign)       return Zero<F>(a.sign);
-        return Numeric<F>(fpscr, [&] {
-            return ArmVfp::BitCast<typename F::Flt>(a.bits) + ArmVfp::BitCast<typename F::Flt>(b.bits);
-        });
+        return Numeric<F, HostFpOp::kAdd>(fpscr, a.bits, b.bits);
     }
 
     /* ARM DDI 0406C.c FPSub() (p. A2-82). */
@@ -165,9 +165,7 @@ public:
         if ((i1 && !a.sign) || (i2 && b.sign))  return Inf<F>(false);
         if ((i1 && a.sign)  || (i2 && !b.sign)) return Inf<F>(true);
         if (z1 && z2 && a.sign != b.sign)       return Zero<F>(a.sign);
-        return Numeric<F>(fpscr, [&] {
-            return ArmVfp::BitCast<typename F::Flt>(a.bits) - ArmVfp::BitCast<typename F::Flt>(b.bits);
-        });
+        return Numeric<F, HostFpOp::kSub>(fpscr, a.bits, b.bits);
     }
 
     /* ARM DDI 0406C.c FPMul() (p. A2-83). */
@@ -187,9 +185,7 @@ public:
         }
         if (i1 || i2) return Inf<F>(rs);
         if (z1 || z2) return Zero<F>(rs);
-        return Numeric<F>(fpscr, [&] {
-            return ArmVfp::BitCast<typename F::Flt>(a.bits) * ArmVfp::BitCast<typename F::Flt>(b.bits);
-        });
+        return Numeric<F, HostFpOp::kMul>(fpscr, a.bits, b.bits);
     }
 
     /* ARM DDI 0406C.c FPDiv() (pp. A2-83, A2-84), including "if !inf1 then
@@ -213,9 +209,7 @@ public:
             return Inf<F>(rs);
         }
         if (z1 || i2) return Zero<F>(rs);
-        return Numeric<F>(fpscr, [&] {
-            return ArmVfp::BitCast<typename F::Flt>(a.bits) / ArmVfp::BitCast<typename F::Flt>(b.bits);
-        });
+        return Numeric<F, HostFpOp::kDiv>(fpscr, a.bits, b.bits);
     }
 
     template <class F>
@@ -230,9 +224,7 @@ public:
             *fpscr |= ArmVfp::kFpscrIocMask;
             return F::kDNaN;
         }
-        return Numeric<F>(fpscr, [&] {
-            return std::sqrt(ArmVfp::BitCast<typename F::Flt>(a.bits));
-        });
+        return Numeric<F, HostFpOp::kSqrt>(fpscr, a.bits, a.bits);
     }
 
     /* ARM DDI 0406C.c FPNeg() (p. A2-75): negation "only affect the sign bit",

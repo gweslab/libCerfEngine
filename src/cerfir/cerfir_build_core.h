@@ -56,9 +56,9 @@ public:
     CERFENGINE_FORCEINLINE Ref ConstArg(const CallArg& a) { return block_.ConstArg(a); }
 
     CERFENGINE_FORCEINLINE void CycleAdd(uint32_t cycles) {
-        if (cycle_site_ != nullptr && cycle_total_ + cycles < 0x80u) {
+        if (cycle_site_ != nullptr && cycle_total_ + cycles < HostLowering::kCycleAddLimit) {
             cycle_total_ += cycles;
-            *cycle_site_ = static_cast<uint8_t>(cycle_total_);
+            HostLowering::PatchCycleAdd(cycle_site_, cycle_total_);
             return;
         }
         if (cycles == 0u) return;

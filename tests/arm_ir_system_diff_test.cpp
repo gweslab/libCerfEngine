@@ -116,6 +116,7 @@ void TestReturnState() {
     uint32_t     aborts  = 0;
     uint32_t     halts   = 0;
     uint32_t     returns = 0;
+    StateDigest  digest;
     for (uint32_t n = 0; n < kPrograms; ++n) {
         const uint32_t mode_cpsr = kStartModes[RigPick(rng, 7u)];
         std::vector<uint32_t> program;
@@ -138,6 +139,7 @@ void TestReturnState() {
         const uint32_t faults_before = rigs[0]->System().AlignmentFaults();
         cerfengine::GuestEngine::RunStatus status[2];
         RunAll("return state", n, program, rigs, initial, mode_cpsr, status);
+        RigDigestRun(digest, *rigs[0], status[0]);
         if (status[0] == cerfengine::GuestEngine::RunStatus::kHalted) {
             ++halts;
             for (auto& rig : rigs) rig->Restart();
@@ -147,8 +149,8 @@ void TestReturnState() {
         if (rigs[0]->State().gprs[15] != (program.size() - 1u) * 4u) ++returns;
     }
     std::printf("return state: %u programs agree in both verify modes (pc changes %u, alignment "
-                "aborts %u, halts %u)\n",
-                kPrograms, returns, aborts, halts);
+                "aborts %u, halts %u), digest %016llX\n",
+                kPrograms, returns, aborts, halts, digest.Value());
     RigPrintCompileStats("  cerfir verified  ", rigs[0]->Host());
     RigPrintCompileStats("  cerfir unverified", rigs[1]->Host());
 }

@@ -13,6 +13,7 @@
 #include "../cerfir/cerfir_host_lowering.h"
 #include "../jit_code_arena.h"
 #include "arm_block_compiler.h"
+#include "cerfir/arm_ir_codegen.h"
 #include <cerfengine/arm/arm_cpu.h>
 #include <cerfengine/arm/arm_interrupt_channel.h>
 #include <cerfengine/arm/arm_mmu.h>
@@ -28,16 +29,17 @@ namespace {
 
 constexpr uintptr_t kFaultWindowBytes = 16;
 
-#if CERFENGINE_BACKEND_X86_64_SYSV
+#if CERFENGINE_GUARDED_DISPATCH
 struct ArmBlockEntry {
-    void* native;
-    void* state;
-    void* mmu_state;
+    void*       native;
+    void*       state;
+    void*       mmu_state;
+    const void* entry_stub;
 };
 
 void EnterArmBlock(void* context) {
     const ArmBlockEntry& entry = *static_cast<const ArmBlockEntry*>(context);
-    cerfir::HostEnterBlock(entry.native, entry.state, entry.mmu_state);
+    cerfir::HostEnterBlock(entry.native, entry.state, entry.mmu_state, entry.entry_stub);
 }
 #endif
 
@@ -99,6 +101,15 @@ void ArmJit::ReportHostFault(uint32_t code, const void* address, const char* reg
         CERFENGINE_LOG(engine_, kCaution, "ArmJit:   r%u=0x%08X r%u=0x%08X r%u=0x%08X r%u=0x%08X\n",
                        i, r[i], i + 1u, r[i + 1u], i + 2u, r[i + 2u], i + 3u, r[i + 3u]);
     }
+    if (entry_stub_ != nullptr) {
+        char map[160];
+        int  n = 0;
+        for (uint32_t i = 0; i < 16u && n >= 0 && n < static_cast<int>(sizeof(map)); ++i) {
+            n += std::snprintf(map + n, sizeof(map) - static_cast<size_t>(n), " r%u=x%u", i,
+                               static_cast<unsigned>(cerfir::HostLowering::PinnedHostRegister(i)));
+        }
+        CERFENGINE_LOG(engine_, kCaution, "ArmJit:   pinned in host registers:%s\n", map);
+    }
     engine_.Panic("ArmJit: host exception while running guest PC 0x%08X", guest_pc);
 }
 
@@ -112,6 +123,7 @@ void ArmJit::OnReady() {
     channel_    = &engine_.Get<ArmInterruptChannel>();
     host_requests_ = &engine_.Get<HostRequestChannel>();
     host_       = &engine_.Host();
+    entry_stub_ = engine_.Get<ArmIrCodegen>().EntryStub();
     engine_.AttachClock(clock_);
 }
 
@@ -173,13 +185,13 @@ GuestEngine::RunStatus ArmJit::Run() {
 
 #if CERFENGINE_BACKEND_X86_WIN32
     __try {
-        cerfir::HostEnterBlock(native, cpu_state_, mmu_->State());
+        cerfir::HostEnterBlock(native, cpu_state_, mmu_->State(), entry_stub_);
     } __except (DispatchFaultFilter(_exception_info(), pc)) {
         return RunStatus::kHalted;
     }
     return RunStatus::kRunning;
-#elif CERFENGINE_BACKEND_X86_64_SYSV
-    ArmBlockEntry       entry{native, cpu_state_, mmu_->State()};
+#elif CERFENGINE_GUARDED_DISPATCH
+    ArmBlockEntry       entry{native, cpu_state_, mmu_->State(), entry_stub_};
     platform::HostFault fault{};
     const uint32_t      code = platform::CallDispatchGuarded(&EnterArmBlock, &entry, fault);
     if (code == 0u) return RunStatus::kRunning;

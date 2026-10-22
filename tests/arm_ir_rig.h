@@ -1,5 +1,6 @@
 #pragma once
 
+#include "state_digest.h"
 #include "test_host.h"
 
 #include <cerfengine/arm/arm_cpu.h>
@@ -118,6 +119,40 @@ inline bool RigSameRun(ArmIrRig& a, cerfengine::GuestEngine::RunStatus status_a,
     if (status_a != status_b || !RigSameState(a.State(), b.State())) return false;
     return status_a != cerfengine::GuestEngine::RunStatus::kHalted ||
            std::strcmp(a.Engine().LastHalt().detail, b.Engine().LastHalt().detail) == 0;
+}
+
+inline void RigDigestRun(StateDigest& d, const ArmIrRig& rig,
+                         cerfengine::GuestEngine::RunStatus status) {
+    const cerfengine::ArmCpuState& s = rig.State();
+    d.Add32(static_cast<uint32_t>(status));
+    for (uint32_t v : s.gprs) d.Add32(v);
+    d.Add32(s.cpsr.word);
+    d.Add32(static_cast<uint32_t>(s.nf) | static_cast<uint32_t>(s.zf) << 8 |
+            static_cast<uint32_t>(s.cf) << 16 | static_cast<uint32_t>(s.vf) << 24);
+    for (uint32_t v : s.sp_bank) d.Add32(v);
+    for (uint32_t v : s.lr_bank) d.Add32(v);
+    for (const cerfengine::ArmPsrFull& v : s.spsr_bank) d.Add32(v.word);
+    for (uint32_t v : s.r8_r12_fiq) d.Add32(v);
+    for (uint64_t v : s.vfp_d) d.Add64(v);
+    d.Add32(s.fpscr);
+    d.Add32(s.fpexc);
+    d.Add32(s.ldrex_monitor_addr);
+    d.Add32(s.ldrex_monitor_armed);
+    d.Add32(s.guest_cycle_counter);
+    d.Add32(s.idle_wait);
+    const std::vector<uint8_t>& ram = rig.Host().Ram();
+    d.AddBytes(ram.data(), ram.size());
+    for (const TestHost::MmioAccess& a : rig.Host().MmioLog()) {
+        d.Add32(a.pa);
+        d.Add32(a.value);
+        d.Add32(a.width);
+        d.Add32(a.cycles);
+        d.Add32(a.write ? 1u : 0u);
+    }
+    d.Add32(rig.System().AlignmentFaults());
+    d.Add32(rig.System().LastFaultVa());
+    d.Add32(rig.System().WalkFaults());
+    d.Add32(rig.System().LastWalkFaultVa());
 }
 
 inline void RigPrintCompileStats(const char* label, const TestHost& h) {

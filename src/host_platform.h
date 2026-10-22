@@ -14,6 +14,24 @@ inline constexpr uint32_t kHostFaultCode   = 0xE0000003u;
 void* AllocateExecutable(size_t bytes);
 void  FreeExecutable(void* base, size_t bytes);
 
+#if CERFENGINE_BACKEND_A64_MACOS
+void BeginCodeWrite();
+void EndCodeWrite();
+void FlushInstructionCache(const void* start, size_t bytes);
+#else
+inline void BeginCodeWrite() {}
+inline void EndCodeWrite() {}
+inline void FlushInstructionCache(const void*, size_t) {}
+#endif
+
+class CodeWriteScope {
+public:
+    CodeWriteScope() { BeginCodeWrite(); }
+    ~CodeWriteScope() { EndCodeWrite(); }
+    CodeWriteScope(const CodeWriteScope&)            = delete;
+    CodeWriteScope& operator=(const CodeWriteScope&) = delete;
+};
+
 [[noreturn]] void RaiseUnwind(uint32_t code);
 
 bool CallHaltGuarded(void (*fn)(void* context), void* context);
@@ -37,14 +55,14 @@ uint32_t  LastErrorCode();
 struct HostFault {
     uint32_t    code;
     const void* address;
-    char        registers[448];
+    char        registers[1024];
 };
 
 #if CERFENGINE_BACKEND_X86_WIN32
 int CaptureFault(void* exception_pointers, HostFault& fault);
 #endif
 
-#if CERFENGINE_BACKEND_X86_64_SYSV
+#if CERFENGINE_GUARDED_DISPATCH
 uint32_t CallDispatchGuarded(void (*fn)(void* context), void* context, HostFault& fault);
 #endif
 

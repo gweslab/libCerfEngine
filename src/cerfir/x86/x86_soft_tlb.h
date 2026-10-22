@@ -19,7 +19,7 @@ public:
         return privileges * kTlbAccessKinds * kMissBytes;
     }
 
-    void Build(const SoftTlbModel& model, uint8_t* region);
+    void Build(const GuestModel& guest, uint8_t* region);
 
     CERFENGINE_FORCEINLINE uint8_t* EmitLookup(uint8_t* cursor, uint32_t privilege,
                                                TlbAccess access) const {

@@ -237,6 +237,7 @@ void TestDataProcessing(const char* name, const cerfengine::ArmFeatures& feature
     uint32_t           und_exits  = 0;
     uint32_t           mode_exits = 0;
     uint32_t           halts      = 0;
+    StateDigest        digest;
     for (uint32_t n = 0; n < kPrograms; ++n) {
         std::vector<uint32_t> program;
         const uint32_t        length = 1u + RigPick(rng, 6u);
@@ -290,6 +291,7 @@ void TestDataProcessing(const char* name, const cerfengine::ArmFeatures& feature
             RigDump("unverified", ir_unverified.State());
             TestFail("CerfIR differs between verify modes");
         }
+        RigDigestRun(digest, ir, ir_status);
         if (halted) {
             ++halts;
             ir.Restart();
@@ -306,8 +308,8 @@ void TestDataProcessing(const char* name, const cerfengine::ArmFeatures& feature
         }
     }
     std::printf("data processing %s: %u programs agree in both verify modes (pc writes %u, "
-                "undefined %u, mode changes %u, halts %u)\n",
-                name, kPrograms, pc_exits, und_exits, mode_exits, halts);
+                "undefined %u, mode changes %u, halts %u), digest %016llX\n",
+                name, kPrograms, pc_exits, und_exits, mode_exits, halts, digest.Value());
     RigPrintCompileStats("cerfir verified  ", ir.Host());
     RigPrintCompileStats("cerfir unverified", ir_unverified.Host());
 }

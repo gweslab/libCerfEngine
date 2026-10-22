@@ -3,6 +3,8 @@
 #include <cstdio>
 #include <cstdlib>
 
+#include <cerfengine/wake_event.h>
+
 namespace cerfengine::platform {
 
 namespace {
@@ -29,5 +31,13 @@ WakeEvent CreateWakeEvent() { NoBackend("CreateWakeEvent"); }
 void CloseWakeEvent(const WakeEvent&) { NoBackend("CloseWakeEvent"); }
 
 uint32_t LastErrorCode() { NoBackend("LastErrorCode"); }
+
+}
+
+namespace cerfengine {
+
+int WakeEventDescriptor(void*) { platform::NoBackend("WakeEventDescriptor"); }
+
+void ConsumeWakeEvent(void*) { platform::NoBackend("ConsumeWakeEvent"); }
 
 }

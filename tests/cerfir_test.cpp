@@ -45,11 +45,11 @@ struct Harness {
         lowering.Begin(block, code.data(), code.data() + code.size(), target);
     }
 
-    Block                              block;
-    cerfengine::cerfir::X86Lowering    lowering;
-    cerfengine::cerfir::GuestModel     model;
-    cerfengine::cerfir::X86GuestTarget target;
-    std::vector<uint8_t>               code = std::vector<uint8_t>(0x10000u);
+    Block                               block;
+    cerfengine::cerfir::HostLowering    lowering;
+    cerfengine::cerfir::GuestModel      model;
+    cerfengine::cerfir::HostGuestTarget target;
+    std::vector<uint8_t>                code = std::vector<uint8_t>(0x10000u);
 };
 
 struct Vector {

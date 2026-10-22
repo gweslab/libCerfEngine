@@ -9,6 +9,8 @@
 #include <cerfengine/physical_map.h>
 #include <cerfengine/physical_memory_host.h>
 
+#include "../host_platform.h"
+
 namespace cerfengine {
 
 CERFENGINE_REGISTER(MipsTranslationCache);
@@ -117,9 +119,11 @@ void MipsTranslationCache::InvalidateOnRamWrite(uint8_t* host, uint32_t size) {
                      size, static_cast<void*>(host), cpu_state_->pc);
     }
     if (blocks_.PageHasBlocks(off)) {
+        const platform::CodeWriteScope write;
         blocks_.RemoveRange(off, off + size - 1u);
     }
     if (blocks16_.PageHasBlocks(off)) {
+        const platform::CodeWriteScope write;
         blocks16_.RemoveRange(off, off + size - 1u);
     }
 }

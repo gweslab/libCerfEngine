@@ -27,13 +27,21 @@ void ArmIrCodegen::OnReady() {
     verify_ = engine_.GetSetup().verify_ir;
     slow_   = &engine_.Get<ArmIrMemorySlowPath>();
     BuildGuestModel();
-    uint8_t* const region = engine_.Get<ArmTranslationCache>().Arena().AllocatePermanent(
-        cerfir::HostSoftTlb::RegionBytes(model_.tlb.privileges));
+    JitCodeArena&  arena  = engine_.Get<ArmTranslationCache>().Arena();
+    uint8_t* const region = arena.AllocatePermanent(cerfir::HostSoftTlb::RegionBytes(model_.tlb.privileges));
     if (region == nullptr) {
         engine_.Panic("ArmIrCodegen: the code arena has no room for the TLB miss paths");
     }
+    uint8_t* stub_region = nullptr;
+    if constexpr (cerfir::HostLowering::kEntryStubBytes != 0u) {
+        stub_region = arena.AllocatePermanent(cerfir::HostLowering::kEntryStubBytes);
+        if (stub_region == nullptr) {
+            engine_.Panic("ArmIrCodegen: the code arena has no room for the block entry stub");
+        }
+    }
     try {
-        tlb_.Build(model_.tlb, region);
+        tlb_.Build(model_, region);
+        target_.entry_stub = cerfir::HostLowering::BuildEntryStub(model_.pinned, stub_region);
     } catch (const EmitFault& fault) {
         engine_.Panic("%s", fault.what());
     }
@@ -46,6 +54,7 @@ void ArmIrCodegen::OnReady() {
 void ArmIrCodegen::BuildGuestModel() {
     ArmMmu& mmu       = engine_.Get<ArmMmu>();
     model_.cycle_slot = static_cast<int32_t>(offsetof(ArmCpuState, guest_cycle_counter));
+    model_.pinned     = cerfir::PinnedSlots{ArmGprDisp(0), 16u};
 
     cerfir::ExitModel& e = model_.exits;
     e.chain              = true;

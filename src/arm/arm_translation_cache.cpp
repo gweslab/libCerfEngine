@@ -8,6 +8,7 @@
 #include <cerfengine/arm/arm_cpu.h>
 #include <cerfengine/arm/arm_mmu.h>
 #include <cerfengine/arm/arm_mmu_state.h>
+#include "../host_platform.h"
 #include "arm_tlb_ops.h"
 
 namespace cerfengine {
@@ -86,6 +87,7 @@ void ArmTranslationCache::InvalidateDirtyCodePages() {
         for (uint32_t b = 0; b < 8u; ++b) {
             if (!(b8 & (1u << b))) continue;
             const uint32_t page_pa = base + (((i << 3) + b) << 12);
+            const platform::CodeWriteScope write;
             blocks_arm_.RemoveRange(page_pa, page_pa + 0x0FFFu);
             blocks_thumb_.RemoveRange(page_pa, page_pa + 0x0FFFu);
             const uint32_t word_byte = (page_pa - base) >> 5;

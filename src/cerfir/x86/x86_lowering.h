@@ -15,9 +15,10 @@ namespace cerfengine::cerfir {
 class X86SoftTlb;
 
 struct X86GuestTarget {
-    const GuestModel* model = nullptr;
-    const BlockLink*  link  = nullptr;
-    const X86SoftTlb* tlb   = nullptr;
+    const GuestModel* model      = nullptr;
+    const BlockLink*  link       = nullptr;
+    const X86SoftTlb* tlb        = nullptr;
+    const void*       entry_stub = nullptr;
 };
 
 struct X86WideHalf {
@@ -54,6 +55,15 @@ struct X86ProbeStamp {
 class X86Lowering {
 public:
     static constexpr ptrdiff_t kOpReserveBytes = 4096;
+    static constexpr uint32_t  kCycleAddLimit  = 0x80u;
+    static constexpr size_t    kEntryStubBytes = 0;
+
+    static CERFENGINE_FORCEINLINE void PatchCycleAdd(uint8_t* site, uint32_t total) {
+        *site = static_cast<uint8_t>(total);
+    }
+
+    static const void* BuildEntryStub(const PinnedSlots&, uint8_t*) { return nullptr; }
+    static uint8_t     PinnedHostRegister(uint32_t) { return 0xFFu; }
 
     X86Lowering() : regs_(cursor_, spill_area_) {}
     X86Lowering(const X86Lowering&) = delete;

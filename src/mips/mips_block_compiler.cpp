@@ -4,6 +4,7 @@
 #include <cstddef>
 
 #include "../emit_fault.h"
+#include "../host_platform.h"
 #include "../jit_predecessor_link.h"
 #include "../steady_clock_ns.h"
 #include <cerfengine/engine.h>
@@ -153,8 +154,9 @@ void* MipsBlockCompiler::CompilePendingEntry(uint32_t guest_pc, uint32_t privile
 void* MipsBlockCompiler::EmitIrBlock(uint32_t guest_pc, uint32_t phys_start,
                                      const IrIndex* index, uint32_t privilege, bool pending,
                                      uint64_t start_ns) {
-    JitCodeArena&          arena = cache_->Arena();
-    const MipsDecodedInsn& last  = block_ctx_.insns[block_ctx_.num_insns - 1u];
+    JitCodeArena&                  arena = cache_->Arena();
+    const MipsDecodedInsn&         last  = block_ctx_.insns[block_ctx_.num_insns - 1u];
+    const platform::CodeWriteScope write;
     for (int attempt = 0; attempt < 2; ++attempt) {
         const size_t slab_size = arena.Remaining();
         uint8_t*     slab      = arena.Allocate(slab_size);
@@ -177,6 +179,7 @@ void* MipsBlockCompiler::EmitIrBlock(uint32_t guest_pc, uint32_t phys_start,
             const size_t code_size = GenerateIrChecked(code, slab + slab_size, pending);
             if (code_size != 0u) {
                 arena.FreeUnusedTail(code + code_size);
+                platform::FlushInstructionCache(code, code_size);
                 if (index != nullptr) {
                     index->space->JumpCacheInsert(privilege, guest_pc,
                                                   stored->index_split != 0u ? nullptr : code,
@@ -243,6 +246,7 @@ void* MipsBlockCompiler::Compile(uint32_t guest_pc, uint32_t privilege) {
                                   ex->index_split != 0u ? nullptr : ex->native_start, ex);
             return ex->native_start;
         }
+        const platform::CodeWriteScope write;
         space.RemoveBlock(ex);
     }
 

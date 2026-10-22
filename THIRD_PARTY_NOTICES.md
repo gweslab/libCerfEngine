@@ -7,4 +7,5 @@
 - **[LuaJIT](https://luajit.org/)**
 - **[dynarmic](https://github.com/azahar-emu/dynarmic)**
 - **[FEX](https://github.com/FEX-Emu/FEX)**
+- **[Box64](https://github.com/ptitSeb/box64)**
 - **[NetBSD](https://www.netbsd.org/)**

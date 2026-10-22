@@ -3,8 +3,9 @@
 #include <algorithm>
 #include <new>
 
-#include <cerfengine/byte_order.h>
 #include <cerfengine/engine.h>
+
+#include "chain_jump_patch.h"
 
 namespace cerfengine {
 
@@ -104,8 +105,7 @@ void JitBlockIndex::LinkChain(JitBlock* src, uint32_t slot, JitBlock* dest,
 }
 
 void JitBlockIndex::RestoreFallbackJump(JitBlock* src, uint32_t slot) {
-    le::Put32(src->chain_site[slot],
-              static_cast<uint32_t>(src->chain_fallback[slot] - (src->chain_site[slot] + 4)));
+    PatchChainJump(src->chain_site[slot], src->chain_fallback[slot]);
 }
 
 void JitBlockIndex::DetachFromDest(JitBlock* block, uint32_t slot) {
