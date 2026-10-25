@@ -4,7 +4,7 @@
 
 namespace cerfengine::cerfir {
 
-#if CERFENGINE_BACKEND_A64_MACOS
+#if CERFENGINE_BACKEND_A64_MACOS || CERFENGINE_BACKEND_A64_LINUX
 static_assert(kA64FrameBytes == 240 && kA64ReturnSlot == 96,
               "the block frame in the entry stubs matches the lowering");
 

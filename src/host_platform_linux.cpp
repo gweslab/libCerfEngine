@@ -1,11 +1,12 @@
 #include "host_platform.h"
 
+#include "host_fault_text.h"
+
 #include <cerrno>
 #include <csetjmp>
 #include <csignal>
 #include <cstdio>
 #include <cstdlib>
-#include <cstring>
 #include <mutex>
 #include <pthread.h>
 #include <sys/eventfd.h>
@@ -15,7 +16,7 @@
 
 #include <cerfengine/wake_event.h>
 
-#if !defined(__linux__) || !defined(__x86_64__)
+#if !defined(__linux__) || !(defined(__x86_64__) || defined(__aarch64__))
 #error "host_platform_linux.cpp has no execution backend for this host"
 #endif
 
@@ -33,15 +34,29 @@ struct GuardUnwind {
     uint32_t code;
 };
 
-constexpr int    kFaultSignals[]  = {SIGSEGV, SIGBUS, SIGILL, SIGFPE};
+constexpr int    kFaultSignals[]   = {SIGSEGV, SIGBUS, SIGILL, SIGFPE};
 constexpr size_t kFaultSignalCount = sizeof(kFaultSignals) / sizeof(kFaultSignals[0]);
-constexpr int    kCapturedRegs     = REG_EFL + 1;
+
+#if defined(__x86_64__)
+constexpr int kCapturedRegs = REG_EFL + 1;
 
 struct FaultCapture {
     int         signal;
     const void* data_address;
     greg_t      regs[kCapturedRegs];
 };
+#else
+constexpr int kGeneralRegs = 31;
+
+struct FaultCapture {
+    int         signal;
+    const void* data_address;
+    uint64_t    x[kGeneralRegs];
+    uint64_t    sp;
+    uint64_t    pc;
+    uint64_t    pstate;
+};
+#endif
 
 thread_local Guard*       t_guard = nullptr;
 thread_local FaultCapture t_fault{};
@@ -64,13 +79,25 @@ private:
     Guard& guard_;
 };
 
+void CaptureRegisters(const ucontext_t& context) {
+#if defined(__x86_64__)
+    const greg_t* regs = context.uc_mcontext.gregs;
+    for (int i = 0; i < kCapturedRegs; ++i) t_fault.regs[i] = regs[i];
+#else
+    const mcontext_t& m = context.uc_mcontext;
+    for (int i = 0; i < kGeneralRegs; ++i) t_fault.x[i] = m.regs[i];
+    t_fault.sp     = m.sp;
+    t_fault.pc     = m.pc;
+    t_fault.pstate = m.pstate;
+#endif
+}
+
 void FaultHandler(int sig, siginfo_t* info, void* context) {
     Guard* const guard = t_guard;
     if (guard != nullptr && guard->dispatch) {
-        const greg_t* regs = static_cast<const ucontext_t*>(context)->uc_mcontext.gregs;
         t_fault.signal       = sig;
         t_fault.data_address = info->si_addr;
-        for (int i = 0; i < kCapturedRegs; ++i) t_fault.regs[i] = regs[i];
+        CaptureRegisters(*static_cast<const ucontext_t*>(context));
         sigset_t unblock;
         sigemptyset(&unblock);
         sigaddset(&unblock, sig);
@@ -92,34 +119,34 @@ void InstallFaultHandlers() {
     }
 }
 
+#if defined(__x86_64__)
+constexpr struct {
+    const char* name;
+    int         index;
+} kFaultRegs[] = {{"rax", REG_RAX}, {"rcx", REG_RCX}, {"rdx", REG_RDX}, {"rbx", REG_RBX}, {"rsp", REG_RSP},
+                  {"rbp", REG_RBP}, {"rsi", REG_RSI}, {"rdi", REG_RDI}, {"r8", REG_R8},   {"r9", REG_R9},
+                  {"r10", REG_R10}, {"r11", REG_R11}, {"r12", REG_R12}, {"r13", REG_R13}, {"r14", REG_R14},
+                  {"r15", REG_R15}, {"rip", REG_RIP}, {"eflags", REG_EFL}};
+
 void FormatFault(HostFault& fault) {
     const greg_t* r = t_fault.regs;
     fault.code      = static_cast<uint32_t>(t_fault.signal);
     fault.address   = reinterpret_cast<const void*>(r[REG_RIP]);
-    std::snprintf(fault.registers, sizeof(fault.registers),
-                  "signal %d (%s) data=%p rax=%llX rcx=%llX rdx=%llX rbx=%llX rsp=%llX "
-                  "rbp=%llX rsi=%llX rdi=%llX r8=%llX r9=%llX r10=%llX r11=%llX r12=%llX "
-                  "r13=%llX r14=%llX r15=%llX rip=%llX eflags=%llX",
-                  t_fault.signal, strsignal(t_fault.signal), t_fault.data_address,
-                  static_cast<unsigned long long>(r[REG_RAX]),
-                  static_cast<unsigned long long>(r[REG_RCX]),
-                  static_cast<unsigned long long>(r[REG_RDX]),
-                  static_cast<unsigned long long>(r[REG_RBX]),
-                  static_cast<unsigned long long>(r[REG_RSP]),
-                  static_cast<unsigned long long>(r[REG_RBP]),
-                  static_cast<unsigned long long>(r[REG_RSI]),
-                  static_cast<unsigned long long>(r[REG_RDI]),
-                  static_cast<unsigned long long>(r[REG_R8]),
-                  static_cast<unsigned long long>(r[REG_R9]),
-                  static_cast<unsigned long long>(r[REG_R10]),
-                  static_cast<unsigned long long>(r[REG_R11]),
-                  static_cast<unsigned long long>(r[REG_R12]),
-                  static_cast<unsigned long long>(r[REG_R13]),
-                  static_cast<unsigned long long>(r[REG_R14]),
-                  static_cast<unsigned long long>(r[REG_R15]),
-                  static_cast<unsigned long long>(r[REG_RIP]),
-                  static_cast<unsigned long long>(r[REG_EFL]));
+    FaultText text(fault.registers, sizeof(fault.registers), t_fault.signal, t_fault.data_address);
+    for (const auto& reg : kFaultRegs) text.Register(reg.name, static_cast<uint64_t>(r[reg.index]));
 }
+#else
+void FormatFault(HostFault& fault) {
+    const FaultCapture& f = t_fault;
+    fault.code            = static_cast<uint32_t>(f.signal);
+    fault.address         = reinterpret_cast<const void*>(static_cast<uintptr_t>(f.pc));
+    FaultText text(fault.registers, sizeof(fault.registers), f.signal, f.data_address);
+    text.Registers("x", f.x, kGeneralRegs);
+    text.Register("sp", f.sp);
+    text.Register("pc", f.pc);
+    text.Register("pstate", f.pstate);
+}
+#endif
 
 void* WakeEventHandle(int descriptor) {
     return reinterpret_cast<void*>(static_cast<intptr_t>(descriptor) + 1);
@@ -134,21 +161,35 @@ int SignalWake(void* handle) {
     return written == static_cast<ssize_t>(sizeof(one)) ? 1 : 0;
 }
 
-}
-
-void* AllocateExecutable(size_t bytes) {
+void* ExecutableHint() {
+#if defined(__x86_64__)
     const uintptr_t code = reinterpret_cast<uintptr_t>(&AllocateExecutable);
     const uintptr_t near = code > (uintptr_t{1} << 31) ? code - (uintptr_t{1} << 30)
                                                        : code + (uintptr_t{1} << 30);
-    void* const     hint = reinterpret_cast<void*>(near & ~((uintptr_t{1} << 21) - 1u));
-    void* const     base = ::mmap(hint, bytes, PROT_READ | PROT_WRITE | PROT_EXEC,
-                                  MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    return reinterpret_cast<void*>(near & ~((uintptr_t{1} << 21) - 1u));
+#else
+    return nullptr;
+#endif
+}
+
+}
+
+void* AllocateExecutable(size_t bytes) {
+    void* const base = ::mmap(ExecutableHint(), bytes, PROT_READ | PROT_WRITE | PROT_EXEC,
+                              MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     return base == MAP_FAILED ? nullptr : base;
 }
 
 void FreeExecutable(void* base, size_t bytes) {
     ::munmap(base, bytes);
 }
+
+#if CERFENGINE_BACKEND_A64_LINUX
+void FlushInstructionCache(const void* start, size_t bytes) {
+    char* const begin = static_cast<char*>(const_cast<void*>(start));
+    __builtin___clear_cache(begin, begin + bytes);
+}
+#endif
 
 void RaiseUnwind(uint32_t code) {
     Guard* const guard = t_guard;

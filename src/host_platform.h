@@ -17,10 +17,14 @@ void  FreeExecutable(void* base, size_t bytes);
 #if CERFENGINE_BACKEND_A64_MACOS
 void BeginCodeWrite();
 void EndCodeWrite();
-void FlushInstructionCache(const void* start, size_t bytes);
 #else
 inline void BeginCodeWrite() {}
 inline void EndCodeWrite() {}
+#endif
+
+#if CERFENGINE_BACKEND_A64_MACOS || CERFENGINE_BACKEND_A64_LINUX
+void FlushInstructionCache(const void* start, size_t bytes);
+#else
 inline void FlushInstructionCache(const void*, size_t) {}
 #endif
 

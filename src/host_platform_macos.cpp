@@ -1,11 +1,12 @@
 #include "host_platform.h"
 
+#include "host_fault_text.h"
+
 #include <cerrno>
 #include <csetjmp>
 #include <csignal>
 #include <cstdio>
 #include <cstdlib>
-#include <cstring>
 #include <fcntl.h>
 #include <libkern/OSCacheControl.h>
 #include <mutex>
@@ -109,20 +110,13 @@ void FormatFault(HostFault& fault) {
     const FaultCapture& f = t_fault;
     fault.code            = static_cast<uint32_t>(f.signal);
     fault.address         = reinterpret_cast<const void*>(static_cast<uintptr_t>(f.pc));
-    int used = std::snprintf(fault.registers, sizeof(fault.registers), "signal %d (%s) data=%p",
-                             f.signal, strsignal(f.signal), f.data_address);
-    for (int i = 0; i < kGeneralRegs && used > 0 && static_cast<size_t>(used) < sizeof(fault.registers);
-         ++i) {
-        used += std::snprintf(fault.registers + used, sizeof(fault.registers) - static_cast<size_t>(used),
-                              " x%d=%llX", i, static_cast<unsigned long long>(f.x[i]));
-    }
-    if (used > 0 && static_cast<size_t>(used) < sizeof(fault.registers)) {
-        std::snprintf(fault.registers + used, sizeof(fault.registers) - static_cast<size_t>(used),
-                      " fp=%llX lr=%llX sp=%llX pc=%llX cpsr=%X",
-                      static_cast<unsigned long long>(f.fp), static_cast<unsigned long long>(f.lr),
-                      static_cast<unsigned long long>(f.sp), static_cast<unsigned long long>(f.pc),
-                      f.cpsr);
-    }
+    FaultText text(fault.registers, sizeof(fault.registers), f.signal, f.data_address);
+    text.Registers("x", f.x, kGeneralRegs);
+    text.Register("fp", f.fp);
+    text.Register("lr", f.lr);
+    text.Register("sp", f.sp);
+    text.Register("pc", f.pc);
+    text.Register("cpsr", f.cpsr);
 }
 
 void LeaveCodeWrite() {

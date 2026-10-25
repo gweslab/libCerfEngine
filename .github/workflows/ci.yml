@@ -21,6 +21,7 @@ jobs:
           - { name: linux-x64-gcc, os: ubuntu-latest, cmake_args: "-DCMAKE_CXX_COMPILER=g++" }
           - { name: linux-x64-clang, os: ubuntu-latest, cmake_args: "-DCMAKE_CXX_COMPILER=clang++" }
           - { name: linux-arm64-gcc, os: ubuntu-24.04-arm, cmake_args: "-DCMAKE_CXX_COMPILER=g++" }
+          - { name: linux-arm64-clang, os: ubuntu-24.04-arm, cmake_args: "-DCMAKE_CXX_COMPILER=clang++" }
           - { name: macos-arm64-clang, os: macos-latest, cmake_args: "" }
 
     steps:
