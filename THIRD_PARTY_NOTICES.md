@@ -9,3 +9,6 @@
 - **[FEX](https://github.com/FEX-Emu/FEX)**
 - **[Box64](https://github.com/ptitSeb/box64)**
 - **[NetBSD](https://www.netbsd.org/)**
+- **[GCC](https://gcc.gnu.org/)**
+- **[LLVM](https://llvm.org/)**
+- **[Apple libunwind](https://github.com/apple-oss-distributions/libunwind)**

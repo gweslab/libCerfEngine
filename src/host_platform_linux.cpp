@@ -202,6 +202,8 @@ void RaiseUnwind(uint32_t code) {
     siglongjmp(guard->env, static_cast<int>(code));
 }
 
+bool InsideDispatchGuard() { return t_guard != nullptr && t_guard->dispatch; }
+
 bool CallHaltGuarded(void (*fn)(void* context), void* context) {
     Guard guard;
     uint32_t unwound = 0u;

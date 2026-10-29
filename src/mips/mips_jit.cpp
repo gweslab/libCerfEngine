@@ -6,6 +6,7 @@
 
 #include <cerfengine/engine.h>
 #include "../cerfir/cerfir_host_lowering.h"
+#include "../guest_unwind.h"
 #include "../host_platform.h"
 #include <cerfengine/host_request_channel.h>
 #include "mips_block_compiler.h"
@@ -20,17 +21,6 @@
 namespace cerfengine {
 
 CERFENGINE_REGISTER_AS(MipsJit, GuestEngine);
-
-#if CERFENGINE_BACKEND_X86_WIN32
-int MipsJit::DispatchFaultFilter(void* exception_pointers, uint32_t guest_pc) {
-    platform::HostFault fault;
-    const int disposition = platform::CaptureFault(exception_pointers, fault);
-    if (fault.code == platform::kHaltUnwindCode || fault.code == platform::kGuestUnwindCode) {
-        return disposition;
-    }
-    ReportHostFault(fault.code, fault.address, fault.registers, guest_pc);
-}
-#endif
 
 void MipsJit::ReportHostFault(uint32_t code, const void* address, const char* registers,
                               uint32_t guest_pc) {
@@ -148,10 +138,16 @@ GuestEngine::RunStatus MipsJit::Run() {
 
 dispatch:
 #if CERFENGINE_BACKEND_X86_WIN32
-    __try {
-        cerfir::HostEnterBlock(native, cpu_state_);
-    } __except (DispatchFaultFilter(_exception_info(), pc)) {
-        if (_exception_code() == platform::kHaltUnwindCode) return RunStatus::kHalted;
+    {
+        __try {
+            cerfir::HostEnterBlock(native, cpu_state_);
+        } __except (platform::FilterDispatchException(_exception_info())) {
+            const platform::HostFault& fault = platform::LastDispatchFault();
+            if (fault.code == platform::kHaltUnwindCode) return RunStatus::kHalted;
+            if (fault.code != platform::kGuestUnwindCode) {
+                ReportHostFault(fault.code, fault.address, fault.registers, pc);
+            }
+        }
     }
     return RunStatus::kRunning;
 #elif CERFENGINE_GUARDED_DISPATCH
@@ -160,7 +156,10 @@ dispatch:
         platform::HostFault fault{};
         const uint32_t      code = platform::CallDispatchGuarded(&EnterMipsBlock, &entry, fault);
         if (code == 0u || code == platform::kGuestUnwindCode) return RunStatus::kRunning;
-        if (code == platform::kHaltUnwindCode) return RunStatus::kHalted;
+        if (code == platform::kHaltUnwindCode) {
+            platform::RethrowHostException();
+            return RunStatus::kHalted;
+        }
         if (code != platform::kHostFaultCode) {
             engine_.Panic("MipsJit: unwind code 0x%08X while running guest PC 0x%08X", code, pc);
         }

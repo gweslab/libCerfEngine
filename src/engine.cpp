@@ -98,6 +98,13 @@ void Engine::Panic(const char* fmt, ...) {
     std::abort();
 }
 
+void Engine::RaiseLocatorError(const std::string& message) {
+    if (setup_.host != nullptr) Panic("%s", message.c_str());
+    std::fprintf(stderr, "cerfengine: %s\n", message.c_str());
+    std::fflush(stderr);
+    std::abort();
+}
+
 #if CERFENGINE_TRANSLATOR
 void Engine::Halt(HaltReason reason, const char* fmt, ...) {
     halt_.reason = reason;
@@ -108,12 +115,5 @@ void Engine::Halt(HaltReason reason, const char* fmt, ...) {
     platform::RaiseUnwind(platform::kHaltUnwindCode);
 }
 #endif
-
-void Engine::OnLocatorError(const char* message) {
-    if (setup_.host != nullptr) setup_.host->Panic(message);
-    std::fprintf(stderr, "cerfengine: %s\n", message);
-    std::fflush(stderr);
-    std::abort();
-}
 
 }

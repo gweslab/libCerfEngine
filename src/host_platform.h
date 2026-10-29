@@ -63,11 +63,14 @@ struct HostFault {
 };
 
 #if CERFENGINE_BACKEND_X86_WIN32
-int CaptureFault(void* exception_pointers, HostFault& fault);
+int              FilterDispatchException(void* exception_pointers);
+const HostFault& LastDispatchFault();
 #endif
 
 #if CERFENGINE_GUARDED_DISPATCH
 uint32_t CallDispatchGuarded(void (*fn)(void* context), void* context, HostFault& fault);
+
+bool InsideDispatchGuard();
 #endif
 
 }

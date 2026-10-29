@@ -4,6 +4,8 @@
 #define NOMINMAX
 #include <windows.h>
 
+#include <ehdata_values.h>
+
 #include <cstdio>
 #include <cstdlib>
 
@@ -47,9 +49,21 @@ uint32_t LastErrorCode() {
     return GetLastError();
 }
 
-int CaptureFault(void* exception_pointers, HostFault& fault) {
+namespace {
+
+thread_local HostFault t_dispatch_fault;
+
+}
+
+const HostFault& LastDispatchFault() {
+    return t_dispatch_fault;
+}
+
+int FilterDispatchException(void* exception_pointers) {
+    HostFault&                fault = t_dispatch_fault;
     const EXCEPTION_POINTERS* ep  = static_cast<const EXCEPTION_POINTERS*>(exception_pointers);
     const EXCEPTION_RECORD*   rec = ep->ExceptionRecord;
+    if (rec->ExceptionCode == EH_EXCEPTION_NUMBER) return EXCEPTION_CONTINUE_SEARCH;
     const CONTEXT*            ctx = ep->ContextRecord;
     fault.code    = rec->ExceptionCode;
     fault.address = rec->ExceptionAddress;

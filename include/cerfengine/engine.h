@@ -47,7 +47,7 @@ public:
     [[noreturn]] void Halt(HaltReason reason, const char* fmt, ...);
     const HaltRecord& LastHalt() const { return halt_; }
 
-    [[noreturn]] void OnLocatorError(const char* message);
+    [[noreturn]] void RaiseLocatorError(const std::string& message);
 
 private:
     bool ValidateSetup(std::string& error);

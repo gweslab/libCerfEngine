@@ -56,7 +56,6 @@ public:
     void SetDmaRegion(uint32_t pa, uint32_t size) override;
 
 private:
-    int  DispatchFaultFilter(void* exception_pointers, uint32_t guest_pc);
     [[noreturn]] void ReportHostFault(uint32_t code, const void* address, const char* registers,
                                       uint32_t guest_pc);
     void LogEmittedBytesAroundFault(uintptr_t fault);

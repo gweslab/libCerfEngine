@@ -7,6 +7,7 @@
 #include <cerfengine/engine.h>
 #include <cerfengine/engine_host.h>
 #include <cerfengine/engine_setup.h>
+#include <cerfengine/host_exception.h>
 #include <cerfengine/mips/mips_cpu_state.h>
 #include <cerfengine/mips/mips_system_host.h>
 #include <cerfengine/mmio_bus_host.h>
@@ -19,6 +20,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <exception>
 #include <functional>
 #include <utility>
 #include <vector>
@@ -41,6 +43,14 @@
 
 [[noreturn]] inline void TestUnexpectedWalk(uint32_t mva) {
     TestFail("unexpected ARM translation of 0x%08X with the MMU off", mva);
+}
+
+struct HostThrow {
+    uint32_t value;
+};
+
+[[noreturn]] inline void ThrowFromHost(uint32_t value) {
+    cerfengine::RaiseHostFailure(std::make_exception_ptr(HostThrow{value}));
 }
 
 class TestHost : public cerfengine::EngineHost, public cerfengine::ClockHost {
@@ -85,6 +95,8 @@ public:
     }
     void RaiseIrqOnMmio(std::function<void()> raise) { raise_irq_ = std::move(raise); }
     void OnClockDispatch(std::function<void()> dispatch) { clock_dispatch_ = std::move(dispatch); }
+    void OnMmioWrite(std::function<void(uint32_t)> on_write) { on_write_ = std::move(on_write); }
+    void OnPanic(std::function<void(const char*)> on_panic) { on_panic_ = std::move(on_panic); }
     void DispatchClock() {
         if (clock_dispatch_) clock_dispatch_();
     }
@@ -141,6 +153,7 @@ public:
     void OnMipsPcTrace(uint32_t pc, const cerfengine::MipsCpuState*) override { CountTrace(pc); }
 
     [[noreturn]] void Panic(const char* message) override {
+        if (on_panic_) on_panic_(message);
         TestFail("engine panic: %s", message);
     }
     void Log(cerfengine::LogChannel, const char* text) override { std::fputs(text, stdout); }
@@ -224,6 +237,7 @@ private:
         if (offset != 0u || width_bytes != 4u) {
             TestFail("unexpected MMIO write at offset 0x%X width %u", offset, width_bytes);
         }
+        if (self->on_write_) self->on_write_(value);
         self->mmio_written_ = true;
         self->mmio_value_   = value;
     }
@@ -281,11 +295,13 @@ private:
     bool                  mmio_written_    = false;
     uint64_t              mmio_value_      = 0;
     bool                  mmio_log_mode_   = false;
+    std::function<void(uint32_t)> on_write_;
     const uint32_t*       observed_cycles_ = nullptr;
     uint32_t*             exit_word_       = nullptr;
     uint32_t              exit_bit_        = 0;
     std::function<void()> raise_irq_;
     std::function<void()> clock_dispatch_;
+    std::function<void(const char*)> on_panic_;
     uint32_t              mmio_reads_      = 0;
     std::vector<MmioAccess> mmio_log_;
     uint32_t              blocks_compiled_ = 0;

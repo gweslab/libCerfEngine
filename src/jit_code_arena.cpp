@@ -7,6 +7,7 @@ namespace cerfengine {
 
 JitCodeArena::~JitCodeArena() {
     if (region_start_) {
+        unwind_.Unregister();
         cerfengine::platform::FreeExecutable(region_start_, region_size_);
     }
 }
@@ -26,6 +27,7 @@ void JitCodeArena::Initialize(cerfengine::Engine& engine) {
     cursor_       = region_start_;
     region_end_   = region_start_ + kRegionSize;
     region_size_  = kRegionSize;
+    unwind_.Register(region_start_, region_size_);
 }
 
 uint8_t* JitCodeArena::Allocate(size_t size) {

@@ -8,6 +8,7 @@
 #include <cstdio>
 
 #include <cerfengine/engine.h>
+#include "../guest_unwind.h"
 #include "../host_platform.h"
 #include <cerfengine/host_request_channel.h>
 #include "../cerfir/cerfir_host_lowering.h"
@@ -71,15 +72,6 @@ void ArmJit::LogEmittedBytesAroundFault(uintptr_t fault) {
                    static_cast<unsigned long>(lo), static_cast<unsigned long>(hi),
                    static_cast<unsigned long>(fault - lo), line);
 }
-
-#if CERFENGINE_BACKEND_X86_WIN32
-int ArmJit::DispatchFaultFilter(void* exception_pointers, uint32_t guest_pc) {
-    platform::HostFault fault;
-    const int disposition = platform::CaptureFault(exception_pointers, fault);
-    if (fault.code == platform::kHaltUnwindCode) return disposition;
-    ReportHostFault(fault.code, fault.address, fault.registers, guest_pc);
-}
-#endif
 
 void ArmJit::ReportHostFault(uint32_t code, const void* address, const char* registers,
                              uint32_t guest_pc) {
@@ -186,7 +178,11 @@ GuestEngine::RunStatus ArmJit::Run() {
 #if CERFENGINE_BACKEND_X86_WIN32
     __try {
         cerfir::HostEnterBlock(native, cpu_state_, mmu_->State(), entry_stub_);
-    } __except (DispatchFaultFilter(_exception_info(), pc)) {
+    } __except (platform::FilterDispatchException(_exception_info())) {
+        const platform::HostFault& fault = platform::LastDispatchFault();
+        if (fault.code != platform::kHaltUnwindCode) {
+            ReportHostFault(fault.code, fault.address, fault.registers, pc);
+        }
         return RunStatus::kHalted;
     }
     return RunStatus::kRunning;
@@ -195,7 +191,10 @@ GuestEngine::RunStatus ArmJit::Run() {
     platform::HostFault fault{};
     const uint32_t      code = platform::CallDispatchGuarded(&EnterArmBlock, &entry, fault);
     if (code == 0u) return RunStatus::kRunning;
-    if (code == platform::kHaltUnwindCode) return RunStatus::kHalted;
+    if (code == platform::kHaltUnwindCode) {
+        platform::RethrowHostException();
+        return RunStatus::kHalted;
+    }
     if (code != platform::kHostFaultCode) {
         engine_.Panic("ArmJit: unwind code 0x%08X while running guest PC 0x%08X", code, pc);
     }

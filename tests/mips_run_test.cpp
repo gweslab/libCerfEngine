@@ -1,3 +1,4 @@
+#include "mmio_store_program.h"
 #include "test_host.h"
 
 #include <cerfengine/guest_engine.h>
@@ -6,28 +7,10 @@
 
 #include <string>
 
-namespace {
-
-constexpr uint32_t kRamBase = 0x1FC00000u;
-constexpr uint32_t kRamSize = 0x00010000u;
-constexpr uint32_t kEntryVa = 0xBFC00000u;
-constexpr uint32_t kMmioPa  = 0x10000000u;
-
-constexpr uint32_t kProgram[] = {
-    0x2402002Au,
-    0x24430001u,
-    0x3C04B000u,
-    0xAC830000u,
-    0x1000FFFFu,
-    0x00000000u,
-};
-
-}
-
 int main() {
-    TestHost       host(kRamBase, kRamSize, kMmioPa);
-    TestMipsSystem system(kEntryVa);
-    host.LoadWords(kRamBase, kProgram, sizeof(kProgram) / sizeof(kProgram[0]));
+    TestHost       host(kMipsStoreRamBase, kMipsStoreRamSize, kStoreMmioPa);
+    TestMipsSystem system(kMipsStoreEntryVa);
+    host.LoadWords(kMipsStoreRamBase, kMipsStoreProgram, sizeof(kMipsStoreProgram) / sizeof(kMipsStoreProgram[0]));
 
     cerfengine::Setup setup;
     setup.isa = cerfengine::Isa::kMips;

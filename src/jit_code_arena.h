@@ -3,6 +3,8 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "guest_unwind.h"
+
 namespace cerfengine {
 
 class Engine;
@@ -44,6 +46,8 @@ private:
     uint8_t* cursor_       = nullptr;
     uint8_t* region_end_   = nullptr;
     size_t   region_size_  = 0;
+
+    platform::CodeUnwindRegistration unwind_;
 };
 
 }
