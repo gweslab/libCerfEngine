@@ -14,13 +14,13 @@ Niceties:
 
 Built and used for [CE Runtime Foundation](https://github.com/gweslab/cerf) emulator. Earlier this JIT was inside the emulator and heavily coupled with it. It might still be coupled in some places since nobody put much effort into decoupling procedure.  ``¯\_(ツ)_/¯``
 
-> [!NOTE]
-> Hey - if you are going to use this JIT in your emulator I would appreciate and shake your hand if you would mention that your app runs CE Runtime Foundation Engine or something like this. Thanks.
+> [!WARNING]
+> - Any fork [must show](LICENSE) "Based on CE Runtime Foundation by Yaroslav Kibysh - https://cerf.cx" in its UI
+> - Non-commercial use only. Contact cerf.commercial@yaroslavkibysh.com for commercial usage license.
 
 I'm having no plans on updating this README so expect it's already rotten and misinforms you. Visit [CE Runtime Foundation repo](https://github.com/gweslab/cerf) for the first class usage example.
 
 ## CerfIR and the compile chain
-
 Our brand new Intermediate Representation Layer™ conception we ~~stole~~ borrowed from [friends](THIRD_PARTY_NOTICES.md).
 
 Since you are reading README for JIT in 2026 you probably already know something about recompilers and how those fancy IR layers are built and why. 
@@ -105,4 +105,4 @@ ctest --test-dir build -C Release
 
 ## License
 
-[MIT](LICENSE) /  [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
+[CE Runtime Foundation License](LICENSE) / [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
