@@ -176,6 +176,7 @@ void MipsJit::DeliverReset() {
     channel_->OnCpuReset();
     cpu_->ResetState();
     cache_->ContextSwitchFlush();
+    mmu_->ArmErlMap();
 }
 
 void MipsJit::SetExternalInterruptLevel(uint32_t ip_mask) {
@@ -194,13 +195,13 @@ void MipsJit::PrepareStateSave() {
 void MipsJit::OnStateRestored() {
     channel_->SetResetRequest(cpu_state_->reset_pending != 0u);
     channel_->OnCpuStateRestored();
+    mmu_->ArmErlMap();
 }
 
 void MipsJit::SetResetPending(bool is_resume) {
     host_->OnResetRequested(is_resume);
+    if (!is_resume) host_->OnRebootRequested();
     channel_->RequestDispatch(MipsInterruptChannel::kDispatchReset);
-    if (is_resume) return;
-    host_->OnRebootRequested();
 }
 
 void MipsJit::EnterDeepSleep() {

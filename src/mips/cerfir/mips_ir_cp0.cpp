@@ -3,6 +3,7 @@
 #include <cstdio>
 
 #include <cerfengine/mips/mips_cpu.h>
+#include <cerfengine/mips/mips_mmu.h>
 
 #include "../../emit_fault.h"
 #include "../mips_emit_services.h"
@@ -73,12 +74,43 @@ void ToCop0(MipsIrContext& c, bool is_dword) {
         c.pc_stored = stored;
         b.Label(ok);
     }
+    if (dec.zero_only != 0u) {
+        const uint32_t ok   = b.NewLabel();
+        const Ref      bits = b.Op2(Op::kAnd, MipsIrReadLo(c, d.rt), b.Const32(dec.zero_only));
+        b.Branch(b.Compare(Op::kCmpEq, bits, b.Const32(0u)), ok, true);
+        const bool stored = c.pc_stored;
+        MipsIrFastcall(c, reinterpret_cast<const void*>(&MipsCpu::Mtc0ZeroOnlyHelper),
+                       Type::kVoid, b.ConstPtr(c.block->emit->Cpu()), b.Const32(d.rd));
+        c.pc_stored = stored;
+        b.Label(ok);
+    }
+    MipsMmu* const mmu = c.block->emit->Mmu();
+    if (d.rd == MipsCp0::kStatus && mmu->ErlMask() != 0u) {
+        const uint32_t clear = b.NewLabel();
+        const Ref      erl   = b.Op2(Op::kAnd, MipsIrReadLo(c, d.rt), b.Const32(mmu->ErlMask()));
+        b.Branch(b.Compare(Op::kCmpEq, erl, b.Const32(0u)), clear, true);
+        const bool stored = c.pc_stored;
+        MipsIrFastcall(c, reinterpret_cast<const void*>(&MipsMmu::ErlSetHelper), Type::kVoid,
+                       b.ConstPtr(mmu), kNoRef);
+        c.pc_stored = stored;
+        b.Label(clear);
+    }
     if (dec.write != nullptr) {
+        if (dec.write_mask != 0xFFFFFFFFu) {
+            DecisionFault(d.rd, "both a write callback and a write mask");
+        }
         MipsIrFastcall(c, reinterpret_cast<const void*>(dec.write), Type::kVoid,
                        b.ConstPtr(dec.write_context), MipsIrReadLo(c, d.rt));
         return;
     }
-    b.SetSlot(static_cast<uint32_t>(dec.offset), MipsIrReadLo(c, d.rt));
+    const uint32_t slot = static_cast<uint32_t>(dec.offset);
+    if (dec.write_mask != 0xFFFFFFFFu) {
+        const Ref kept    = b.Op2(Op::kAnd, b.GetSlot(Type::kI32, slot), b.Const32(~dec.write_mask));
+        const Ref written = b.Op2(Op::kAnd, MipsIrReadLo(c, d.rt), b.Const32(dec.write_mask));
+        b.SetSlot(slot, b.Op2(Op::kOr, kept, written));
+        return;
+    }
+    b.SetSlot(slot, MipsIrReadLo(c, d.rt));
 }
 
 }

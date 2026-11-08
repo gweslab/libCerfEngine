@@ -72,4 +72,9 @@ void CERFENGINE_FASTCALL MipsCpu::Dmtc0WidthHelper(MipsCpu* cpu, uint32_t rd) {
                       "CP0 state is not modeled", rd);
 }
 
+void CERFENGINE_FASTCALL MipsCpu::Mtc0ZeroOnlyHelper(MipsCpu* cpu, uint32_t rd) {
+    cpu->engine_.Halt(HaltReason::kUnimplemented,
+                      "MipsCpu: MTC0 to cp0[%u] sets bits that the host supports at 0 only", rd);
+}
+
 }

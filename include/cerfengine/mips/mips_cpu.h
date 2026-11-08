@@ -27,6 +27,7 @@ public:
     static void CERFENGINE_FASTCALL HibernateHelper(uint32_t next_pc, MipsCpu* cpu);
 
     static void CERFENGINE_FASTCALL Dmtc0WidthHelper(MipsCpu* cpu, uint32_t rd);
+    static void CERFENGINE_FASTCALL Mtc0ZeroOnlyHelper(MipsCpu* cpu, uint32_t rd);
 
 private:
     MipsCpuState state_{};

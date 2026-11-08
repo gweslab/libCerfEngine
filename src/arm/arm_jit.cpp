@@ -242,12 +242,11 @@ void ArmJit::SetCoreClockStopped(bool stopped) {
 
 void ArmJit::SetResetPending(bool is_resume) {
     host_->OnResetRequested(is_resume);
+    if (!is_resume) host_->OnRebootRequested();
     std::atomic_ref<uint32_t>(cpu_state_->chain_exit_request)
         .fetch_or(kChainExitReset, std::memory_order_acq_rel);
     cpu_state_->reset_pending = 1u;
     channel_->Wake();
-    if (is_resume) return;
-    host_->OnRebootRequested();
 }
 
 void ArmJit::PrintFatalDump() {

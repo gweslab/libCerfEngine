@@ -62,7 +62,7 @@ public:
                 return MipsTlbResult::kAddressError;
             }
         }
-        return tlb_.map_address(tlb_.context, st, va, acc, pa);
+        return map_(map_context_, st, va, acc, pa);
     }
 
     CERFENGINE_FORCEINLINE MipsTlbResult TranslateAs(uint32_t privilege, MipsCpuState* st,
@@ -89,14 +89,28 @@ public:
 
     cerfengine::MipsTlbContext& TlbContext() { return context_; }
 
+    uint32_t ErlMask() const { return erl_mask_; }
+
+    void ArmErlMap();
+
+    static void CERFENGINE_FASTCALL ErlSetHelper(MipsMmu* mmu);
     static void CERFENGINE_FASTCALL TlbWriteIndexedHelper(MipsMmu* mmu);
     static void CERFENGINE_FASTCALL TlbWriteRandomHelper(MipsMmu* mmu);
     static void CERFENGINE_FASTCALL TlbProbeHelper(MipsMmu* mmu);
     static void CERFENGINE_FASTCALL TlbReadHelper(MipsMmu* mmu);
 
 private:
+    static MipsTlbResult CERFENGINE_FASTCALL ErlMapAddress(void* context, MipsCpuState* st,
+                                                           uint32_t va, MipsAccess acc,
+                                                           uint32_t* pa);
+    void LeaveErlMode();
+    [[noreturn]] void ErlKusegFetch(uint32_t va);
+
     cerfengine::MipsTlbHooks   tlb_;
+    MipsMapAddressFn           map_         = nullptr;
+    void*                      map_context_ = nullptr;
     MipsCpuState*              state_ = nullptr;
+    uint32_t                   erl_mask_ = 0;
     cerfengine::MipsTlbContext context_;
     uint32_t fixed_window_va_   = 0;
     uint32_t fixed_window_pa_   = 0;
