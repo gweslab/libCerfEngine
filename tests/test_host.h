@@ -151,6 +151,7 @@ public:
     }
     void OnArmPcTrace(uint32_t pc, const uint32_t*, uint32_t) override { CountTrace(pc); }
     void OnMipsPcTrace(uint32_t pc, const cerfengine::MipsCpuState*) override { CountTrace(pc); }
+    void OnShPcTrace(uint32_t pc, const cerfengine::ShCpuState*) override { CountTrace(pc); }
 
     [[noreturn]] void Panic(const char* message) override {
         if (on_panic_) on_panic_(message);
@@ -159,14 +160,21 @@ public:
     void Log(cerfengine::LogChannel, const char* text) override { std::fputs(text, stdout); }
     bool Symbolize(const void*, char*, size_t) override { return false; }
 
-    static uint8_t* PhysicalTranslate(void* context, uint32_t pa, cerfengine::PhysicalPage& page) {
+    void MakeRamReadOnly() { ram_read_only_ = true; }
+    void MirrorRamAt(uint32_t pa) {
+        mirror_base_ = pa;
+        mirrored_    = true;
+    }
+
+    static uint8_t* PhysicalTranslate(void* context, uint32_t pa, bool write, cerfengine::PhysicalPage& page) {
         TestHost*      self    = static_cast<TestHost*>(context);
         const uint32_t page_pa = pa & ~0xFFFu;
         if (uint8_t* first = self->Backing(page_pa);
             first != nullptr && self->Backing(page_pa + 0xFFFu)) {
             page.read  = first;
-            page.write = first;
+            page.write = self->ram_read_only_ ? nullptr : first;
         }
+        if (write && self->ram_read_only_) return nullptr;
         return self->Backing(pa);
     }
 
@@ -283,14 +291,18 @@ private:
     }
 
     uint8_t* Backing(uint32_t pa) {
-        if (pa < ram_base_ || pa - ram_base_ >= ram_.size()) return nullptr;
-        return data_ + (pa - ram_base_);
+        if (pa >= ram_base_ && pa - ram_base_ < ram_.size()) return data_ + (pa - ram_base_);
+        if (mirrored_ && pa >= mirror_base_ && pa - mirror_base_ < ram_.size()) return data_ + (pa - mirror_base_);
+        return nullptr;
     }
 
     uint32_t              ram_base_;
     std::vector<uint8_t>  ram_;
     uint8_t*              data_;
     uint32_t              mmio_pa_;
+    uint32_t              mirror_base_   = 0;
+    bool                  mirrored_      = false;
+    bool                  ram_read_only_ = false;
     std::atomic<uint32_t> generation_{0};
     bool                  mmio_written_    = false;
     uint64_t              mmio_value_      = 0;

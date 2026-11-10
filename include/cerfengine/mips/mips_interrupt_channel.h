@@ -11,12 +11,12 @@
 
 namespace cerfengine {
 
+class GuestIdleWait;
 class HostRequestChannel;
 
 class MipsInterruptChannel : public cerfengine::EngineService {
 public:
     using cerfengine::EngineService::EngineService;
-    ~MipsInterruptChannel() override;
 
     void OnReady() override;
     bool ShouldRegister() override {
@@ -96,8 +96,7 @@ private:
 
     MipsCpuState*       cpu_state_     = nullptr;
     HostRequestChannel* host_requests_ = nullptr;
-    void*               idle_event_    = nullptr;
-    int (CERFENGINE_STDCALL* signal_idle_)(void* event) = nullptr;
+    GuestIdleWait*      idle_          = nullptr;
     ClockHost*          clock_         = nullptr;
 };
 

@@ -3,9 +3,8 @@
 
 #include <cstddef>
 
-#include "../emit_fault.h"
 #include "../host_platform.h"
-#include "../jit_predecessor_link.h"
+#include "../jit_block_emitter.h"
 #include "../steady_clock_ns.h"
 #include <cerfengine/byte_order.h>
 #include <cerfengine/engine.h>
@@ -52,6 +51,7 @@ void ArmBlockCompiler::OnReady() {
     host_       = &engine_.Host();
     report_compiles_ = engine_.GetSetup().report_block_compiles;
     ir_codegen_ = &engine_.Get<ArmIrCodegen>();
+    emitter_    = &engine_.Get<JitBlockEmitter>();
 
     block_ctx_.emit = emit_;
     for (uint32_t p = 0; p < kBlockPrivilegeCount; ++p) {
@@ -82,7 +82,7 @@ void CERFENGINE_CDECL ArmBlockCompiler::TraceDispatchPcHelper(ArmBlockCompiler* 
 bool ArmBlockCompiler::SecondPageMapped(const JitBlock* blk, uint32_t guest_pc) {
     if (blk->index_split == 0u) return true;
     return translator_->TranslateExecute(guest_pc + blk->index_split) != nullptr &&
-           translator_->LastExecPa() == blk->index_start2;
+           translator_->LastExecPa() == blk->phys_split;
 }
 
 CERFENGINE_FORCEINLINE uint8_t* ArmBlockCompiler::FetchInBlockPage(uint32_t folded_pc) {
@@ -209,22 +209,14 @@ void ArmBlockCompiler::Decode(uint32_t guest_pc, uint32_t folded_pc, uint8_t* en
     tail_itstate_valid_  = ArmItInBlock(itstate);
 }
 
-size_t ArmBlockCompiler::GenerateCodeChecked(uint8_t* code, uint8_t* code_end) {
+size_t ArmBlockCompiler::GenerateCode(uint8_t* code, uint8_t* code_end) {
     if (block_ctx_.num_insns == 0u) {
         engine_.Panic("ArmBlockCompiler::GenerateCode called with num_insns == 0");
     }
-    try {
-        link_.native_start = code;
-        return ir_codegen_->Generate(
-            ArmIrBlockInput{&block_ctx_, timing_, timing_ == &uniform_timing_, this,
-                            tail_itstate_, tail_itstate_valid_, &link_},
-            code, code_end);
-    } catch (const cerfir::HostArenaFull&) {
-        return 0u;
-    } catch (const cerfengine::EmitFault& fault) {
-        engine_.Panic("%s (block at guest PC 0x%08X)", fault.what(),
-                      block_ctx_.insns[0].guest_address);
-    }
+    link_.native_start = code;
+    return ir_codegen_->Generate(ArmIrBlockInput{&block_ctx_, timing_, timing_ == &uniform_timing_, this,
+                                                 tail_itstate_, tail_itstate_valid_, &link_},
+                                 code, code_end);
 }
 
 void* ArmBlockCompiler::Compile(uint32_t guest_pc) {
@@ -292,58 +284,53 @@ void* ArmBlockCompiler::Compile(uint32_t guest_pc) {
         engine_.Panic("ArmBlockCompiler::Compile: decoded 0 insns at 0x%08X", guest_pc);
     }
 
-    const platform::CodeWriteScope write;
-    for (int attempt = 0; attempt < 2; ++attempt) {
-        const size_t slab_size = arena.Remaining();
-        uint8_t*     slab      = arena.Allocate(slab_size);
-        if (slab_size > JitBlockIndex::OuterEntrySize()) {
-            uint8_t* code = slab + JitBlockIndex::OuterEntrySize();
+    const DecodedInsn&   tail = block_ctx_.insns[block_ctx_.num_insns - 1];
+    const BlockEmitIndex emit_index{&space,      &set,        &idx,      outer_global, asid,
+                                    phys_start,  wide_split_, wide_pa2_, wide_pa2_,    predecessor_va_,
+                                    true};
 
-            const DecodedInsn& tail = block_ctx_.insns[block_ctx_.num_insns - 1];
-            JitBlock* stored = idx.PlaceOuterAt(slab, folded_pc,
-                                                tail.actual_guest_address + tail.length - 1u,
-                                                phys_start, code);
-            space.IndexInsert(stored, &idx, phys_start, wide_split_,
-                              wide_split_ != 0u ? wide_pa2_ : kBlockUnindexed);
-            if (!outer_global) set.MarkPopulated(asid);
+    struct Target final : BlockEmitTarget {
+        ArmBlockCompiler* self;
+        IsaBlockSpace*    space;
+        JitBlockIndex*    idx;
+        ArmMmuState*      mmu_state;
+        uint32_t          folded_pc;
+        uint32_t          phys_start;
+        uint32_t          privilege;
+        bool              thumb;
 
-            link_.index               = &idx;
-            link_.self                = stored;
-            link_.key_start           = folded_pc;
-            link_.phys_start          = phys_start;
-            link_.fold_value          = mmu_state->fcse_fold_id;
-            link_.mode_set            = thumb;
-            link_.jump_cache          = space.jump_cache;
-            link_.jump_cache_key_disp = jump_cache_key_disp_[privilege];
-            link_.privilege           = privilege;
-            link_.translation_off     = mmu_state->effective_control_register.bits.m == 0u;
-            block_ctx_.thumb             = thumb;
-            block_ctx_.alignment_checked = mmu_state->effective_control_register.bits.a != 0u;
-            block_ctx_.unaligned_faults  = mmu_->UnalignedAccessesFault();
-
-            LinkPredecessor(idx, predecessor_va_, stored);
-
-            const size_t code_size = GenerateCodeChecked(code, slab + slab_size);
-            if (code_size != 0u) {
-                arena.FreeUnusedTail(code + code_size);
-                platform::FlushInstructionCache(code, code_size);
-                space.JumpCacheInsert(privilege, folded_pc, stored->native_start, stored);
-                if (report_compiles_) {
-                    host_->OnBlockCompiled(BlockCompileStats{
-                        block_ctx_.num_insns,
-                        static_cast<uint32_t>(code_size),
-                        SteadyClockNs() - compile_start_ns});
-                }
-                return stored->native_start;
-            }
-            space.RemoveBlock(stored);
+        size_t Generate(JitBlock* stored, uint8_t* code, uint8_t* code_end) override {
+            ArmBlockCompiler& c                 = *self;
+            c.link_.index                       = idx;
+            c.link_.self                        = stored;
+            c.link_.key_start                   = folded_pc;
+            c.link_.phys_start                  = phys_start;
+            c.link_.fold_value                  = mmu_state->fcse_fold_id;
+            c.link_.mode_set                    = thumb;
+            c.link_.jump_cache                  = space->jump_cache;
+            c.link_.jump_cache_key_disp         = c.jump_cache_key_disp_[privilege];
+            c.link_.privilege                   = privilege;
+            c.link_.translation_off             = mmu_state->effective_control_register.bits.m == 0u;
+            c.block_ctx_.thumb                  = thumb;
+            c.block_ctx_.alignment_checked      = mmu_state->effective_control_register.bits.a != 0u;
+            c.block_ctx_.unaligned_faults       = c.mmu_->UnalignedAccessesFault();
+            return c.GenerateCode(code, code_end);
         }
-        cache_->Flush();
-    }
+        void FlushCache() override { self->cache_->Flush(); }
+    } target;
+    target.self       = this;
+    target.space      = &space;
+    target.idx        = &idx;
+    target.mmu_state  = mmu_state;
+    target.folded_pc  = folded_pc;
+    target.phys_start = phys_start;
+    target.privilege  = privilege;
+    target.thumb      = thumb;
 
-    engine_.Panic("ArmBlockCompiler::Compile: %u-insn block at 0x%08X does not "
-                  "fit a flushed %zu-byte arena",
-                  block_ctx_.num_insns, guest_pc, arena.MaxSize());
+    return emitter_->Emit(BlockEmitRequest{&arena, &emit_index, guest_pc, folded_pc,
+                                           tail.actual_guest_address + tail.length - 1u, phys_start,
+                                           privilege, block_ctx_.num_insns, compile_start_ns},
+                          target);
 }
 
 }

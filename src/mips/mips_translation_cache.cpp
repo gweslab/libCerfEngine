@@ -1,13 +1,10 @@
 #include "mips_translation_cache.h"
 
-#include <cstdio>
-
 #include <cerfengine/engine.h>
 #include <cerfengine/mips/mips_cpu.h>
 #include <cerfengine/mips/mips_cpu_state.h>
 #include <cerfengine/mips/mips_mmu.h>
 #include <cerfengine/physical_map.h>
-#include <cerfengine/physical_memory_host.h>
 
 #include "../host_platform.h"
 
@@ -15,56 +12,23 @@ namespace cerfengine {
 
 CERFENGINE_REGISTER(MipsTranslationCache);
 
-bool MipsTranslationCache::ValidateDram(const std::vector<DramRegion>& dram, void* memory,
-                                        std::string& error) {
-    char text[256];
-    if (static_cast<int>(dram.size()) > kMaxDramRegions) {
-        std::snprintf(text, sizeof(text),
-                      "the host declares %zu cached DRAM regions; the MIPS "
-                      "self-modifying-code index supports 1..%d",
-                      dram.size(), kMaxDramRegions);
-        error = text;
-        return false;
-    }
-    for (const DramRegion& r : dram) {
-        PhysicalPage page;
-        if (host::PhysicalTranslate(memory, r.pa_base, false, page) == nullptr ||
-            (r.size & 0xFFFu) != 0u) {
-            std::snprintf(text, sizeof(text),
-                          "DRAM pa=0x%08X size=0x%X is not a page-multiple "
-                          "backed region", r.pa_base, r.size);
-            error = text;
-            return false;
-        }
-    }
-    return true;
-}
-
 void MipsTranslationCache::OnReady() {
     map_       = &engine_.Get<PhysicalMap>();
     cpu_state_ = engine_.Get<MipsCpu>().State();
+    dram_      = engine_.Get<DramHostRegions>().Table();
 
     arena_.Initialize(engine_);
 
-    uint32_t index_base = 0;
-    for (const cerfengine::DramRegion& r : engine_.Host().CachedDramRegions()) {
-        uint8_t* host = map_->PeekRead(r.pa_base);
-        DramHostRegion& e = dram_regions_[dram_region_count_++];
-        e.host_lo    = host;
-        e.host_hi    = host + r.size;
-        e.index_base = index_base;
-        index_base  += r.size;
-    }
-    dram_index_size_ = index_base;
-    blocks_.Initialize(engine_, 0, dram_index_size_ >> 12);
-    blocks16_.Initialize(engine_, 0, dram_index_size_ >> 12);
+    const uint32_t indexed_pages = dram_.PackedBytes() >> 12;
+    blocks_.Initialize(engine_, 0, indexed_pages);
+    blocks16_.Initialize(engine_, 0, indexed_pages);
 
     mmu_ = &engine_.Get<MipsMmu>();
     mmu_->Bind(&blocks_, &blocks16_);
 
     CERFENGINE_LOG(engine_, kJit,
-                   "MipsTranslationCache::OnReady: %d DRAM bank(s), %u SMC-indexed pages\n",
-                   dram_region_count_, dram_index_size_ >> 12);
+                   "MipsTranslationCache::OnReady: %u DRAM bank(s), %u SMC-indexed pages\n",
+                   dram_.Count(), indexed_pages);
 }
 
 void MipsTranslationCache::Flush() {
@@ -85,8 +49,8 @@ bool MipsTranslationCache::TryBlockIndexKey(uint32_t phys_start, uint32_t* key) 
         return true;
     }
 
-    const uint32_t off = DramIndexOffset(host);
-    if (off != UINT32_MAX) {
+    const uint32_t off = dram_.PackedOffset(host);
+    if (off != DramHostTable::kNotDram) {
         *key = off;
         return true;
     }
@@ -108,8 +72,8 @@ uint32_t MipsTranslationCache::BlockIndexKey(uint32_t phys_start) {
 }
 
 void MipsTranslationCache::InvalidateOnRamWrite(uint8_t* host, uint32_t size) {
-    const uint32_t off = DramIndexOffset(host);
-    if (off == UINT32_MAX) {
+    const uint32_t off = dram_.PackedOffset(host);
+    if (off == DramHostTable::kNotDram) {
         if (InFixedWindow(host)) return;
         if (InDmaRegion(host)) return;
         engine_.Halt(cerfengine::HaltReason::kUnimplemented,

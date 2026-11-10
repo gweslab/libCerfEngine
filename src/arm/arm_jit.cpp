@@ -1,14 +1,10 @@
 #include <cerfengine/arm/arm_jit.h>
 
-#if CERFENGINE_BACKEND_X86_WIN32
-#include <excpt.h>
-#endif
-
 #include <atomic>
 #include <cstdio>
 
 #include <cerfengine/engine.h>
-#include "../guest_unwind.h"
+#include "../guarded_block_entry.h"
 #include "../host_platform.h"
 #include <cerfengine/host_request_channel.h>
 #include "../cerfir/cerfir_host_lowering.h"
@@ -29,20 +25,6 @@ CERFENGINE_REGISTER_AS(ArmJit, GuestEngine);
 namespace {
 
 constexpr uintptr_t kFaultWindowBytes = 16;
-
-#if CERFENGINE_GUARDED_DISPATCH
-struct ArmBlockEntry {
-    void*       native;
-    void*       state;
-    void*       mmu_state;
-    const void* entry_stub;
-};
-
-void EnterArmBlock(void* context) {
-    const ArmBlockEntry& entry = *static_cast<const ArmBlockEntry*>(context);
-    cerfir::HostEnterBlock(entry.native, entry.state, entry.mmu_state, entry.entry_stub);
-}
-#endif
 
 }
 
@@ -73,20 +55,11 @@ void ArmJit::LogEmittedBytesAroundFault(uintptr_t fault) {
                    static_cast<unsigned long>(fault - lo), line);
 }
 
-void ArmJit::ReportHostFault(uint32_t code, const void* address, const char* registers,
-                             uint32_t guest_pc) {
-    CERFENGINE_LOG(engine_, kCaution, "ArmJit: host exception 0x%08X at host address %p while "
-                   "running guest PC 0x%08X (CPSR=0x%08X)\n",
-                   code, address, guest_pc, ArmPackCpsr(*cpu_state_));
+void ArmJit::ReportHostFault(const platform::HostFault& fault, uint32_t guest_pc) {
+    block_entry_->LogHostFault("ArmJit", fault, guest_pc);
+    CERFENGINE_LOG(engine_, kCaution, "ArmJit:   CPSR=0x%08X\n", ArmPackCpsr(*cpu_state_));
 
-    char symbol[512];
-    if (host_->Symbolize(address, symbol, sizeof(symbol))) {
-        CERFENGINE_LOG(engine_, kCaution, "ArmJit:   host symbol %s\n", symbol);
-    }
-
-    CERFENGINE_LOG(engine_, kCaution, "ArmJit:   %s\n", registers);
-
-    LogEmittedBytesAroundFault(reinterpret_cast<uintptr_t>(address));
+    LogEmittedBytesAroundFault(reinterpret_cast<uintptr_t>(fault.address));
 
     const uint32_t* r = cpu_state_->gprs;
     for (uint32_t i = 0; i < 16u; i += 4u) {
@@ -102,7 +75,7 @@ void ArmJit::ReportHostFault(uint32_t code, const void* address, const char* reg
         }
         CERFENGINE_LOG(engine_, kCaution, "ArmJit:   pinned in host registers:%s\n", map);
     }
-    engine_.Panic("ArmJit: host exception while running guest PC 0x%08X", guest_pc);
+    block_entry_->PanicOnHostFault("ArmJit", guest_pc);
 }
 
 void ArmJit::OnReady() {
@@ -116,6 +89,7 @@ void ArmJit::OnReady() {
     host_requests_ = &engine_.Get<HostRequestChannel>();
     host_       = &engine_.Host();
     entry_stub_ = engine_.Get<ArmIrCodegen>().EntryStub();
+    block_entry_ = &engine_.Get<GuardedBlockEntry>();
     engine_.AttachClock(clock_);
 }
 
@@ -181,38 +155,32 @@ GuestEngine::RunStatus ArmJit::Run() {
     } __except (platform::FilterDispatchException(_exception_info())) {
         const platform::HostFault& fault = platform::LastDispatchFault();
         if (fault.code != platform::kHaltUnwindCode) {
-            ReportHostFault(fault.code, fault.address, fault.registers, pc);
+            ReportHostFault(fault, pc);
         }
         return RunStatus::kHalted;
     }
     return RunStatus::kRunning;
 #elif CERFENGINE_GUARDED_DISPATCH
-    ArmBlockEntry       entry{native, cpu_state_, mmu_->State(), entry_stub_};
+    void* const         mmu_state = mmu_->State();
+    auto                enter     = [&] { cerfir::HostEnterBlock(native, cpu_state_, mmu_state, entry_stub_); };
     platform::HostFault fault{};
-    const uint32_t      code = platform::CallDispatchGuarded(&EnterArmBlock, &entry, fault);
-    if (code == 0u) return RunStatus::kRunning;
-    if (code == platform::kHaltUnwindCode) {
-        platform::RethrowHostException();
+    switch (block_entry_->Enter(enter, pc, fault)) {
+    case BlockExit::kReturned:
+        return RunStatus::kRunning;
+    case BlockExit::kHalted:
         return RunStatus::kHalted;
+    case BlockExit::kGuestUnwind:
+        engine_.Panic("ArmJit: guest unwind while running guest PC 0x%08X", pc);
+    case BlockExit::kHostFault:
+        break;
     }
-    if (code != platform::kHostFaultCode) {
-        engine_.Panic("ArmJit: unwind code 0x%08X while running guest PC 0x%08X", code, pc);
-    }
-    ReportHostFault(fault.code, fault.address, fault.registers, pc);
+    ReportHostFault(fault, pc);
 #else
-    engine_.Panic("ArmJit: guest PC 0x%08X reached dispatch in a build without an execution "
-                  "backend", pc);
+    block_entry_->PanicWithoutBackend(pc);
 #endif
 }
 
-void ArmJit::SetHostChainExit(bool requested) {
-    std::atomic_ref<uint32_t> word(cpu_state_->chain_exit_request);
-    if (requested) {
-        word.fetch_or(kChainExitHost, std::memory_order_acq_rel);
-    } else {
-        word.fetch_and(~kChainExitHost, std::memory_order_acq_rel);
-    }
-}
+void ArmJit::SetHostChainExit(bool requested) { channel_->SetHostExit(requested); }
 
 void ArmJit::SetInterruptPending()   { channel_->SetInterruptPending(); }
 void ArmJit::ClearInterruptPending() { channel_->ClearInterruptPending(); }

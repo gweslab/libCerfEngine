@@ -1,12 +1,8 @@
 #include <cerfengine/mips/mips_jit.h>
 
-#if CERFENGINE_BACKEND_X86_WIN32
-#include <excpt.h>
-#endif
-
 #include <cerfengine/engine.h>
 #include "../cerfir/cerfir_host_lowering.h"
-#include "../guest_unwind.h"
+#include "../guarded_block_entry.h"
 #include "../host_platform.h"
 #include <cerfengine/host_request_channel.h>
 #include "mips_block_compiler.h"
@@ -22,31 +18,6 @@ namespace cerfengine {
 
 CERFENGINE_REGISTER_AS(MipsJit, GuestEngine);
 
-void MipsJit::ReportHostFault(uint32_t code, const void* address, const char* registers,
-                              uint32_t guest_pc) {
-    CERFENGINE_LOG(engine_, kCaution,
-                   "MipsJit: host exception 0x%08X at host addr %p while running guest PC "
-                   "0x%08X\n", code, address, guest_pc);
-    CERFENGINE_LOG(engine_, kCaution, "MipsJit:   %s\n", registers);
-    engine_.Panic("MipsJit: host exception while running guest PC 0x%08X", guest_pc);
-}
-
-namespace {
-
-#if CERFENGINE_GUARDED_DISPATCH
-struct MipsBlockEntry {
-    void* native;
-    void* state;
-};
-
-void EnterMipsBlock(void* context) {
-    const MipsBlockEntry& entry = *static_cast<const MipsBlockEntry*>(context);
-    cerfir::HostEnterBlock(entry.native, entry.state);
-}
-#endif
-
-}
-
 void MipsJit::OnReady() {
     cpu_           = &engine_.Get<MipsCpu>();
     cpu_state_     = cpu_->State();
@@ -59,6 +30,7 @@ void MipsJit::OnReady() {
     host_requests_ = &engine_.Get<HostRequestChannel>();
     map_           = &engine_.Get<PhysicalMap>();
     host_          = &engine_.Host();
+    block_entry_   = &engine_.Get<GuardedBlockEntry>();
 }
 
 bool MipsJit::GuestIrqMasked() const {
@@ -145,29 +117,26 @@ dispatch:
             const platform::HostFault& fault = platform::LastDispatchFault();
             if (fault.code == platform::kHaltUnwindCode) return RunStatus::kHalted;
             if (fault.code != platform::kGuestUnwindCode) {
-                ReportHostFault(fault.code, fault.address, fault.registers, pc);
+                block_entry_->ReportHostFault("MipsJit", fault, pc);
             }
         }
     }
     return RunStatus::kRunning;
 #elif CERFENGINE_GUARDED_DISPATCH
-    {
-        MipsBlockEntry      entry{native, cpu_state_};
-        platform::HostFault fault{};
-        const uint32_t      code = platform::CallDispatchGuarded(&EnterMipsBlock, &entry, fault);
-        if (code == 0u || code == platform::kGuestUnwindCode) return RunStatus::kRunning;
-        if (code == platform::kHaltUnwindCode) {
-            platform::RethrowHostException();
-            return RunStatus::kHalted;
-        }
-        if (code != platform::kHostFaultCode) {
-            engine_.Panic("MipsJit: unwind code 0x%08X while running guest PC 0x%08X", code, pc);
-        }
-        ReportHostFault(fault.code, fault.address, fault.registers, pc);
+    auto                enter = [&] { cerfir::HostEnterBlock(native, cpu_state_); };
+    platform::HostFault fault{};
+    switch (block_entry_->Enter(enter, pc, fault)) {
+    case BlockExit::kReturned:
+    case BlockExit::kGuestUnwind:
+        return RunStatus::kRunning;
+    case BlockExit::kHalted:
+        return RunStatus::kHalted;
+    case BlockExit::kHostFault:
+        break;
     }
+    block_entry_->ReportHostFault("MipsJit", fault, pc);
 #else
-    engine_.Panic("MipsJit: guest PC 0x%08X reached dispatch in a build without an execution "
-                  "backend", pc);
+    block_entry_->PanicWithoutBackend(pc);
 #endif
 }
 

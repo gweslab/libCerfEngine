@@ -3,9 +3,8 @@
 
 #include <cstddef>
 
-#include "../emit_fault.h"
 #include "../host_platform.h"
-#include "../jit_predecessor_link.h"
+#include "../jit_block_emitter.h"
 #include "../steady_clock_ns.h"
 #include <cerfengine/engine.h>
 #include <cerfengine/mips/mips_cpu.h>
@@ -30,6 +29,7 @@ void MipsBlockCompiler::OnReady() {
     decoder_    = &engine_.Get<MipsInsnDecoder>();
     exceptions_ = &engine_.Get<MipsExceptionDelivery>();
     ir_codegen_ = &engine_.Get<MipsIrCodegen>();
+    emitter_    = &engine_.Get<JitBlockEmitter>();
 
     block_ctx_.emit     = &engine_.Get<MipsEmitServices>();
     block_ctx_.compiler = this;
@@ -91,12 +91,9 @@ bool MipsBlockCompiler::TailStillMapped(const JitBlock* blk, uint32_t privilege)
         return true;
     }
     uint32_t pa = 0;
-    if (mmu_->TranslateAs(privilege, cpu_state_, blk->guest_start + blk->index_split,
-                          MipsAccess::kFetch, &pa) != MipsTlbResult::kMatch) {
-        return false;
-    }
-    uint32_t key = 0;
-    return cache_->TryBlockIndexKey(pa, &key) && key == blk->index_start2;
+    return mmu_->TranslateAs(privilege, cpu_state_, blk->guest_start + blk->index_split, MipsAccess::kFetch, &pa) ==
+               MipsTlbResult::kMatch &&
+           pa == blk->phys_split;
 }
 
 bool MipsBlockCompiler::TranslateEntry(uint32_t guest_pc, uint32_t privilege,
@@ -154,50 +151,43 @@ void* MipsBlockCompiler::CompilePendingEntry(uint32_t guest_pc, uint32_t privile
 void* MipsBlockCompiler::EmitIrBlock(uint32_t guest_pc, uint32_t phys_start,
                                      const IrIndex* index, uint32_t privilege, bool pending,
                                      uint64_t start_ns) {
-    JitCodeArena&                  arena = cache_->Arena();
-    const MipsDecodedInsn&         last  = block_ctx_.insns[block_ctx_.num_insns - 1u];
-    const platform::CodeWriteScope write;
-    for (int attempt = 0; attempt < 2; ++attempt) {
-        const size_t slab_size = arena.Remaining();
-        uint8_t*     slab      = arena.Allocate(slab_size);
-        if (slab_size > JitBlockIndex::OuterEntrySize()) {
-            uint8_t*  code   = slab + JitBlockIndex::OuterEntrySize();
-            JitBlock* stored = nullptr;
-            if (index != nullptr) {
-                stored = index->idx->PlaceOuterAt(slab, guest_pc,
-                                                  last.guest_address + last.length - 1u,
-                                                  phys_start, code);
-                index->space->IndexInsert(stored, index->idx, cache_->BlockIndexKey(phys_start),
-                                          block_ctx_.tail_split,
-                                          block_ctx_.tail_split != 0u
-                                              ? cache_->BlockIndexKey(block_ctx_.tail_page_pa)
-                                              : kBlockUnindexed);
-                if (!index->outer_global) index->set->MarkPopulated(index->asid);
-                LinkPredecessor(*index->idx, predecessor_va_, stored);
-            }
-            FillLink(index, stored, guest_pc, phys_start, code, privilege);
-            const size_t code_size = GenerateIrChecked(code, slab + slab_size, pending);
-            if (code_size != 0u) {
-                arena.FreeUnusedTail(code + code_size);
-                platform::FlushInstructionCache(code, code_size);
-                if (index != nullptr) {
-                    index->space->JumpCacheInsert(privilege, guest_pc,
-                                                  stored->index_split != 0u ? nullptr : code,
-                                                  stored);
-                }
-                if (report_compiles_) {
-                    host_->OnBlockCompiled(BlockCompileStats{
-                        block_ctx_.num_insns, static_cast<uint32_t>(code_size),
-                        SteadyClockNs() - start_ns});
-                }
-                return code;
-            }
-            if (index != nullptr) index->space->RemoveBlock(stored);
-        }
-        cache_->Flush();
+    const MipsDecodedInsn& last = block_ctx_.insns[block_ctx_.num_insns - 1u];
+
+    BlockEmitIndex emit_index{};
+    if (index != nullptr) {
+        emit_index = BlockEmitIndex{
+            index->space, index->set, index->idx, index->outer_global, index->asid,
+            cache_->BlockIndexKey(phys_start), block_ctx_.tail_split,
+            block_ctx_.tail_split != 0u ? cache_->BlockIndexKey(block_ctx_.tail_page_pa)
+                                        : kBlockUnindexed,
+            block_ctx_.tail_page_pa, predecessor_va_, false};
     }
-    engine_.Panic("MipsBlockCompiler::Compile: %u-insn block at 0x%08X does not fit a "
-                  "flushed %zu-byte arena", block_ctx_.num_insns, guest_pc, arena.MaxSize());
+
+    struct Target final : BlockEmitTarget {
+        MipsBlockCompiler* self;
+        const IrIndex*     index;
+        uint32_t           guest_pc;
+        uint32_t           phys_start;
+        uint32_t           privilege;
+        bool               pending;
+
+        size_t Generate(JitBlock* stored, uint8_t* code, uint8_t* code_end) override {
+            self->FillLink(index, stored, guest_pc, phys_start, code, privilege);
+            return self->GenerateIr(code, code_end, pending);
+        }
+        void FlushCache() override { self->cache_->Flush(); }
+    } target;
+    target.self       = this;
+    target.index      = index;
+    target.guest_pc   = guest_pc;
+    target.phys_start = phys_start;
+    target.privilege  = privilege;
+    target.pending    = pending;
+
+    return emitter_->Emit(BlockEmitRequest{&cache_->Arena(), index != nullptr ? &emit_index : nullptr,
+                                           guest_pc, guest_pc, last.guest_address + last.length - 1u, phys_start,
+                                           privilege, block_ctx_.num_insns, start_ns},
+                          target);
 }
 
 void MipsBlockCompiler::FillLink(const IrIndex* index, JitBlock* stored, uint32_t guest_pc,
@@ -215,16 +205,8 @@ void MipsBlockCompiler::FillLink(const IrIndex* index, JitBlock* stored, uint32_
     link_.privilege           = privilege;
 }
 
-size_t MipsBlockCompiler::GenerateIrChecked(uint8_t* code, uint8_t* code_end, bool pending) {
-    try {
-        return ir_codegen_->Generate(MipsIrBlockInput{&block_ctx_, this, pending, &link_}, code,
-                                     code_end);
-    } catch (const cerfir::HostArenaFull&) {
-        return 0u;
-    } catch (const cerfengine::EmitFault& fault) {
-        engine_.Panic("%s (block at guest PC 0x%08X)", fault.what(),
-                      block_ctx_.insns[0].guest_address);
-    }
+size_t MipsBlockCompiler::GenerateIr(uint8_t* code, uint8_t* code_end, bool pending) {
+    return ir_codegen_->Generate(MipsIrBlockInput{&block_ctx_, this, pending, &link_}, code, code_end);
 }
 
 void* MipsBlockCompiler::Compile(uint32_t guest_pc, uint32_t privilege) {

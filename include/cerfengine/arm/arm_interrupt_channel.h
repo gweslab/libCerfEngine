@@ -11,12 +11,12 @@ namespace cerfengine {
 
 struct ArmIrContext;
 
+class GuestIdleWait;
 class HostRequestChannel;
 
 class ArmInterruptChannel : public cerfengine::EngineService {
 public:
     using cerfengine::EngineService::EngineService;
-    ~ArmInterruptChannel() override;
 
     void OnReady() override;
     bool ShouldRegister() override {
@@ -54,6 +54,7 @@ public:
                                                          uint32_t guest_pc);
 
     void Wake();
+    void SetHostExit(bool requested);
 
     void RequestHostService();
     bool TakeHostRequest();
@@ -87,9 +88,7 @@ private:
 
     ArmCpuState*        cpu_state_     = nullptr;
     HostRequestChannel* host_requests_ = nullptr;
-    void*               idle_event_    = nullptr;
-    int (CERFENGINE_STDCALL* signal_idle_)(void* event) = nullptr;
-    ClockHost*          clock_         = nullptr;
+    GuestIdleWait*      idle_          = nullptr;
 };
 
 }

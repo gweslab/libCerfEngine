@@ -12,3 +12,4 @@
 - **[GCC](https://gcc.gnu.org/)**
 - **[LLVM](https://llvm.org/)**
 - **[Apple libunwind](https://github.com/apple-oss-distributions/libunwind)**
+- **[sh3-emu](https://github.com/Gadgetoid/sh3-emu)** - Phil Howard

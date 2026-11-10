@@ -2,9 +2,9 @@
 
 namespace cerfengine::host {
 
-uint8_t* CERFENGINE_FASTCALL PhysicalTranslate(void* context, uint32_t pa, bool,
+uint8_t* CERFENGINE_FASTCALL PhysicalTranslate(void* context, uint32_t pa, bool write,
                                                PhysicalPage& page) {
-    return TestHost::PhysicalTranslate(context, pa, page);
+    return TestHost::PhysicalTranslate(context, pa, write, page);
 }
 
 bool CERFENGINE_FASTCALL PhysicalSpanUniform(void* context, uint32_t pa, uint32_t span) {

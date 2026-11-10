@@ -13,6 +13,7 @@ namespace cerfengine {
 struct MipsCpuState;
 struct JitBlock;
 
+class JitBlockEmitter;
 class MipsExceptionDelivery;
 class MipsInsnDecoder;
 class MipsIrCodegen;
@@ -66,7 +67,7 @@ private:
     bool   DecodeBlock(uint32_t guest_pc, uint32_t privilege);
     void*  EmitIrBlock(uint32_t guest_pc, uint32_t phys_start, const IrIndex* index,
                        uint32_t privilege, bool pending, uint64_t start_ns);
-    size_t GenerateIrChecked(uint8_t* code, uint8_t* code_end, bool pending);
+    size_t GenerateIr(uint8_t* code, uint8_t* code_end, bool pending);
 
     void   FillLink(const IrIndex* index, JitBlock* stored, uint32_t guest_pc,
                     uint32_t phys_start, uint8_t* code, uint32_t privilege);
@@ -83,6 +84,7 @@ private:
     MipsTranslationCache*  cache_      = nullptr;
     MipsInsnDecoder*       decoder_    = nullptr;
     MipsExceptionDelivery* exceptions_ = nullptr;
+    JitBlockEmitter*       emitter_    = nullptr;
 };
 
 }

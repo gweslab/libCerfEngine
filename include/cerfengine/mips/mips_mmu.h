@@ -6,6 +6,7 @@
 #include "../engine.h"
 #include "../force_inline.h"
 #include "../isa_block_space.h"
+#include "../unmapped_windows.h"
 #include "mips_cpu_state.h"
 #include "mips_system_host.h"
 #include "mips_tlb_context.h"
@@ -13,16 +14,14 @@
 namespace cerfengine {
 
 namespace MipsSeg {
-    constexpr uint32_t kKusegEnd     = 0x80000000;
-    constexpr uint32_t kKseg1Base    = 0xA0000000;
-    constexpr uint32_t kKseg2Base    = 0xC0000000;
+    constexpr uint32_t kKusegEnd     = UnmappedWindows::kCachedBase;
+    constexpr uint32_t kKseg1Base    = UnmappedWindows::kUncachedBase;
+    constexpr uint32_t kKseg2Base    = UnmappedWindows::kEnd;
     constexpr uint32_t kSsegEnd      = 0xE0000000;
-    constexpr uint32_t kUnmappedMask = 0x1FFFFFFF;
+    constexpr uint32_t kUnmappedMask = UnmappedWindows::kPaMask;
 
-    constexpr bool IsUnmapped(uint32_t va) {
-        return va >= kKusegEnd && va < kKseg2Base;
-    }
-    constexpr uint32_t UnmappedPa(uint32_t va) { return va & kUnmappedMask; }
+    constexpr bool IsUnmapped(uint32_t va) { return UnmappedWindows::Contains(va); }
+    constexpr uint32_t UnmappedPa(uint32_t va) { return UnmappedWindows::Pa(va); }
 }
 
 class MipsMmu : public cerfengine::EngineService {

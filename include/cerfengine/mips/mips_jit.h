@@ -9,6 +9,7 @@
 
 namespace cerfengine {
 
+class GuardedBlockEntry;
 class HostRequestChannel;
 class MipsBlockCompiler;
 class MipsCpu;
@@ -59,8 +60,6 @@ public:
 
 private:
     void DeliverReset();
-    [[noreturn]] void ReportHostFault(uint32_t code, const void* address, const char* registers,
-                                      uint32_t guest_pc);
 
     MipsCpuState* cpu_state_      = nullptr;
     uint32_t      predecessor_va_ = 0;
@@ -75,6 +74,7 @@ private:
     HostRequestChannel*     host_requests_ = nullptr;
     PhysicalMap*            map_           = nullptr;
     cerfengine::EngineHost* host_          = nullptr;
+    GuardedBlockEntry*      block_entry_   = nullptr;
 };
 
 }

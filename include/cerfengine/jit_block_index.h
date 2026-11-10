@@ -22,7 +22,7 @@ public:
     }
 
     JitBlock* PlaceOuterAt(uint8_t* slab, uint32_t guest_start, uint32_t guest_end,
-                           uint32_t phys_start, uint8_t* native_start);
+                           uint32_t phys_start, uint32_t phys_split, uint8_t* native_start);
 
     JitBlock* FindExact(uint32_t guest_start);
 

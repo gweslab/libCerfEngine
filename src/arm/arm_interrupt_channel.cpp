@@ -1,7 +1,7 @@
 #include <cerfengine/arm/arm_interrupt_channel.h>
 #include <cerfengine/calling_convention.h>
 
-#include "../host_platform.h"
+#include "../guest_idle_wait.h"
 
 #include <atomic>
 
@@ -14,22 +14,10 @@ namespace cerfengine {
 
 CERFENGINE_REGISTER(ArmInterruptChannel);
 
-ArmInterruptChannel::~ArmInterruptChannel() {
-    platform::CloseWakeEvent(platform::WakeEvent{idle_event_, signal_idle_});
-}
-
 void ArmInterruptChannel::OnReady() {
     cpu_state_     = engine_.Get<ArmCpu>().State();
     host_requests_ = &engine_.Get<HostRequestChannel>();
-    engine_.AttachClock(clock_);
-
-    const platform::WakeEvent wake = platform::CreateWakeEvent();
-    idle_event_  = wake.handle;
-    signal_idle_ = wake.signal;
-    if (idle_event_ == nullptr) {
-        engine_.Panic("ArmInterruptChannel: creating the idle wake event failed, error %u",
-                      platform::LastErrorCode());
-    }
+    idle_          = &engine_.Get<GuestIdleWait>();
 }
 
 void ArmInterruptChannel::SetInterruptPending() {
@@ -37,7 +25,7 @@ void ArmInterruptChannel::SetInterruptPending() {
     std::atomic_ref<uint32_t>(cpu_state_->chain_exit_request)
         .fetch_or(kChainExitIrq, std::memory_order_acq_rel);
     if (edge) {
-        signal_idle_(idle_event_);
+        idle_->Signal();
     }
 }
 
@@ -52,16 +40,20 @@ void ArmInterruptChannel::SetIdleWake(bool level) {
     const bool edge = idle_wake_line_.exchange(value, std::memory_order_acq_rel) == 0u &&
                       value != 0u;
     if (edge) {
-        signal_idle_(idle_event_);
+        idle_->Signal();
     }
 }
 
 void ArmInterruptChannel::Wake() {
-    signal_idle_(idle_event_);
+    idle_->Signal();
+}
+
+void ArmInterruptChannel::SetHostExit(bool requested) {
+    idle_->SetExitBit(cpu_state_->chain_exit_request, kChainExitHost, requested);
 }
 
 void ArmInterruptChannel::RequestHostService() {
-    if (host_request_.exchange(1u, std::memory_order_acq_rel) == 0u) signal_idle_(idle_event_);
+    if (host_request_.exchange(1u, std::memory_order_acq_rel) == 0u) idle_->Signal();
 }
 
 bool ArmInterruptChannel::TakeHostRequest() {
@@ -77,18 +69,13 @@ uint32_t CERFENGINE_CDECL ArmInterruptChannel::BackOutForIrqHelper(
 /* ARM DDI 0406C.c B1.8.14: a WFI wake-up event is "a physical IRQ interrupt,
    regardless of the value of the CPSR.I bit". */
 bool ArmInterruptChannel::WaitForInterrupt() {
-    bool woke = false;
-    while (!woke && !ExitPending()) {
-        if (!clock_stopped_) {
-            woke = irq_line_.load(std::memory_order_acquire) != 0u;
-            /* SA-1110 Dev Man §9.5.2.2: with ICCR.DIM = 0 any enabled interrupt, masked
-               or unmasked, ends idle mode; the WFI completes and execution resumes. */
-            woke = woke || idle_wake_line_.load(std::memory_order_acquire) != 0u;
-        }
-        if (!woke) clock_->IdleStep(idle_event_);
-    }
-    clock_->ExitIdle();
-    return woke;
+    return idle_->Wait([this] {
+        if (ExitPending()) return GuestIdleWait::Poll::kExit;
+        if (clock_stopped_) return GuestIdleWait::Poll::kWait;
+        const bool woke = irq_line_.load(std::memory_order_acquire) != 0u ||
+                          idle_wake_line_.load(std::memory_order_acquire) != 0u;
+        return woke ? GuestIdleWait::Poll::kWoken : GuestIdleWait::Poll::kWait;
+    });
 }
 
 void ArmInterruptChannel::EnterIdle() {
@@ -132,7 +119,7 @@ bool ArmInterruptChannel::ExitPending() {
 }
 
 void ArmInterruptChannel::WaitForClock() {
-    while (clock_stopped_ && !ExitPending()) clock_->WaitStep(idle_event_);
+    idle_->Hold([this] { return clock_stopped_ && !ExitPending(); });
 }
 
 }

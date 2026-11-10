@@ -40,10 +40,11 @@ void JitBlockIndex::Grow() {
 }
 
 JitBlock* JitBlockIndex::PlaceOuterAt(uint8_t* slab, uint32_t guest_start, uint32_t guest_end,
-                                      uint32_t phys_start, uint8_t* native_start) {
+                                      uint32_t phys_start, uint32_t phys_split, uint8_t* native_start) {
     JitBlock* stored = new (slab) JitBlock{.guest_start  = guest_start,
                                            .guest_end    = guest_end,
                                            .phys_start   = phys_start,
+                                           .phys_split   = phys_split,
                                            .native_start = native_start};
 
     if ((count_ + 1u) * 4u > table_.size() * 3u) Grow();

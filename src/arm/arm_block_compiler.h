@@ -18,6 +18,7 @@ struct ArmCpuState;
 class ArmCpu;
 class ArmDecoder;
 class ArmIrCodegen;
+class JitBlockEmitter;
 class ArmEmitServices;
 class ArmMmu;
 class ThumbDecoder;
@@ -65,7 +66,7 @@ private:
                     bool entry_tracked);
     uint8_t* FetchInBlockPage(uint32_t folded_pc);
     bool     SecondPageMapped(const JitBlock* blk, uint32_t guest_pc);
-    size_t   GenerateCodeChecked(uint8_t* code, uint8_t* code_end);
+    size_t   GenerateCode(uint8_t* code, uint8_t* code_end);
 
     BlockContext      block_ctx_{};
     cerfir::BlockLink link_{};
@@ -82,6 +83,7 @@ private:
     ArmTranslator*          translator_ = nullptr;
     ArmRoutedInstruction*   routed_    = nullptr;
     ArmIrCodegen*           ir_codegen_ = nullptr;
+    JitBlockEmitter*        emitter_    = nullptr;
     const cerfengine::ArmInstructionTiming* timing_ = nullptr;
     cerfengine::EngineHost* host_      = nullptr;
     bool                    report_compiles_ = false;

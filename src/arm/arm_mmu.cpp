@@ -7,6 +7,7 @@
 #include <cerfengine/engine.h>
 #include <cerfengine/arm/arm_cpu.h>
 #include <cerfengine/arm/arm_system_host.h>
+#include "../dram_host_regions.h"
 #include "arm_tlb_ops.h"
 #include "arm_translation_cache.h"
 #include <cerfengine/arm/arm_translator.h>
@@ -138,12 +139,9 @@ void ArmMmu::OnReady() {
         state_.instruction_tlb[p].span_tracker = &instruction_tlb_span_tracker_[p];
     }
 
-    uint32_t dram_min = 0xFFFFFFFFu;
-    uint32_t dram_max = 0u;
-    for (const auto& r : engine_.Host().CachedDramRegions()) {
-        if (r.pa_base < dram_min)          dram_min = r.pa_base;
-        if (r.pa_base + r.size > dram_max) dram_max = r.pa_base + r.size;
-    }
+    const DramSpan dram     = DramHostRegions::Span(engine_.Host().CachedDramRegions());
+    const uint32_t dram_min = dram.low;
+    const uint32_t dram_max = dram.high;
     state_.code_word_base         = dram_min;
     state_.code_word_top          = dram_max;
     state_.code_word_bitmap_bytes =

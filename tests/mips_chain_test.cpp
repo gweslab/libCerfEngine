@@ -136,10 +136,11 @@ public:
 
 class ChainRig {
 public:
-    explicit ChainRig(const cerfengine::MipsFeatures& features) {
+    explicit ChainRig(const cerfengine::MipsFeatures& features, bool rom = false) {
         setup_.isa                 = cerfengine::Isa::kMips;
         setup_.mips                = features;
         setup_.mips.device_ip_mask = kIp2;
+        if (rom) host_.MakeRamReadOnly();
         host_.Attach(setup_);
         system_.Attach(setup_);
         host_.EnableMmioLog();
@@ -395,8 +396,8 @@ void TestStoreUnlinksChain() {
     TEST_CHECK(s.gpr[5] == 10u + 20u * 100u);
 }
 
-void TestSplitBlockRevalidates() {
-    ChainRig       rig(Mips3());
+void TestSplitBlockRevalidates(bool rom) {
+    ChainRig       rig(Mips3(), rom);
     const uint32_t s_va = kUserPage0 + 0xFF8u;
     const uint32_t x_va = kUserPage0 + 0xF00u;
     const uint32_t y_va = kUserPage0 + 0xE00u;
@@ -413,7 +414,10 @@ void TestSplitBlockRevalidates() {
             s.pc      = start;
             s.gpr[10] = 0u;
             rig.RunTo(kEnd, 10u);
-            TEST_CHECK(s.gpr[10] == pass + 1u);
+            if (s.gpr[10] != pass + 1u) {
+                TestFail("%s tail, pass %u, entry 0x%08X: r10 = %u, want %u", rom ? "ROM" : "RAM", pass, start,
+                         static_cast<uint32_t>(s.gpr[10]), pass + 1u);
+            }
         }
         rig.System().page1_pa = kUserPa1Alt;
         rig.Engine().Get<cerfengine::MipsMmu>().TlbContext().InvalidatePage(kUserPage1);
@@ -472,7 +476,8 @@ int main() {
     TestStatusWriteInDelaySlot();
     TestRfeEndsBlock();
     TestStoreUnlinksChain();
-    TestSplitBlockRevalidates();
+    TestSplitBlockRevalidates(false);
+    TestSplitBlockRevalidates(true);
     TestSplitBlockNeverChainsToItself();
     TestIsaSwitchProbe();
     std::printf("mips_chain_test passed\n");

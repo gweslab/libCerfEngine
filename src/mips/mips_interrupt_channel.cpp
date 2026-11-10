@@ -1,7 +1,7 @@
 #include <cerfengine/mips/mips_interrupt_channel.h>
 #include <cerfengine/calling_convention.h>
 
-#include "../host_platform.h"
+#include "../guest_idle_wait.h"
 
 #include <cerfengine/engine.h>
 #include <cerfengine/host_request_channel.h>
@@ -12,28 +12,17 @@ namespace cerfengine {
 
 CERFENGINE_REGISTER(MipsInterruptChannel);
 
-MipsInterruptChannel::~MipsInterruptChannel() {
-    platform::CloseWakeEvent(platform::WakeEvent{idle_event_, signal_idle_});
-}
-
 void MipsInterruptChannel::OnReady() {
     cpu_state_      = engine_.Get<MipsCpu>().State();
     device_ip_mask_ = engine_.GetSetup().mips.device_ip_mask;
     standby_lines_  = kMipsCauseIpMask & ~device_ip_mask_;
     host_requests_  = &engine_.Get<HostRequestChannel>();
+    idle_           = &engine_.Get<GuestIdleWait>();
     engine_.AttachClock(clock_);
-
-    const platform::WakeEvent wake = platform::CreateWakeEvent();
-    idle_event_  = wake.handle;
-    signal_idle_ = wake.signal;
-    if (idle_event_ == nullptr) {
-        engine_.Panic("MipsInterruptChannel: creating the idle wake event failed, error %u",
-                      platform::LastErrorCode());
-    }
 }
 
 void MipsInterruptChannel::SignalIdleWake() {
-    signal_idle_(idle_event_);
+    idle_->Signal();
 }
 
 void MipsInterruptChannel::SetExternalInterruptLevel(uint32_t ip_mask) {
@@ -59,13 +48,7 @@ uint32_t MipsInterruptChannel::TakeDispatchRequests() {
 
 void MipsInterruptChannel::SetHostExit(bool requested) {
     host_exit_.store(requested, std::memory_order_release);
-    std::atomic_ref<uint32_t> word(cpu_state_->chain_exit_request);
-    if (requested) {
-        word.fetch_or(MipsChainExit::kHost, std::memory_order_acq_rel);
-        SignalIdleWake();
-    } else {
-        word.fetch_and(~MipsChainExit::kHost, std::memory_order_acq_rel);
-    }
+    idle_->SetExitBit(cpu_state_->chain_exit_request, MipsChainExit::kHost, requested);
 }
 
 bool MipsInterruptChannel::TakeHostRequest() {
@@ -97,16 +80,13 @@ bool MipsInterruptChannel::InterruptPending(uint32_t idle) const {
 
 bool MipsInterruptChannel::WaitForInterrupt(uint32_t idle) {
     const MipsCpuState& s = *cpu_state_;
-    bool woke = false;
-    for (;;) {
-        if (ResetRequested() || s.deep_sleep || host_exit_.load(std::memory_order_acquire)) break;
+    return idle_->Wait([this, &s, idle] {
+        if (ResetRequested() || s.deep_sleep || host_exit_.load(std::memory_order_acquire)) {
+            return GuestIdleWait::Poll::kExit;
+        }
         if (TakeHostRequest()) host_requests_->ServiceRequests();
-        woke = InterruptPending(idle);
-        if (woke) break;
-        clock_->IdleStep(idle_event_);
-    }
-    clock_->ExitIdle();
-    return woke;
+        return InterruptPending(idle) ? GuestIdleWait::Poll::kWoken : GuestIdleWait::Poll::kWait;
+    });
 }
 
 void MipsInterruptChannel::OnCpuReset() {

@@ -7,7 +7,7 @@
 #include "host_platform.h"
 
 #if CERFENGINE_EXECUTION_BACKEND
-#include "mips/mips_translation_cache.h"
+#include "dram_host_regions.h"
 #endif
 
 namespace cerfengine {
@@ -63,8 +63,7 @@ bool Engine::ValidateSetup(std::string& error) {
         error = "the host declares no cached DRAM region";
         return false;
     }
-    return setup_.isa != Isa::kMips ||
-           MipsTranslationCache::ValidateDram(dram, setup_.memory, error);
+    return !DramHostRegions::Serves(setup_.isa) || DramHostRegions::Validate(dram, setup_.memory, error);
 }
 #endif
 

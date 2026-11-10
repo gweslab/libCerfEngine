@@ -4,6 +4,6 @@
 
 namespace cerfengine {
 
-enum class Isa : uint8_t { kArm, kMips };
+enum class Isa : uint8_t { kArm, kMips, kSh };
 
 }

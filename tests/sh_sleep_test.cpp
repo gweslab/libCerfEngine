@@ -1,0 +1,218 @@
+#include "sh_ir_rig.h"
+
+#include <cerfengine/sh/sh_interrupt_host.h>
+#include <cerfengine/sh/sh_sleep_host.h>
+
+#include <cstdint>
+#include <cstdio>
+#include <functional>
+
+namespace {
+
+using cerfengine::ShCpuState;
+
+constexpr uint32_t kImask5     = 5u << cerfengine::kShSrImaskShift;
+constexpr uint32_t kSrSleeping = cerfengine::kShSrMd | cerfengine::kShSrRb | cerfengine::kShSrBl | kImask5;
+constexpr uint32_t kIntevt     = 0x400u;
+constexpr uint32_t kAboveMask  = 6u;
+constexpr uint32_t kAtMask     = 5u;
+constexpr uint16_t kBraOverOne = 0xA001u;
+
+class FakeHosts final : public cerfengine::ShInterruptHost, public cerfengine::ShSleepHost {
+public:
+    uint32_t AcceptInterrupt(uint32_t sr) override {
+        if (!cerfengine::ShSrAcceptsInterrupt(sr, level)) return 0u;
+        ++accepted;
+        return kIntevt;
+    }
+
+    uint32_t StandbyWakeLevel() override { return standby_level; }
+
+    bool StandbySelected() const override { return standby; }
+
+    void EnterStandby() override {
+        ++standby_entries;
+        exited = false;
+    }
+
+    bool StandbyExited() const override { return exited; }
+
+    uint32_t level           = 0u;
+    uint32_t standby_level   = 0u;
+    uint32_t accepted        = 0u;
+    uint32_t standby_entries = 0u;
+    bool     standby         = false;
+    bool     exited          = false;
+};
+
+class SleepCases {
+public:
+    SleepCases(bool verify, const char* mode) : rig_(false, verify), mode_(mode) {
+        rig_.LoadReturningHandler(kShRigInterruptVector);
+        rig_.Interrupts().SetHost(&hosts_);
+        rig_.Interrupts().SetSleepHost(&hosts_);
+    }
+
+    void Run() {
+        WakesWithBlockSet();
+        MaskedLevelKeepsSleeping();
+        SleepInDelaySlot();
+        StandbyStaysWithoutAnExit();
+        StandbyExitTakesThePendingInterrupt();
+        StandbyExitWithoutARequestWaitsInPowerDown();
+        StandbyWakeLevelIgnoresBlock();
+        std::printf("%s: SH sleep passed\n", mode_);
+    }
+
+private:
+    void Raise(uint32_t level) {
+        hosts_.level = level;
+        rig_.Interrupts().PublishLevel(level);
+    }
+
+    void Reset() {
+        Raise(0u);
+        hosts_.accepted        = 0u;
+        hosts_.standby         = false;
+        hosts_.standby_level   = 0u;
+        hosts_.standby_entries = 0u;
+        hosts_.exited          = false;
+    }
+
+    void StepWithoutHostExit(const char* what) {
+        rig_.Interrupts().SetHostExit(false);
+        rig_.Step(1u, what);
+        rig_.Interrupts().SetHostExit(true);
+    }
+
+    void ExpectStandby(const char* what, uint32_t entries) {
+        const ShCpuState& s = rig_.State();
+        ShRigExpect(mode_, what, "standby entries", hosts_.standby_entries, entries);
+        ShRigExpect(mode_, what, "sleeping", s.sleeping, cerfengine::kShSleepStandby);
+        ShRigExpect(mode_, what, "accepted interrupts", hosts_.accepted, 0u);
+    }
+
+    std::function<void(ShCpuState&)> Prepare() {
+        return [this](ShCpuState& s) {
+            s.vbr     = kShRigVbr;
+            s.gpr[13] = rig_.ReturnStubVa();
+        };
+    }
+
+    ShCpuState Initial() const {
+        ShCpuState s{};
+        s.sr = kSrSleeping;
+        return s;
+    }
+
+    void ExpectWake(const char* what, uint32_t spc) {
+        const ShCpuState& s = rig_.State();
+        ShRigExpect(mode_, what, "interrupt handler entries", s.gpr[9], 1u);
+        ShRigExpect(mode_, what, "accepted interrupts", hosts_.accepted, 1u);
+        ShRigExpect(mode_, what, "INTEVT", s.intevt, kIntevt);
+        ShRigExpect(mode_, what, "SPC", s.spc, spc);
+        ShRigExpect(mode_, what, "SSR", s.ssr, kSrSleeping);
+        ShRigExpect(mode_, what, "SR", s.sr, kSrSleeping);
+        ShRigExpect(mode_, what, "sleeping", s.sleeping, 0u);
+    }
+
+    void WakesWithBlockSet() {
+        const char* what = "SLEEP with SR.BL set and a level above the mask";
+        Reset();
+        Raise(kAboveMask);
+        const uint32_t start = rig_.Run({kShRigSleep}, Initial(), what, Prepare());
+        ExpectWake(what, start + 2u);
+    }
+
+    void MaskedLevelKeepsSleeping() {
+        const char* what = "SLEEP with a level at the mask";
+        Reset();
+        Raise(kAtMask);
+        const uint32_t start = rig_.RunSteps({kShRigSleep}, Initial(), 8u, what, Prepare());
+        const ShCpuState& s  = rig_.State();
+        ShRigExpect(mode_, what, "sleeping", s.sleeping, cerfengine::kShSleepMode);
+        ShRigExpect(mode_, what, "PC", s.pc, start + 2u);
+        ShRigExpect(mode_, what, "accepted interrupts", hosts_.accepted, 0u);
+        Raise(kAboveMask);
+        rig_.Finish(what);
+        ExpectWake(what, start + 2u);
+    }
+
+    void SleepInDelaySlot() {
+        const char* what = "SLEEP in the delay slot of BRA over one instruction";
+        Reset();
+        Raise(kAboveMask);
+        const uint32_t start = rig_.Run({kBraOverOne, kShRigSleep, kShRigNop}, Initial(), what, Prepare());
+        ExpectWake(what, start + 6u);
+    }
+
+    uint32_t EnterStandbyWithARequest(const char* what) {
+        Reset();
+        hosts_.standby       = true;
+        Raise(kAboveMask);
+        const uint32_t start = rig_.RunSteps({kShRigSleep}, Initial(), 2u, what, Prepare());
+        ExpectStandby(what, 1u);
+        ShRigExpect(mode_, what, "PC", rig_.State().pc, start + 2u);
+        return start;
+    }
+
+    void StandbyStaysWithoutAnExit() {
+        const char* what     = "SLEEP with STBCR.STBY set and no standby exit";
+        const uint32_t start = EnterStandbyWithARequest(what);
+        StepWithoutHostExit(what);
+        ExpectStandby(what, 2u);
+        rig_.Step(1u, what);
+        ExpectStandby(what, 2u);
+        hosts_.exited = true;
+        rig_.Finish(what);
+        ExpectWake(what, start + 2u);
+        ShRigExpect(mode_, what, "standby entries", hosts_.standby_entries, 2u);
+    }
+
+    void StandbyExitTakesThePendingInterrupt() {
+        const char* what     = "a standby exit with a request above the mask";
+        const uint32_t start = EnterStandbyWithARequest(what);
+        hosts_.exited        = true;
+        rig_.Finish(what);
+        ExpectWake(what, start + 2u);
+        ShRigExpect(mode_, what, "standby entries", hosts_.standby_entries, 1u);
+    }
+
+    void StandbyExitWithoutARequestWaitsInPowerDown() {
+        const char* what     = "a standby exit after the request dropped";
+        const uint32_t start = EnterStandbyWithARequest(what);
+        Raise(0u);
+        hosts_.exited = true;
+        rig_.Step(1u, what);
+        const ShCpuState& s = rig_.State();
+        ShRigExpect(mode_, what, "sleeping", s.sleeping, cerfengine::kShSleepMode);
+        ShRigExpect(mode_, what, "PC", s.pc, start + 2u);
+        ShRigExpect(mode_, what, "accepted interrupts", hosts_.accepted, 0u);
+        Raise(kAboveMask);
+        rig_.Finish(what);
+        ExpectWake(what, start + 2u);
+        ShRigExpect(mode_, what, "standby entries", hosts_.standby_entries, 1u);
+    }
+
+    void StandbyWakeLevelIgnoresBlock() {
+        const char* what = "the standby wake level with SR.BL set";
+        Reset();
+        rig_.RunSteps({kShRigNop}, Initial(), 0u, what, Prepare());
+        hosts_.standby_level = kAboveMask;
+        ShRigExpect(mode_, what, "above the mask", rig_.Interrupts().StandbyWakePending() ? 1u : 0u, 1u);
+        hosts_.standby_level = kAtMask;
+        ShRigExpect(mode_, what, "at the mask", rig_.Interrupts().StandbyWakePending() ? 1u : 0u, 0u);
+    }
+
+    ShIrRig     rig_;
+    FakeHosts   hosts_;
+    const char* mode_;
+};
+
+}
+
+int main() {
+    SleepCases(false, "plain").Run();
+    SleepCases(true, "verified IR").Run();
+    return 0;
+}

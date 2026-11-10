@@ -63,10 +63,15 @@ struct MipsFeatures {
     uint32_t phys_addr_mask = 0xFFFFFFFFu;
 };
 
+struct ShFeatures {
+    bool dsp = false;
+};
+
 struct Setup {
     Isa                   isa             = Isa::kArm;
     ArmFeatures           arm;
     MipsFeatures          mips;
+    ShFeatures            sh;
     EngineHost*           host            = nullptr;
     void*                 memory          = nullptr;
     MmioBusBinding        mmio;

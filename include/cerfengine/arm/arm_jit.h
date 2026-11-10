@@ -15,7 +15,12 @@ class ArmInterruptChannel;
 class ArmMmu;
 class ArmTranslationCache;
 class ArmTranslator;
+class GuardedBlockEntry;
 class HostRequestChannel;
+
+namespace platform {
+struct HostFault;
+}
 
 class ArmJit : public GuestEngine {
 public:
@@ -56,8 +61,7 @@ public:
     void SetDmaRegion(uint32_t pa, uint32_t size) override;
 
 private:
-    [[noreturn]] void ReportHostFault(uint32_t code, const void* address, const char* registers,
-                                      uint32_t guest_pc);
+    [[noreturn]] void ReportHostFault(const platform::HostFault& fault, uint32_t guest_pc);
     void LogEmittedBytesAroundFault(uintptr_t fault);
 
     ArmCpuState* cpu_state_ = nullptr;
@@ -73,6 +77,7 @@ private:
     cerfengine::EngineHost* host_     = nullptr;
     ClockHost*              clock_    = nullptr;
     const void*             entry_stub_ = nullptr;
+    GuardedBlockEntry*      block_entry_ = nullptr;
 };
 
 }

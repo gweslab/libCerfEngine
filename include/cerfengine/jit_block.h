@@ -10,6 +10,7 @@ struct JitBlock {
     uint32_t guest_start  = 0;
     uint32_t guest_end    = 0;
     uint32_t phys_start   = 0;
+    uint32_t phys_split   = 0;
 
     uint8_t* native_start = nullptr;
 

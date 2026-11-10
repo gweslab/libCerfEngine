@@ -199,6 +199,17 @@ struct IsaBlockSpace {
         return page_heads[pg - page_base] != nullptr;
     }
 
+    bool RangeHitsBlock(uint32_t lo, uint32_t hi, uint32_t at_lo, uint32_t at_hi) const {
+        for (uint32_t pg = lo >> 12; pg <= (hi >> 12); ++pg) {
+            if (pg < page_base || pg >= page_base + page_count) continue;
+            for (const JitBlock* blk = page_heads[pg - page_base]; blk != nullptr;
+                 blk = blk->page_next[LinkSlot(blk, pg)]) {
+                if (IntersectsBlock(blk, lo, hi) && IntersectsBlock(blk, at_lo, at_hi)) return true;
+            }
+        }
+        return false;
+    }
+
     void UnlinkFromPage(JitBlock* outer, int slot) {
         if (slot == 1 &&
             (outer->index_split == 0 ||
