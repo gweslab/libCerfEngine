@@ -58,11 +58,11 @@ bool MipsInterruptChannel::TakeHostRequest() {
 }
 
 void MipsInterruptChannel::RegisterSuspendListener(std::function<void()> fn) {
-    suspend_listeners_.push_back(std::move(fn));
+    suspend_listeners_.Add(std::move(fn));
 }
 
 void MipsInterruptChannel::RunSuspendListeners() {
-    for (auto& fn : suspend_listeners_) fn();
+    suspend_listeners_.Call();
 }
 
 uint64_t MipsInterruptChannel::CyclesOutsideSuspend() {

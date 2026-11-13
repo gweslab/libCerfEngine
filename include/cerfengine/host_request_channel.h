@@ -3,9 +3,9 @@
 #include <atomic>
 #include <cstdint>
 #include <functional>
-#include <vector>
 
 #include "engine.h"
+#include "callback_list.h"
 
 namespace cerfengine {
 
@@ -30,7 +30,7 @@ private:
     std::atomic<uint32_t>              pending_{0};
     GuestIdleWait*                     idle_ = nullptr;
     std::function<void()>              kick_;
-    std::vector<std::function<void()>> listeners_;
+    CallbackList<>                     listeners_;
 };
 
 }

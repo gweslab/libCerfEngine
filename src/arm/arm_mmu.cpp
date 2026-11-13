@@ -117,13 +117,13 @@ uint8_t* CERFENGINE_FASTCALL ArmMmu::TranslateUserWriteHelper(uint32_t va, ArmMm
 }
 
 void ArmMmu::RegisterControlRegisterListener(std::function<void()> fn) {
-    control_register_listeners_.push_back(std::move(fn));
+    control_register_listeners_.Add(std::move(fn));
 }
 
 void ArmMmu::SetControlRegister(uint32_t value) {
     if (state_.control_register.word == value) return;
     state_.control_register.word = value;
-    for (auto& fn : control_register_listeners_) fn();
+    control_register_listeners_.Call();
 }
 
 void ArmMmu::SetEffectiveControlRegister(uint32_t value) {

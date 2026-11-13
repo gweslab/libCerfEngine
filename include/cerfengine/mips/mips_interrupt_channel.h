@@ -4,10 +4,10 @@
 #include <atomic>
 #include <cstdint>
 #include <functional>
-#include <vector>
 
 #include "../engine.h"
 #include "mips_cpu_state.h"
+#include "../callback_list.h"
 
 namespace cerfengine {
 
@@ -87,7 +87,7 @@ private:
     bool                               suspended_           = false;
     uint64_t                           suspend_start_cycle_ = 0;
     uint64_t                           suspended_cycles_    = 0;
-    std::vector<std::function<void()>> suspend_listeners_;
+    CallbackList<>                     suspend_listeners_;
 
     std::atomic<uint32_t> external_ip_{0};
     std::atomic<uint32_t> dispatch_request_{0};

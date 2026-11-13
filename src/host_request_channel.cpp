@@ -11,7 +11,7 @@ CERFENGINE_REGISTER(HostRequestChannel);
 void HostRequestChannel::OnReady() { idle_ = &engine_.Get<GuestIdleWait>(); }
 
 void HostRequestChannel::RegisterListener(std::function<void()> fn) {
-    listeners_.push_back(std::move(fn));
+    listeners_.Add(std::move(fn));
 }
 
 void HostRequestChannel::SetKick(std::function<void()> kick) { kick_ = std::move(kick); }
@@ -25,7 +25,7 @@ void HostRequestChannel::Request() {
 }
 
 void HostRequestChannel::RunListeners() {
-    for (auto& fn : listeners_) fn();
+    listeners_.Call();
 }
 
 void HostRequestChannel::TakePending() {

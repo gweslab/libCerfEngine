@@ -9,6 +9,7 @@
 #include "arm_mmu_state.h"
 #include "arm_system_host.h"
 #include "cpu_state.h"
+#include "../callback_list.h"
 
 namespace cerfengine {
 
@@ -106,7 +107,7 @@ public:
 
 private:
     ArmMmuState                        state_{};
-    std::vector<std::function<void()>> control_register_listeners_;
+    CallbackList<>                     control_register_listeners_;
     ArmTranslator*                     translator_       = nullptr;
     ArmTranslationCache*               cache_            = nullptr;
     const cerfengine::ArmFeatures*     processor_config_ = nullptr;
