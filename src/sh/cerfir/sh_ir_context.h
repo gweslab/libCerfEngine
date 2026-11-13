@@ -10,6 +10,7 @@
 namespace cerfengine {
 
 class ShCpu;
+class ShDspUnit;
 class ShMmu;
 
 constexpr uint32_t ShStateDisp(size_t offset) { return static_cast<uint32_t>(offset); }
@@ -26,6 +27,7 @@ struct ShIrContext {
     const ShDecodedInsn* d;
     ShCpu*               cpu;
     ShMmu*               mmu;
+    ShDspUnit*           dsp;
     bool                 in_delay_slot;
     cerfir::Ref          branch_target;
     bool                 branch_target_static;

@@ -10,8 +10,15 @@ namespace {
 
 using cerfengine::ShCpuState;
 
-constexpr uint32_t kSrUser     = cerfengine::kShSrRb | cerfengine::kShSrT;
-constexpr uint32_t kSrFromUser = kSrUser | cerfengine::kShSrMd | cerfengine::kShSrBl;
+constexpr uint32_t kSrUser    = cerfengine::kShSrRb | cerfengine::kShSrT;
+constexpr uint32_t kSrUserDsp = kSrUser | cerfengine::kShSrDsp;
+constexpr uint32_t kSrEntered = cerfengine::kShSrMd | cerfengine::kShSrBl;
+
+constexpr uint32_t kUxyVa       = 0xA5007000u;
+constexpr uint32_t kBelowUxyVa  = 0xA4FFF000u;
+constexpr uint32_t kAboveUxyVa  = 0xA6000000u;
+constexpr char     kUxyLoadHalt[]  = "unmapped 4-byte load VA 0xA5007000 PA 0x05007000";
+constexpr char     kUxyFetchHalt[] = "instruction fetch at PC 0xA5007000 reads PA 0x05007000";
 
 constexpr uint32_t kUserCodePa   = 0x00012000u;
 constexpr uint32_t kUserCodeStep = 0x400u;
@@ -38,7 +45,8 @@ ShCpuState Initial() {
 
 class UserModeCases {
 public:
-    UserModeCases(bool verify, const char* mode) : rig_(false, verify), mode_(mode) {
+    UserModeCases(bool dsp, bool verify, const char* mode)
+        : rig_(dsp, verify), mode_(mode), dsp_(dsp), user_sr_(dsp ? kSrUserDsp : kSrUser) {
         rig_.LoadReturningHandler(kShRigGeneralVector);
         rig_.Host().LoadWords(kShRigDataPa, &kDataWord, 1u);
     }
@@ -55,7 +63,11 @@ public:
         RteSlotUsesRestoredPrivilegedMode();
         LoadBeforeRteRunsPrivileged();
         BlocksKeyedByProcessorMode();
-        std::printf("%s: SH user mode passed\n", mode_);
+        UxyLoad();
+        UxyFetch();
+        LoadOutsideUxy("user load just below the Uxy window", kBelowUxyVa);
+        LoadOutsideUxy("user load just above the Uxy window", kAboveUxyVa);
+        std::printf("%s%s: SH user mode passed\n", mode_, dsp_ ? " SH3-DSP" : "");
     }
 
 private:
@@ -69,7 +81,7 @@ private:
     std::function<void(ShCpuState&)> ToUser(uint32_t user_va, uint32_t bank0_r1) {
         return [this, user_va, bank0_r1](ShCpuState& s) {
             s.vbr     = kShRigVbr;
-            s.ssr     = kSrUser;
+            s.ssr     = user_sr_;
             s.spc     = user_va;
             s.gpr[13] = rig_.ReturnStubVa();
             for (uint32_t r = 0; r < 8u; ++r) s.bank[r] = kBank0Fill + r;
@@ -82,8 +94,8 @@ private:
         ShRigExpect(mode_, what, "general handler entries", s.gpr[9], 1u);
         ShRigExpect(mode_, what, "EXPEVT", s.expevt, expevt);
         ShRigExpect(mode_, what, "SPC", s.spc, spc);
-        ShRigExpect(mode_, what, "SSR", s.ssr, kSrUser);
-        ShRigExpect(mode_, what, "SR", s.sr, kSrFromUser);
+        ShRigExpect(mode_, what, "SSR", s.ssr, user_sr_);
+        ShRigExpect(mode_, what, "SR", s.sr, user_sr_ | kSrEntered);
     }
 
     void ExpectUserAddressError(const char* what, uint32_t tea, uint32_t spc) {
@@ -204,15 +216,52 @@ private:
         ExpectUserAddressError(what, kDataP1, shared_va);
     }
 
-    ShIrRig     rig_;
-    const char* mode_;
-    uint32_t    next_user_pa_ = kUserCodePa;
+    void UxyLoad() {
+        const char*                 what    = "user load from the Uxy window";
+        const std::vector<uint16_t> body    = {kShRigRte, kShRigNop};
+        const uint32_t              user_va = LoadUser({kShRigLoadLR1R2, kShRigNop});
+        if (dsp_) {
+            const std::string detail = rig_.RunToHalt(body, Initial(), what, ToUser(user_va, kUxyVa));
+            ShRigExpectHalt(mode_, what, detail, kUxyLoadHalt);
+            return;
+        }
+        rig_.Run(body, Initial(), what, ToUser(user_va, kUxyVa));
+        ExpectUserAddressError(what, kUxyVa, user_va);
+    }
+
+    void UxyFetch() {
+        const char*                 what    = "user jump into the Uxy window";
+        const std::vector<uint16_t> body    = {kShRigRte, kShRigNop};
+        const uint32_t              user_va = LoadUser({kJmpR1, kShRigNop});
+        if (dsp_) {
+            const std::string detail = rig_.RunToHalt(body, Initial(), what, ToUser(user_va, kUxyVa));
+            ShRigExpectHalt(mode_, what, detail, kUxyFetchHalt);
+            return;
+        }
+        rig_.Run(body, Initial(), what, ToUser(user_va, kUxyVa));
+        ExpectUserAddressError(what, kUxyVa, kUxyVa);
+    }
+
+    void LoadOutsideUxy(const char* what, uint32_t va) {
+        const std::vector<uint16_t> body    = {kShRigRte, kShRigNop};
+        const uint32_t              user_va = LoadUser({kShRigLoadLR1R2, kShRigNop});
+        rig_.Run(body, Initial(), what, ToUser(user_va, va));
+        ExpectUserAddressError(what, va, user_va);
+    }
+
+    ShIrRig        rig_;
+    const char*    mode_;
+    const bool     dsp_;
+    const uint32_t user_sr_;
+    uint32_t       next_user_pa_ = kUserCodePa;
 };
 
 }
 
 int main() {
-    UserModeCases(false, "plain").Run();
-    UserModeCases(true, "verified IR").Run();
+    UserModeCases(false, false, "plain").Run();
+    UserModeCases(false, true, "verified IR").Run();
+    UserModeCases(true, false, "plain").Run();
+    UserModeCases(true, true, "verified IR").Run();
     return 0;
 }

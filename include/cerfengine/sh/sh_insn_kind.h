@@ -47,12 +47,16 @@ enum class ShInsnKind : uint8_t {
     kXtrct,
     kMultiply,
     kClrmac,
+    kMac,
     kLdtlb,
     kRte,
     kReserved,
     kClearSrBits,
     kSetSrBits,
     kSleep,
+    kDspTransfer,
+    kDspParallel,
+    kDspSingleTransfer,
     kCount,
 };
 

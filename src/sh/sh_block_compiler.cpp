@@ -44,7 +44,7 @@ uint32_t ShBlockCompiler::MemoryMode(uint32_t mode, uint32_t count) const {
 }
 
 bool ShBlockCompiler::TranslateFetch(uint32_t va, bool deliver, uint32_t exception_pc, ShTranslation* out) {
-    if ((va & 1u) != 0u || (ProcessorMode() == kBlockUser && ShAddressSpace::PrivilegedOnly(va))) {
+    if ((va & 1u) != 0u || (ProcessorMode() == kBlockUser && !ShAddressSpace::UserReachable(va, cpu_state_->sr))) {
         if (deliver) mmu_->RaiseAddressError(va, ShAccess::kFetch, exception_pc);
         return false;
     }
@@ -69,46 +69,63 @@ bool ShBlockCompiler::TailStillMapped(const JitBlock* blk) {
     return mmu_->ProbeFetch(blk->guest_start + blk->index_split, &t) && t.pa == blk->phys_split;
 }
 
+bool ShBlockCompiler::MapTail(uint32_t pc, uint32_t page_end, uint32_t count, bool slot_next, uint32_t shadow_left,
+                              uint32_t* kept) {
+    if (shadow_left != 0u && mmu_->Translates(page_end)) {
+        engine_.Halt(HaltReason::kUnimplemented,
+                     "ShBlockCompiler: instruction fetch at PC 0x%08X within two instructions after LDTLB "
+                     "reaches a translated area",
+                     page_end);
+    }
+    const bool    must_follow = slot_next || shadow_left != 0u;
+    const bool    rte_slot    = slot_next && insns_[count - 1u].kind == ShInsnKind::kRte;
+    const bool    first       = count == 0u || (count == 1u && must_follow);
+    ShTranslation tail{};
+    if (TranslateFetch(page_end, first && !rte_slot, pc, &tail)) {
+        tail_split_   = page_end - pc;
+        tail_page_pa_ = tail.pa;
+        return true;
+    }
+    if (rte_slot) {
+        engine_.Halt(HaltReason::kUnimplemented,
+                     "ShBlockCompiler: the delay slot fetch of RTE at PC 0x%08X raises an MMU exception",
+                     insns_[count - 1u].guest_address);
+    }
+    *kept = first ? 0u : count - (must_follow ? 1u : 0u);
+    return false;
+}
+
+uint16_t ShBlockCompiler::FetchHalf(uint32_t va, uint32_t pc, uint32_t phys_start, uint32_t page_end) {
+    const uint32_t pa   = va < page_end ? phys_start + (va - pc) : tail_page_pa_ + (va - page_end);
+    const uint8_t* host = map_->PeekRead(pa);
+    if (!host) {
+        engine_.Halt(HaltReason::kUnmappedPhysical,
+                     "ShBlockCompiler: instruction fetch at PC 0x%08X reads PA 0x%08X, which no memory backs", va,
+                     pa);
+    }
+    return le::U16(host);
+}
+
 uint32_t ShBlockCompiler::DecodeBlock(uint32_t pc, uint32_t phys_start) {
     const uint32_t page_end    = (pc | (kPageBytes - 1u)) + 1u;
     uint32_t       count       = 0;
     bool           slot_next   = false;
     uint32_t       shadow_left = 0;
+    uint32_t       kept        = 0;
     tail_split_                = 0u;
     tail_page_pa_              = 0u;
-    for (uint32_t va = pc;; va += 2u) {
+    for (uint32_t va = pc;;) {
         const bool must_follow = slot_next || shadow_left != 0u;
         if (!must_follow && (count == kMaxBlockInsns || va >= page_end)) break;
-        if (va == page_end) {
-            if (shadow_left != 0u && mmu_->Translates(va)) {
-                engine_.Halt(HaltReason::kUnimplemented,
-                             "ShBlockCompiler: instruction fetch at PC 0x%08X within two instructions after LDTLB "
-                             "reaches a translated area",
-                             va);
-            }
-            const bool    rte_slot = slot_next && insns_[count - 1u].kind == ShInsnKind::kRte;
-            ShTranslation tail{};
-            if (!TranslateFetch(va, count == 1u && !rte_slot, pc, &tail)) {
-                if (rte_slot) {
-                    engine_.Halt(HaltReason::kUnimplemented,
-                                 "ShBlockCompiler: the delay slot fetch of RTE at PC 0x%08X raises an MMU exception",
-                                 va - 2u);
-                }
-                if (count == 1u) return 0u;
-                --count;
-                break;
-            }
-            tail_split_   = va - pc;
-            tail_page_pa_ = tail.pa;
+        if (va == page_end && !MapTail(pc, page_end, count, slot_next, shadow_left, &kept)) return kept;
+        const uint16_t first = FetchHalf(va, pc, phys_start, page_end);
+        const bool     wide  = decoder_->Wide(first);
+        if (wide && va + kShInsnBytes == page_end && !MapTail(pc, page_end, count, slot_next, shadow_left, &kept)) {
+            return kept;
         }
-        const uint32_t pa   = va < page_end ? phys_start + (va - pc) : tail_page_pa_ + (va - page_end);
-        const uint8_t* host = map_->PeekRead(pa);
-        if (!host) {
-            engine_.Halt(HaltReason::kUnmappedPhysical,
-                         "ShBlockCompiler: instruction fetch at PC 0x%08X reads PA 0x%08X, which no memory backs",
-                         va, pa);
-        }
-        const ShDecodedInsn d = decoder_->Decode(le::U16(host), va);
+        const ShDecodedInsn d =
+            wide ? decoder_->DecodeWide(first, FetchHalf(va + kShInsnBytes, pc, phys_start, page_end), va)
+                 : decoder_->Decode(first, va);
         if (d.kind == ShInsnKind::kUnimplemented) {
             if (count == 0u || must_follow) {
                 engine_.Halt(HaltReason::kUnimplemented, "ShBlockCompiler: SH opcode 0x%04X at PC 0x%08X", d.raw,
@@ -137,6 +154,7 @@ uint32_t ShBlockCompiler::DecodeBlock(uint32_t pc, uint32_t phys_start) {
         if (d.kind == ShInsnKind::kLdtlb) shadow_left = kLdtlbShadowInsns;
         if (slot_next || d.ends_block != 0u) break;
         slot_next = d.delayed_branch != 0u;
+        va += d.length;
     }
     return count;
 }
@@ -214,8 +232,8 @@ void* ShBlockCompiler::Compile(uint32_t pc) {
     target.mode        = mode;
     target.memory_mode = MemoryMode(mode, count);
 
-    return emitter_->Emit(BlockEmitRequest{&cache_->Arena(), &emit_index, pc, pc, last.guest_address + 1u,
-                                           phys_start, mode, count, start_ns},
+    return emitter_->Emit(BlockEmitRequest{&cache_->Arena(), &emit_index, pc, pc,
+                                           last.guest_address + last.length - 1u, phys_start, mode, count, start_ns},
                           target);
 }
 

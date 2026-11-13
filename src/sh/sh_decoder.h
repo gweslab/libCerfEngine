@@ -5,6 +5,7 @@
 #include <cerfengine/engine.h>
 
 #include "sh_decoded_insn.h"
+#include "sh_dsp_encoding.h"
 
 namespace cerfengine {
 
@@ -15,7 +16,9 @@ public:
     bool ShouldRegister() override { return engine_.GetSetup().isa == Isa::kSh; }
     void OnReady() override;
 
+    bool          Wide(uint16_t raw) const { return dsp_ && ShDspParallelPrefix(raw); }
     ShDecodedInsn Decode(uint16_t raw, uint32_t guest_address) const;
+    ShDecodedInsn DecodeWide(uint16_t first, uint16_t second, uint32_t guest_address) const;
 
 private:
     struct ShControlClass {

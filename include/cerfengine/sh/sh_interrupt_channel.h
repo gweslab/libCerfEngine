@@ -30,6 +30,7 @@ public:
     void RequestReset();
     bool ResetRequested() const;
     void ClearResetRequest();
+    void OnCpuStateRestored(bool reset_pending);
     void DeliverPending();
     bool Sleep();
     bool LevelEndsSleep(uint32_t level) const;

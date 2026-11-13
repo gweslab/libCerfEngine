@@ -15,9 +15,7 @@ constexpr uint32_t kSrBank0 = cerfengine::kShSrMd | cerfengine::kShSrImask;
 
 constexpr uint32_t kBankVbr       = 0xA0011000u;
 constexpr uint32_t kQuickVbr      = 0xA0012000u;
-constexpr uint32_t kTlbMissVector = 0x400u;
 
-constexpr uint32_t kExpevtTlbRead      = 0x040u;
 constexpr uint32_t kExpevtInitialWrite = 0x080u;
 constexpr uint32_t kExpevtProtWrite    = 0x0C0u;
 
@@ -30,7 +28,6 @@ constexpr uint16_t kStoreR2R1  = 0x2122u;
 constexpr uint16_t kStoreR3R4  = 0x2432u;
 constexpr uint16_t kLdtlb      = 0x0038u;
 constexpr uint16_t kAddOneR8   = 0x7801u;
-constexpr uint16_t kAddOneR10  = 0x7A01u;
 constexpr uint16_t kAdd16R10   = 0x7A10u;
 constexpr uint16_t kStcSrR11   = 0x0B02u;
 constexpr uint16_t kMovR0R12   = 0x6C03u;
@@ -74,91 +71,95 @@ void ExpectHandlers(ShIrRig& rig, const char* mode, const char* what, uint32_t m
     ShRigExpect(mode, what, "general handler entries", rig.State().gpr[9], general);
 }
 
-void LoadMiss(ShIrRig& rig, const char* mode) {
-    const char*    what = "load TLB miss";
-    const uint32_t va   = 0x00400010u;
-    ShMmu&         mmu  = rig.Mmu();
-    const uint32_t start = rig.Run({kShRigLoadLR1R2}, Initial(kShRigSrPrivileged, va), what, [&](ShCpuState& s) {
-        s.vbr = kShRigVbr;
+struct LoadMissCase {
+    const char*           what;
+    std::vector<uint16_t> body;
+    uint32_t              va;
+    uint32_t              vbr;
+    uint32_t              ptel;
+};
+
+void RunLoadMiss(ShIrRig& rig, const char* mode, const LoadMissCase& c) {
+    ShMmu&         mmu   = rig.Mmu();
+    const uint32_t start = rig.Run(c.body, Initial(kShRigSrPrivileged, c.va), c.what, [&](ShCpuState& s) {
+        s.vbr = c.vbr;
         rig.ResetMmu(0u, kShRigAsid);
-        mmu.WritePtel(kShRigDataPa | kPage4kRw);
+        mmu.WritePtel(c.ptel);
     });
-    ShRigExpect(mode, what, "R2", rig.State().gpr[2], DataAt(va & 0xFFFu));
-    ExpectHandlers(rig, mode, what, 1u, 0u);
-    ExpectException(rig, mode, what, {kExpevtTlbRead, va, start, 0u, kShRigSrPrivileged, kShRigAsid});
+    ShRigExpect(mode, c.what, "R2", rig.State().gpr[2], DataAt(c.va & 0xFFFu));
+    ExpectHandlers(rig, mode, c.what, 1u, 0u);
+    ExpectException(rig, mode, c.what, {kShRigExpevtTlbRead, c.va, start, 0u, kShRigSrPrivileged, kShRigAsid});
     ShTranslation t{};
-    if (!mmu.Probe(va, ShAccess::kRead, &t) || t.pa != kShRigDataPa + (va & 0xFFFu)) {
-        TestFail("%s %s: the loaded entry does not translate 0x%08X", mode, what, va);
+    if (!mmu.Probe(c.va, ShAccess::kRead, &t) || t.pa != kShRigDataPa + (c.va & 0xFFFu)) {
+        TestFail("%s %s: the loaded entry does not translate 0x%08X", mode, c.what, c.va);
     }
 }
 
+void LoadMiss(ShIrRig& rig, const char* mode) {
+    RunLoadMiss(rig, mode, {"load TLB miss", {kShRigLoadLR1R2}, 0x00400010u, kShRigVbr, kShRigDataPa | kPage4kRw});
+}
+
+void ShadowPpnLoadMiss(ShIrRig& rig, const char* mode) {
+    RunLoadMiss(rig, mode,
+                {"LDTLB of a PPN in the upper 3-bit shadow", {kShRigLoadLR1R2}, 0x00400030u, kShRigVbr,
+                 (0xA0000000u | kShRigDataPa) | kPage4kRw});
+}
+
 void SlotLoadMiss(ShIrRig& rig, const char* mode) {
-    const char*    what = "TLB miss in a delay slot";
-    const uint32_t va   = 0x00400020u;
-    ShMmu&         mmu  = rig.Mmu();
-    const uint32_t start =
-        rig.Run({kShRigBraNextNop, kShRigLoadLR1R2}, Initial(kShRigSrPrivileged, va), what, [&](ShCpuState& s) {
-            s.vbr = kShRigVbr;
-            rig.ResetMmu(0u, kShRigAsid);
-            mmu.WritePtel(kShRigDataPa | kPage4kRw);
-        });
-    ShRigExpect(mode, what, "R2", rig.State().gpr[2], DataAt(va & 0xFFFu));
-    ExpectHandlers(rig, mode, what, 1u, 0u);
-    ExpectException(rig, mode, what, {kExpevtTlbRead, va, start, 0u, kShRigSrPrivileged, kShRigAsid});
+    RunLoadMiss(rig, mode,
+                {"TLB miss in a delay slot", {kShRigBraNextNop, kShRigLoadLR1R2}, 0x00400020u, kShRigVbr,
+                 kShRigDataPa | kPage4kRw});
+}
+
+struct PreloadedFaultCase {
+    const char* what;
+    uint16_t    access;
+    uint32_t    va;
+    uint32_t    r2;
+    uint32_t    way;
+    uint32_t    preload;
+    uint32_t    ptel;
+    uint32_t    expevt;
+};
+
+void RunPreloadedFault(ShIrRig& rig, const char* mode, const PreloadedFaultCase& c) {
+    ShMmu&     mmu  = rig.Mmu();
+    ShCpuState init = Initial(kShRigSrPrivileged, c.va);
+    init.gpr[2]     = c.r2;
+    const uint32_t start = rig.Run({c.access}, init, c.what, [&](ShCpuState& s) {
+        s.vbr = kShRigVbr;
+        rig.ResetMmu(0u, kShRigAsid);
+        rig.Preload(c.way, c.va & kShRigVpnMask, kShRigAsid, c.preload);
+        mmu.WritePtel(c.ptel);
+    });
+    ExpectHandlers(rig, mode, c.what, 0u, 1u);
+    ExpectException(rig, mode, c.what, {c.expevt, c.va, start, c.way, kShRigSrPrivileged, kShRigAsid});
 }
 
 void InitialPageWrite(ShIrRig& rig, const char* mode) {
     const char*    what  = "initial page write";
-    const uint32_t va    = 0x00800000u;
     const uint32_t clean = kShRigMmioPa | kPtelV | kPtelPrRw | kPtelSz;
     const uint32_t value = 0x5EED0003u;
-    ShMmu&         mmu   = rig.Mmu();
-    ShCpuState     init  = Initial(kShRigSrPrivileged, va);
-    init.gpr[2]          = value;
-    const uint32_t start = rig.Run({kStoreR2R1}, init, what, [&](ShCpuState& s) {
-        s.vbr = kShRigVbr;
-        rig.ResetMmu(0u, kShRigAsid);
-        rig.Preload(2u, va, kShRigAsid, clean);
-        mmu.WritePtel(clean | kPtelD);
-    });
+    RunPreloadedFault(rig, mode,
+                      {what, kStoreR2R1, 0x00800000u, value, 2u, clean, clean | kPtelD, kExpevtInitialWrite});
     ShRigExpect(mode, what, "MMIO value", static_cast<uint32_t>(rig.Host().MmioValue()), value);
-    ExpectHandlers(rig, mode, what, 0u, 1u);
-    ExpectException(rig, mode, what, {kExpevtInitialWrite, va, start, 2u, kShRigSrPrivileged, kShRigAsid});
 }
 
 void ProtectionWrite(ShIrRig& rig, const char* mode) {
     const char*    what      = "protection violation on a write";
-    const uint32_t va        = 0x00801000u;
     const uint32_t read_only = kShRigMmioPa | kPtelV | kPtelSz | kPtelD;
     const uint32_t value     = 0x5EED0004u;
-    ShMmu&         mmu       = rig.Mmu();
-    ShCpuState     init      = Initial(kShRigSrPrivileged, va);
-    init.gpr[2]              = value;
-    const uint32_t start     = rig.Run({kStoreR2R1}, init, what, [&](ShCpuState& s) {
-        s.vbr = kShRigVbr;
-        rig.ResetMmu(0u, kShRigAsid);
-        rig.Preload(1u, va, kShRigAsid, read_only);
-        mmu.WritePtel(read_only | kPtelPrRw);
-    });
+    RunPreloadedFault(rig, mode,
+                      {what, kStoreR2R1, 0x00801000u, value, 1u, read_only, read_only | kPtelPrRw, kExpevtProtWrite});
     ShRigExpect(mode, what, "MMIO value", static_cast<uint32_t>(rig.Host().MmioValue()), value);
-    ExpectHandlers(rig, mode, what, 0u, 1u);
-    ExpectException(rig, mode, what, {kExpevtProtWrite, va, start, 1u, kShRigSrPrivileged, kShRigAsid});
 }
 
 void InvalidEntry(ShIrRig& rig, const char* mode) {
     const char*    what    = "TLB invalid";
     const uint32_t va      = 0x00402030u;
     const uint32_t invalid = kShRigDataPa | kPtelPrRw | kPtelSz | kPtelD;
-    ShMmu&         mmu     = rig.Mmu();
-    const uint32_t start   = rig.Run({kShRigLoadLR1R2}, Initial(kShRigSrPrivileged, va), what, [&](ShCpuState& s) {
-        s.vbr = kShRigVbr;
-        rig.ResetMmu(0u, kShRigAsid);
-        rig.Preload(3u, va & kShRigVpnMask, kShRigAsid, invalid);
-        mmu.WritePtel(invalid | kPtelV);
-    });
+    RunPreloadedFault(rig, mode, {what, kShRigLoadLR1R2, va, 0u, 3u, invalid, invalid | kPtelV, kShRigExpevtTlbRead});
     ShRigExpect(mode, what, "R2", rig.State().gpr[2], DataAt(va & 0xFFFu));
-    ExpectHandlers(rig, mode, what, 0u, 1u);
-    ExpectException(rig, mode, what, {kExpevtTlbRead, va, start, 3u, kShRigSrPrivileged, kShRigAsid});
 }
 
 void FetchMiss(ShIrRig& rig, const char* mode) {
@@ -166,7 +167,7 @@ void FetchMiss(ShIrRig& rig, const char* mode) {
     const uint32_t code_va = 0x00600000u;
     const uint32_t code_pa = 0x00019000u;
     ShMmu&         mmu     = rig.Mmu();
-    rig.LoadCode(code_pa, {kAddOneR10, kShRigRts, kShRigNop});
+    rig.LoadCode(code_pa, {kShRigAddOneR10, kShRigRts, kShRigNop});
     rig.Run({kShRigJsrR1, kShRigNop}, Initial(kShRigSrPrivileged, code_va), what, [&](ShCpuState& s) {
         s.vbr = kShRigVbr;
         rig.ResetMmu(0u, kShRigAsid);
@@ -174,7 +175,7 @@ void FetchMiss(ShIrRig& rig, const char* mode) {
     });
     ShRigExpect(mode, what, "R10", rig.State().gpr[10], kR10Start + 1u);
     ExpectHandlers(rig, mode, what, 1u, 0u);
-    ExpectException(rig, mode, what, {kExpevtTlbRead, code_va, code_va, 0u, kShRigSrPrivileged, kShRigAsid});
+    ExpectException(rig, mode, what, {kShRigExpevtTlbRead, code_va, code_va, 0u, kShRigSrPrivileged, kShRigAsid});
 }
 
 void SlotFetchMiss(ShIrRig& rig, const char* mode) {
@@ -185,7 +186,7 @@ void SlotFetchMiss(ShIrRig& rig, const char* mode) {
     const uint32_t next_pa   = page_pa + 0x400u;
     const uint32_t branch_va = next_va - 2u;
     ShMmu&         mmu       = rig.Mmu();
-    rig.LoadCode(next_pa - 4u, {kAddOneR10, kShRigRts});
+    rig.LoadCode(next_pa - 4u, {kShRigAddOneR10, kShRigRts});
     rig.LoadCode(next_pa, {kShRigNop, kShRigNop});
     rig.Run({kShRigJsrR1, kShRigNop}, Initial(kShRigSrPrivileged, next_va - 4u), what, [&](ShCpuState& s) {
         s.vbr = kShRigVbr;
@@ -195,7 +196,7 @@ void SlotFetchMiss(ShIrRig& rig, const char* mode) {
     });
     ShRigExpect(mode, what, "R10", rig.State().gpr[10], kR10Start + 1u);
     ExpectHandlers(rig, mode, what, 1u, 0u);
-    ExpectException(rig, mode, what, {kExpevtTlbRead, next_va, branch_va, 1u, kShRigSrPrivileged, kShRigAsid});
+    ExpectException(rig, mode, what, {kShRigExpevtTlbRead, next_va, branch_va, 1u, kShRigSrPrivileged, kShRigAsid});
 }
 
 void RteRestoresBankBeforeSlot(ShIrRig& rig, const char* mode) {
@@ -221,17 +222,9 @@ void RteRestoresBankBeforeSlot(ShIrRig& rig, const char* mode) {
 }
 
 void RteRightAfterLdtlb(ShIrRig& rig, const char* mode) {
-    const char*    what = "RTE right after LDTLB returning to P2";
-    const uint32_t va   = 0x00404050u;
-    ShMmu&         mmu  = rig.Mmu();
-    const uint32_t start = rig.Run({kShRigLoadLR1R2}, Initial(kShRigSrPrivileged, va), what, [&](ShCpuState& s) {
-        s.vbr = kQuickVbr;
-        rig.ResetMmu(0u, kShRigAsid);
-        mmu.WritePtel(kShRigDataPa | kPage4kRw);
-    });
-    ShRigExpect(mode, what, "R2", rig.State().gpr[2], DataAt(va & 0xFFFu));
-    ExpectHandlers(rig, mode, what, 1u, 0u);
-    ExpectException(rig, mode, what, {kExpevtTlbRead, va, start, 0u, kShRigSrPrivileged, kShRigAsid});
+    RunLoadMiss(rig, mode,
+                {"RTE right after LDTLB returning to P2", {kShRigLoadLR1R2}, 0x00404050u, kQuickVbr,
+                 kShRigDataPa | kPage4kRw});
 }
 
 void UntranslatedLoadAfterLdtlb(ShIrRig& rig, const char* mode) {
@@ -261,7 +254,7 @@ void RemapSplitTail(ShIrRig& rig, const char* mode) {
     const uint32_t new_tail = 0x0001F800u;
     ShMmu&         mmu      = rig.Mmu();
     rig.LoadCode(page_pa + 0x3FCu, {kShRigNop, kShRigRts});
-    rig.LoadCode(old_tail, {kAddOneR10, kShRigNop});
+    rig.LoadCode(old_tail, {kShRigAddOneR10, kShRigNop});
     rig.LoadCode(new_tail, {kAdd16R10, kShRigNop});
     rig.Run({kShRigJsrR1, kShRigNop, kLdtlb, kShRigNop, kShRigNop, kShRigJsrR1, kShRigNop},
             Initial(kShRigSrPrivileged, tail_va - 2u), what, [&](ShCpuState& s) {
@@ -301,7 +294,7 @@ struct Remap {
 
 void ReplaceCodePage(ShIrRig& rig, const char* mode, const Remap& r) {
     ShMmu& mmu = rig.Mmu();
-    rig.LoadCode(r.old_pa, {kAddOneR10, kShRigRts, kShRigNop});
+    rig.LoadCode(r.old_pa, {kShRigAddOneR10, kShRigRts, kShRigNop});
     rig.LoadCode(r.pa, {kAdd16R10, kShRigRts, kShRigNop});
     rig.Run({kShRigJsrR1, kShRigNop, kLdtlb, kShRigNop, kShRigJsrR1, kShRigNop},
             Initial(kShRigSrPrivileged, r.va), r.what, [&](ShCpuState& s) {
@@ -318,7 +311,7 @@ void ReplaceCodePage(ShIrRig& rig, const char* mode, const Remap& r) {
     ShRigExpect(mode, r.what, "R10", rig.State().gpr[10], kR10Start + 1u + 16u);
     ExpectHandlers(rig, mode, r.what, r.misses, 0u);
     if (r.misses != 0u) {
-        ExpectException(rig, mode, r.what, {kExpevtTlbRead, r.va, r.va, 1u, kShRigSrPrivileged, r.asid});
+        ExpectException(rig, mode, r.what, {kShRigExpevtTlbRead, r.va, r.va, 1u, kShRigSrPrivileged, r.asid});
     }
 }
 
@@ -375,17 +368,19 @@ void MatchRules(ShIrRig& rig) {
 
 void RunAll(bool verify, const char* mode) {
     ShIrRig rig(false, verify);
-    rig.LoadCode(ShRigPa(kShRigVbr + kTlbMissVector), {kAddOneR8, kLdtlb, kShRigNop, kShRigNop, kShRigRte, kStcSrR11});
+    rig.LoadCode(ShRigPa(kShRigVbr + kShRigTlbMissVector),
+                 {kAddOneR8, kLdtlb, kShRigNop, kShRigNop, kShRigRte, kStcSrR11});
     rig.LoadCode(ShRigPa(kShRigVbr + kShRigGeneralVector),
                  {kShRigAddOneR9, kLdtlb, kShRigNop, kShRigNop, kShRigRte, kStcSrR11});
-    rig.LoadCode(ShRigPa(kBankVbr + kTlbMissVector),
+    rig.LoadCode(ShRigPa(kBankVbr + kShRigTlbMissVector),
                  {kMov55R0, kAddOneR8, kLdtlb, kShRigNop, kShRigNop, kShRigRte, kMovR0R12});
-    rig.LoadCode(ShRigPa(kQuickVbr + kTlbMissVector), {kAddOneR8, kLdtlb, kShRigRte, kStcSrR11});
+    rig.LoadCode(ShRigPa(kQuickVbr + kShRigTlbMissVector), {kAddOneR8, kLdtlb, kShRigRte, kStcSrR11});
     std::vector<uint32_t> data(kDataWords);
     for (uint32_t i = 0; i < kDataWords; ++i) data[i] = DataAt(i * 4u);
     rig.Host().LoadWords(kShRigDataPa, data.data(), data.size());
 
     LoadMiss(rig, mode);
+    ShadowPpnLoadMiss(rig, mode);
     SlotLoadMiss(rig, mode);
     InitialPageWrite(rig, mode);
     ProtectionWrite(rig, mode);

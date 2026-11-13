@@ -15,6 +15,7 @@ namespace cerfengine {
 
 class EngineHost;
 class ShCpu;
+class ShDspUnit;
 class ShMmu;
 struct ShCpuState;
 
@@ -51,6 +52,7 @@ private:
     EngineHost*             host_      = nullptr;
     ShCpu*                  cpu_       = nullptr;
     ShMmu*                  mmu_       = nullptr;
+    ShDspUnit*              dsp_       = nullptr;
     const ShCpuState*       cpu_state_ = nullptr;
     cerfir::Block           block_;
     cerfir::HostLowering    lowering_;

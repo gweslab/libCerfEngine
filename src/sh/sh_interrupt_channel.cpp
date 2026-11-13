@@ -59,6 +59,11 @@ void ShInterruptChannel::ClearResetRequest() {
     idle_->SetExitBit(cpu_state_->chain_exit_request, kShChainExitReset, false);
 }
 
+void ShInterruptChannel::OnCpuStateRestored(bool reset_pending) {
+    idle_->SetExitBit(cpu_state_->chain_exit_request, kShChainExitSleep, cpu_state_->sleeping != kShSleepNone);
+    idle_->SetExitBit(cpu_state_->chain_exit_request, kShChainExitReset, reset_pending);
+}
+
 bool ShInterruptChannel::AcceptInterrupt(uint32_t sr) {
     if (!ShSrAcceptsInterrupt(sr, level_.load(std::memory_order_acquire))) return false;
     const uint32_t intevt = host_->AcceptInterrupt(sr);

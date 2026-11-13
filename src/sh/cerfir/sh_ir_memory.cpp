@@ -102,22 +102,30 @@ void ShIrStoreAt(ShIrContext& c, Ref address, Ref value) {
 void ShIrStorePreDecrement(ShIrContext& c, uint32_t source_slot) {
     cerfir::Builder&     b       = *c.b;
     const ShDecodedInsn& d       = *c.d;
-    const Ref            address = b.Op2(Op::kSub, b.ReadSlot(ShGprDisp(d.n)), b.Const32(d.width));
+    const Ref            address = ShIrDecrementedGpr(c, d.n);
     b.Dup(address);
     StoreFrom(c, address, 0u, 0u, source_slot);
     b.SetSlot(ShGprDisp(d.n), address);
 }
 
-void ShIrIncrementBase(ShIrContext& c) {
-    cerfir::Builder& b    = *c.b;
-    const uint32_t   base = ShGprDisp(c.d->m);
-    b.SetSlot(base, b.Op2(Op::kAdd, b.ReadSlot(base), b.Const32(c.d->width)));
+Ref ShIrIncrementedGpr(ShIrContext& c, uint32_t r) {
+    cerfir::Builder& b = *c.b;
+    return b.Op2(Op::kAdd, b.ReadSlot(ShGprDisp(r)), b.Const32(c.d->width));
+}
+
+Ref ShIrDecrementedGpr(ShIrContext& c, uint32_t r) {
+    cerfir::Builder& b = *c.b;
+    return b.Op2(Op::kSub, b.ReadSlot(ShGprDisp(r)), b.Const32(c.d->width));
+}
+
+void ShIrIncrementGpr(ShIrContext& c, uint32_t r) {
+    c.b->SetSlot(ShGprDisp(r), ShIrIncrementedGpr(c, r));
 }
 
 void ShIrLoadPostIncrement(ShIrContext& c, uint32_t dest_slot) {
     const uint32_t base = ShGprDisp(c.d->m);
     LoadInto(c, kNoRef, base, 0u, dest_slot);
-    if (dest_slot != base) ShIrIncrementBase(c);
+    if (dest_slot != base) ShIrIncrementGpr(c, c.d->m);
 }
 
 void ShIrTranslateMovPcRel(ShIrContext& c) {

@@ -7,6 +7,7 @@
 #include <cerfengine/engine_host.h>
 #include <cerfengine/sh/sh_cpu.h>
 #include <cerfengine/sh/sh_cpu_state.h>
+#include "../sh_dsp_unit.h"
 #include <cerfengine/sh/sh_mmu.h>
 #include "../../cerfir/cerfir_builder.h"
 #include "../../cerfir/cerfir_verify.h"
@@ -21,9 +22,8 @@ CERFENGINE_REGISTER(ShIrCodegen);
 namespace {
 
 using cerfir::kNoRef;
-using cerfir::Type;
 
-constexpr uint32_t kNoLdtlbShadow             = ~0u;
+constexpr uint32_t kNoLdtlbShadow            = ~0u;
 constexpr uint32_t kExpevtReservedInstruction = 0x180u;
 constexpr uint32_t kExpevtIllegalSlot         = 0x1A0u;
 
@@ -73,12 +73,16 @@ constexpr Translator kTranslators[] = {
     &ShIrTranslateXtrct,
     &ShIrTranslateMultiply,
     &ShIrTranslateClrmac,
+    &ShIrTranslateMac,
     &ShIrTranslateLdtlb,
     &ShIrTranslateRte,
     &TranslateNop,
     &ShIrTranslateClearSrBits,
     &ShIrTranslateSetSrBits,
     &ShIrTranslateSleep,
+    &ShIrTranslateDspTransfer,
+    &ShIrTranslateDspParallel,
+    &ShIrTranslateDspSingleTransfer,
 };
 
 static_assert(std::size(kTranslators) + 1u == static_cast<size_t>(ShInsnKind::kCount),
@@ -90,6 +94,7 @@ void ShIrCodegen::OnReady() {
     host_                        = &engine_.Host();
     cpu_                         = &engine_.Get<ShCpu>();
     mmu_                         = &engine_.Get<ShMmu>();
+    dsp_                         = &engine_.Get<ShDspUnit>();
     cpu_state_                   = cpu_->State();
     verify_                      = engine_.GetSetup().verify_ir;
     model_.cycle_slot            = static_cast<int32_t>(ShStateDisp(offsetof(ShCpuState, guest_cycle_counter)));
@@ -134,10 +139,8 @@ void CERFENGINE_CDECL ShIrCodegen::TraceDispatchPcHelper(ShIrCodegen* codegen, u
 }
 
 void ShIrCodegen::EmitPcHelperCall(cerfir::Builder& b, PcHelper helper, uint32_t guest_pc) {
-    cerfir::CallSpec spec{reinterpret_cast<const void*>(helper), cerfir::CallConv::kCdecl, Type::kVoid};
-    spec.store_pc = true;
-    spec.pc       = guest_pc;
-    b.CallConst(spec, 2u, cerfir::CallHostAddress(this), guest_pc, 0u, 0u);
+    b.CallConst(ShIrHostCallConst(reinterpret_cast<const void*>(helper), guest_pc), 2u, cerfir::CallHostAddress(this),
+                guest_pc, 0u, 0u);
 }
 
 void ShIrCodegen::RaiseIllegalInstruction(uint32_t expevt, uint32_t exception_pc) {
@@ -164,7 +167,7 @@ void CERFENGINE_CDECL ShIrCodegen::PrivilegedModeCheckHelper(ShIrCodegen* codege
 
 void ShIrCodegen::TranslateBlock(const ShDecodedInsn* insns, uint32_t count) {
     cerfir::Builder b(block_, lowering_, verify_);
-    ShIrContext     c{&b, nullptr, cpu_, mmu_, false, kNoRef, false, 0u, kNoRef, false, false};
+    ShIrContext     c{&b, nullptr, cpu_, mmu_, dsp_, false, kNoRef, false, 0u, kNoRef, false, false};
     const bool      traced      = host_->HasPcTraceIn(insns[0].guest_address, insns[count - 1u].guest_address);
     const bool      user        = target_.link->privilege == static_cast<uint32_t>(ShMemoryMode::kUser);
     uint32_t        shadow_last = kNoLdtlbShadow;
@@ -227,7 +230,7 @@ void ShIrCodegen::TranslateBlock(const ShDecodedInsn* insns, uint32_t count) {
         if (d.kind == ShInsnKind::kBranch) {
             const uint32_t taken = b.NewLabel();
             b.Branch(c.t_clear, taken, c.taken_if_t_clear);
-            b.ExitDirect(d.guest_address + 2u, 1u, true, true);
+            b.ExitDirect(d.guest_address + d.length, 1u, true, true);
             b.Label(taken);
             b.CycleAdd(2u);
             b.ExitDirect(d.disp, 0u, true, true);
@@ -242,7 +245,7 @@ void ShIrCodegen::TranslateBlock(const ShDecodedInsn* insns, uint32_t count) {
             } else {
                 begin(slot);
                 translate(slot);
-                b.ExitDirect(slot.guest_address + 2u, 1u, true, true);
+                b.ExitDirect(slot.guest_address + slot.length, 1u, true, true);
             }
             b.Label(taken);
             b.CycleAdd(1u);
@@ -270,14 +273,14 @@ void ShIrCodegen::TranslateBlock(const ShDecodedInsn* insns, uint32_t count) {
             return;
         }
         if (d.ends_block != 0u) {
-            b.SetSlotConst(ShPcDisp(), d.guest_address + 2u);
+            b.SetSlotConst(ShPcDisp(), d.guest_address + d.length);
             b.ExitDispatcher();
             return;
         }
         if (d.delayed_branch != 0u) c.in_delay_slot = true;
     }
     const ShDecodedInsn& last = insns[count - 1u];
-    b.ExitDirect(last.guest_address + 2u, 0u, true, true);
+    b.ExitDirect(last.guest_address + last.length, 0u, true, true);
 }
 
 }

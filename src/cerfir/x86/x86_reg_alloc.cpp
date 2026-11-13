@@ -143,6 +143,10 @@ void X86RegAlloc::SpillOwner(uint8_t reg) {
         lazy_[lazy_count_++] = r;
         return;
     }
+    if (!l.wide) {
+        x86::EmitMovzxReg32Reg8(c_, reg, reg);
+        l.wide = true;
+    }
     const uint32_t slot = NextSpill();
     x86::EmitMovDwordPtrReg(c_, &spill_area_[slot], reg);
     l.kind      = Kind::kSpill;

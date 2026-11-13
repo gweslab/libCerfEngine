@@ -38,6 +38,9 @@ private:
     uint32_t MemoryMode(uint32_t mode, uint32_t count) const;
     bool     TranslateFetch(uint32_t va, bool deliver, uint32_t exception_pc, ShTranslation* out);
     bool     TailStillMapped(const JitBlock* blk);
+    bool     MapTail(uint32_t pc, uint32_t page_end, uint32_t count, bool slot_next, uint32_t shadow_left,
+                     uint32_t* kept);
+    uint16_t FetchHalf(uint32_t va, uint32_t pc, uint32_t phys_start, uint32_t page_end);
     uint32_t DecodeBlock(uint32_t pc, uint32_t phys_start);
 
     ShDecodedInsn       insns_[kMaxBlockInsns]{};

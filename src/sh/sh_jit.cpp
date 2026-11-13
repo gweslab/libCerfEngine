@@ -154,9 +154,7 @@ public:
         engine_.Panic("ShJit: a core clock %s request is not modeled", stopped ? "stop" : "restart");
     }
 
-    void SetDmaRegion(uint32_t pa, uint32_t size) override {
-        engine_.Panic("ShJit: a DMA region PA 0x%08X size 0x%X is not modeled", pa, size);
-    }
+    void SetDmaRegion(uint32_t, uint32_t) override {}
 
 private:
     void DeliverReset() {

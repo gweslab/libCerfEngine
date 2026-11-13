@@ -38,10 +38,8 @@ void WriteControl(ShIrContext& c, Ref value) {
     cerfir::Builder& b     = *c.b;
     const uint32_t   which = c.d->control_register;
     if (which == static_cast<uint32_t>(ShControlRegister::kSr)) {
-        cerfir::CallDesc write{reinterpret_cast<const void*>(&ShCpu::WriteSrHelper), cerfir::CallConv::kCdecl, 2u};
-        write.store_pc = true;
-        write.pc       = c.d->guest_address;
-        b.Call(write, Type::kVoid, b.ConstPtr(c.cpu), value, kNoRef);
+        b.Call(ShIrHostCall(c, reinterpret_cast<const void*>(&ShCpu::WriteSrHelper), 2u), Type::kVoid,
+               b.ConstPtr(c.cpu), value, kNoRef);
     } else if (which == static_cast<uint32_t>(ShControlRegister::kSsr)) {
         b.SetSlot(ControlDisp(which), b.Op2(Op::kAnd, value, b.Const32(c.cpu->SrWritable())));
     } else {
@@ -57,7 +55,7 @@ void ShIrTranslateControlLoad(ShIrContext& c) {
 
 void ShIrTranslateControlLoadPostInc(ShIrContext& c) {
     const Ref value = ShIrLoadValue(c, ShGprDisp(c.d->m));
-    ShIrIncrementBase(c);
+    ShIrIncrementGpr(c, c.d->m);
     WriteControl(c, value);
 }
 

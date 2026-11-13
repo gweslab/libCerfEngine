@@ -57,7 +57,7 @@ void ShMemoryAccess::RequireAligned(uint32_t va, uint32_t bytes, ShAccess access
 template <ShMemoryMode kMode>
 void ShMemoryAccess::RequireAccessible(uint32_t va, ShAccess access) {
     if constexpr (kMode != ShMemoryMode::kPrivileged) {
-        if (!ShAddressSpace::PrivilegedOnly(va)) return;
+        if (ShAddressSpace::UserReachable(va, cpu_state_->sr)) return;
         if constexpr (kMode == ShMemoryMode::kRestored) {
             if ((cpu_state_->sr & kShSrMd) != 0u) return;
         }

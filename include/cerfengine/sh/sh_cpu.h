@@ -24,6 +24,7 @@ public:
     void        ReportResetKind(ShResetKind kind);
     void        SetPendingResetKind(ShResetKind kind);
     ShResetKind TakePendingResetKind();
+    ShResetKind PendingResetKind() const { return pending_reset_kind_.load(std::memory_order_acquire); }
     void        WriteSr(uint32_t value);
     void EnterInterrupt(uint32_t intevt);
     void RaiseException(uint32_t expevt, uint32_t vector_offset, uint32_t exception_pc);

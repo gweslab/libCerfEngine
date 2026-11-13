@@ -8,6 +8,9 @@ CERFENGINE_REGISTER(ShDecoder);
 
 namespace {
 
+constexpr uint8_t kXyAccessBytes   = 2u;
+constexpr uint8_t kLongAccessBytes = 4u;
+
 constexpr bool IsSizedMove(uint32_t low4, uint32_t group) {
     return (low4 & 0xCu) == group && (low4 & 3u) != 3u;
 }
@@ -62,6 +65,12 @@ void SetMultiply(ShDecodedInsn& d, ShMultiply multiply, uint8_t cycles) {
     d.cycles   = cycles;
 }
 
+void SetMac(ShDecodedInsn& d, uint8_t width) {
+    d.kind   = ShInsnKind::kMac;
+    d.width  = width;
+    d.cycles = 2u;
+}
+
 void SetCompare(ShDecodedInsn& d, ShCmp cmp) {
     d.kind = ShInsnKind::kCmp;
     d.cmp  = cmp;
@@ -113,6 +122,34 @@ void SetBranch(ShDecodedInsn& d, bool delayed, bool if_t) {
     d.ends_block     = delayed ? 0u : 1u;
 }
 
+void SetReserved(ShDecodedInsn& d) {
+    d.kind         = ShInsnKind::kReserved;
+    d.slot_illegal = 1u;
+    d.ends_block   = 1u;
+}
+
+void SetDsp(ShDecodedInsn& d, ShInsnKind kind, bool defined) {
+    if (!defined) {
+        SetReserved(d);
+        return;
+    }
+    d.kind     = kind;
+    d.dsp_mode = 1u;
+    d.width    = kXyAccessBytes;
+}
+
+ShDecodedInsn BaseInsn(uint16_t raw, uint32_t guest_address) {
+    ShDecodedInsn d{};
+    d.raw           = raw;
+    d.guest_address = guest_address;
+    d.n             = static_cast<uint8_t>((raw >> 8) & 0xFu);
+    d.m             = static_cast<uint8_t>((raw >> 4) & 0xFu);
+    d.kind          = ShInsnKind::kUnimplemented;
+    d.cycles        = 1u;
+    d.length        = kShInsnBytes;
+    return d;
+}
+
 }
 
 void ShDecoder::OnReady() {
@@ -161,15 +198,17 @@ void ShDecoder::SetControlTransfer(ShDecodedInsn& d, ShInsnKind kind) const {
     }
 }
 
-ShDecodedInsn ShDecoder::Decode(uint16_t raw, uint32_t guest_address) const {
-    ShDecodedInsn d{};
-    d.raw           = raw;
-    d.guest_address = guest_address;
-    d.n             = static_cast<uint8_t>((raw >> 8) & 0xFu);
-    d.m             = static_cast<uint8_t>((raw >> 4) & 0xFu);
-    d.kind          = ShInsnKind::kUnimplemented;
-    d.cycles        = 1u;
+ShDecodedInsn ShDecoder::DecodeWide(uint16_t first, uint16_t second, uint32_t guest_address) const {
+    ShDecodedInsn d = BaseInsn(first, guest_address);
+    d.length        = kShWideInsnBytes;
+    d.raw_b         = second;
+    SetDsp(d, ShInsnKind::kDspParallel,
+           ShDspTransferDefined(ShDspFieldA(first)) && ShDspOperationDefined(second));
+    return d;
+}
 
+ShDecodedInsn ShDecoder::Decode(uint16_t raw, uint32_t guest_address) const {
+    ShDecodedInsn  d    = BaseInsn(raw, guest_address);
     const uint32_t low4 = raw & 0xFu;
     switch (raw >> 12) {
     case 0x0u:
@@ -212,6 +251,8 @@ ShDecodedInsn ShDecoder::Decode(uint16_t raw, uint32_t guest_address) const {
             d.disp = raw == 0x0018u ? kShSrT : kShSrS;
         } else if (low4 == 0x7u) {
             SetMultiply(d, ShMultiply::kMulL, 2u);
+        } else if (low4 == 0xFu) {
+            SetMac(d, 4u);
         } else if (low4 == 0xAu) {
             SetSystemTransfer(d, ShInsnKind::kSystemStore);
         } else if (low4 == 0x2u) {
@@ -292,6 +333,8 @@ ShDecodedInsn ShDecoder::Decode(uint16_t raw, uint32_t guest_address) const {
             SetShift(d, ShShift::kShad);
         } else if (low4 == 0xDu) {
             SetShift(d, ShShift::kShld);
+        } else if (low4 == 0xFu) {
+            SetMac(d, 2u);
         } else {
             SetSingleRegisterShift(d);
         }
@@ -388,10 +431,13 @@ ShDecodedInsn ShDecoder::Decode(uint16_t raw, uint32_t guest_address) const {
         d.disp = SignExtend8(raw);
         break;
     case 0xFu:
-        if (!dsp_) {
-            d.kind         = ShInsnKind::kReserved;
-            d.slot_illegal = 1u;
-            d.ends_block   = 1u;
+        if (!dsp_ || ShDspReservedPrefix(raw)) {
+            SetReserved(d);
+        } else if (ShDspDoubleTransferPrefix(raw)) {
+            SetDsp(d, ShInsnKind::kDspTransfer, ShDspTransferDefined(ShDspFieldA(raw)));
+        } else if (ShDspSingleTransferPrefix(raw)) {
+            SetDsp(d, ShInsnKind::kDspSingleTransfer, ShDspSingleTransferDefined(raw));
+            if (ShDspSingleLong(raw)) d.width = kLongAccessBytes;
         }
         break;
     default:

@@ -10,13 +10,18 @@ cerfir::Ref ShIrLoadAt(ShIrContext& c, cerfir::Ref address);
 void        ShIrStoreAt(ShIrContext& c, cerfir::Ref address, cerfir::Ref value);
 void        ShIrStorePreDecrement(ShIrContext& c, uint32_t source_slot);
 void        ShIrLoadPostIncrement(ShIrContext& c, uint32_t dest_slot);
-void        ShIrIncrementBase(ShIrContext& c);
+cerfir::Ref ShIrIncrementedGpr(ShIrContext& c, uint32_t r);
+cerfir::Ref ShIrDecrementedGpr(ShIrContext& c, uint32_t r);
+void        ShIrIncrementGpr(ShIrContext& c, uint32_t r);
 void        ShIrSetT(cerfir::Builder& b, cerfir::Ref condition);
 void        ShIrSetNotT(cerfir::Builder& b, cerfir::Ref condition);
 cerfir::Ref ShIrTClear(cerfir::Builder& b);
 cerfir::Ref ShIrTAsCarry(cerfir::Builder& b);
 cerfir::Ref ShIrExtend(cerfir::Builder& b, cerfir::Op op, cerfir::Type from, cerfir::Ref value);
 void        ShIrLinkProcedure(ShIrContext& c);
+
+cerfir::CallDesc ShIrHostCall(const ShIrContext& c, const void* fn, uint8_t num_args);
+cerfir::CallSpec ShIrHostCallConst(const void* fn, uint32_t guest_pc);
 
 void ShIrTranslateMovPcRel(ShIrContext& c);
 void ShIrTranslateMov(ShIrContext& c);
@@ -65,10 +70,16 @@ void ShIrTranslateShift(ShIrContext& c);
 
 void ShIrTranslateMultiply(ShIrContext& c);
 void ShIrTranslateClrmac(ShIrContext& c);
+void ShIrTranslateMac(ShIrContext& c);
 void ShIrTranslateLdtlb(ShIrContext& c);
 void ShIrTranslateRte(ShIrContext& c);
 void ShIrTranslateClearSrBits(ShIrContext& c);
 void ShIrTranslateSetSrBits(ShIrContext& c);
 void ShIrTranslateSleep(ShIrContext& c);
+
+void ShIrTranslateDspTransfer(ShIrContext& c);
+void ShIrTranslateDspParallel(ShIrContext& c);
+void ShIrTranslateDspSingleTransfer(ShIrContext& c);
+void ShIrSetGuardFromSign(ShIrContext& c, uint32_t guard_slot, cerfir::Ref value);
 
 }

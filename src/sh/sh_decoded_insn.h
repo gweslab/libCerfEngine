@@ -79,6 +79,8 @@ enum class ShControlRegister : uint8_t {
 constexpr uint32_t ShPcValue(uint32_t guest_address) { return guest_address + 4u; }
 
 constexpr uint32_t kLdtlbShadowInsns = 2u;
+constexpr uint8_t  kShInsnBytes      = 2u;
+constexpr uint8_t  kShWideInsnBytes  = 4u;
 
 struct ShDecodedInsn {
     ShInsnKind       kind;
@@ -101,7 +103,9 @@ struct ShDecodedInsn {
     ShJumpTarget     jump_target;
     ShSystemRegister system_register;
     uint8_t          control_register;
+    uint8_t          length;
     uint16_t         raw;
+    uint16_t         raw_b;
     uint32_t         guest_address;
     uint32_t         disp;
 };

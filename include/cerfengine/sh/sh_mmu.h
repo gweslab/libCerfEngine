@@ -18,6 +18,28 @@ struct ShTranslation {
     bool     global;
 };
 
+constexpr uint32_t kShTlbWays = 4u;
+constexpr uint32_t kShTlbSets = 32u;
+
+struct ShTlbEntry {
+    uint32_t vpn     = 0;
+    uint32_t data    = 0;
+    uint8_t  asid    = 0;
+    bool     valid   = false;
+    bool     defined = false;
+    uint8_t  pad     = 0;
+};
+
+struct ShMmuState {
+    ShTlbEntry tlb[kShTlbSets][kShTlbWays]{};
+    uint32_t   mmucr   = 0;
+    uint32_t   pteh    = 0;
+    uint32_t   ptel    = 0;
+    uint32_t   ttb     = 0;
+    uint32_t   tea     = 0;
+    uint32_t   defined = 0;
+};
+
 class ShMmu : public EngineService {
 public:
     using EngineService::EngineService;
@@ -26,6 +48,8 @@ public:
     void OnReady() override;
 
     void Reset(ShResetKind kind);
+
+    ShMmuState* State() { return &regs_; }
 
     uint32_t ReadMmucr();
     void     WriteMmucr(uint32_t value);
@@ -44,46 +68,30 @@ public:
     bool Probe(uint32_t va, ShAccess access, ShTranslation* out);
     bool ProbeFetch(uint32_t va, ShTranslation* out);
     void RaiseAddressError(uint32_t va, ShAccess access, uint32_t exception_pc);
-    uint8_t Asid() const { return static_cast<uint8_t>(pteh_ & kAsidMask); }
+    uint8_t Asid() const { return static_cast<uint8_t>(regs_.pteh & kAsidMask); }
 
     void LoadTlb();
     static void CERFENGINE_CDECL LoadTlbHelper(ShMmu* mmu);
     static void CERFENGINE_CDECL ReturnAfterLdtlbHelper(ShMmu* mmu);
 
 private:
-    static constexpr uint32_t kWays     = 4u;
-    static constexpr uint32_t kSets     = 32u;
     static constexpr uint32_t kAsidMask = 0xFFu;
-
-    struct Entry {
-        uint32_t vpn     = 0;
-        uint32_t data    = 0;
-        uint8_t  asid    = 0;
-        bool     valid   = false;
-        bool     defined = false;
-    };
 
     enum class Fault : uint8_t { kNone, kMiss, kInvalid, kProtection, kInitialWrite, kMultiHit };
 
     uint32_t SetIndex(uint32_t vpn, uint8_t asid) const;
-    bool     Matches(const Entry& e, uint32_t va) const;
+    bool     Matches(const ShTlbEntry& e, uint32_t va) const;
     Fault    Lookup(uint32_t va, ShAccess access, ShTranslation* out, uint32_t* way);
     void     Raise(Fault fault, uint32_t va, ShAccess access, uint32_t way, uint32_t exception_pc);
     void     LatchFaultAddress(uint32_t va);
-    void     ClearPage(const Entry& e);
+    void     ClearPage(const ShTlbEntry& e);
     uint32_t RequireDefined(uint32_t mask, const char* name, uint32_t value);
     void     RequireUntranslatedPc(const char* name, uint32_t value);
 
-    Entry          tlb_[kSets][kWays]{};
-    uint32_t       mmucr_   = 0;
-    uint32_t       pteh_    = 0;
-    uint32_t       ptel_    = 0;
-    uint32_t       ttb_     = 0;
-    uint32_t       tea_     = 0;
-    uint32_t       defined_ = 0;
-    ShCpu*         cpu_     = nullptr;
-    ShCpuState*    state_   = nullptr;
-    IsaBlockSpace* space_   = nullptr;
+    ShMmuState     regs_{};
+    ShCpu*         cpu_   = nullptr;
+    ShCpuState*    state_ = nullptr;
+    IsaBlockSpace* space_ = nullptr;
 };
 
 }
