@@ -2,6 +2,7 @@
 
 #include "../guest_idle_wait.h"
 
+#include <cerfengine/host_request_channel.h>
 #include <cerfengine/sh/sh_cpu.h>
 #include <cerfengine/sh/sh_cpu_state.h>
 #include <cerfengine/sh/sh_interrupt_host.h>
@@ -12,9 +13,12 @@ namespace cerfengine {
 CERFENGINE_REGISTER(ShInterruptChannel);
 
 void ShInterruptChannel::OnReady() {
-    cpu_       = &engine_.Get<ShCpu>();
-    cpu_state_ = cpu_->State();
-    idle_      = &engine_.Get<GuestIdleWait>();
+    cpu_           = &engine_.Get<ShCpu>();
+    cpu_state_     = cpu_->State();
+    idle_          = &engine_.Get<GuestIdleWait>();
+    host_requests_ = &engine_.Get<HostRequestChannel>();
+    host_requests_->SetKick(
+        [this] { idle_->SetExitBit(cpu_state_->chain_exit_request, kShChainExitHostRequest, true); });
 }
 
 void ShInterruptChannel::SetHost(ShInterruptHost* host) {
@@ -51,11 +55,20 @@ bool ShInterruptChannel::AcceptInterrupt(uint32_t sr) {
 }
 
 void ShInterruptChannel::DeliverPending() {
+    constexpr uint32_t        kDelivered = kShChainExitInterrupt | kShChainExitHostRequest;
     std::atomic_ref<uint32_t> chain_exit(cpu_state_->chain_exit_request);
-    if ((chain_exit.load(std::memory_order_acquire) & kShChainExitInterrupt) != 0u) {
-        chain_exit.fetch_and(~kShChainExitInterrupt, std::memory_order_acq_rel);
+    if ((chain_exit.load(std::memory_order_acquire) & kDelivered) != 0u) {
+        const uint32_t taken = chain_exit.fetch_and(~kDelivered, std::memory_order_acq_rel);
+        if ((taken & kShChainExitHostRequest) != 0u) host_requests_->RunListeners();
     }
     AcceptInterrupt(cpu_state_->sr);
+}
+
+void ShInterruptChannel::TakeHostRequest() {
+    std::atomic_ref<uint32_t> chain_exit(cpu_state_->chain_exit_request);
+    if ((chain_exit.fetch_and(~kShChainExitHostRequest, std::memory_order_acq_rel) & kShChainExitHostRequest) != 0u) {
+        host_requests_->RunListeners();
+    }
 }
 
 bool ShInterruptChannel::LevelEndsSleep(uint32_t level) const {
@@ -94,6 +107,7 @@ bool ShInterruptChannel::Sleep() {
     }
     if (cpu_state_->sleeping == kShSleepStandby && StayInStandby()) return false;
     return idle_->Wait([this] {
+        TakeHostRequest();
         if (WakeOnInterrupt()) return GuestIdleWait::Poll::kWoken;
         return HostExitRequested() ? GuestIdleWait::Poll::kExit : GuestIdleWait::Poll::kWait;
     });

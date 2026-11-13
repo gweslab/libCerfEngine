@@ -8,6 +8,7 @@
 namespace cerfengine {
 
 class GuestIdleWait;
+class HostRequestChannel;
 class ShCpu;
 class ShInterruptHost;
 class ShSleepHost;
@@ -33,16 +34,18 @@ public:
 
 private:
     bool AcceptInterrupt(uint32_t sr);
+    void TakeHostRequest();
     bool WakeOnInterrupt();
     bool StayInStandby();
     bool HostExitRequested() const;
 
     std::atomic<uint32_t> level_{0};
-    ShInterruptHost*      host_       = nullptr;
-    ShSleepHost*          sleep_host_ = nullptr;
-    ShCpu*                cpu_        = nullptr;
-    ShCpuState*           cpu_state_  = nullptr;
-    GuestIdleWait*        idle_       = nullptr;
+    ShInterruptHost*      host_          = nullptr;
+    ShSleepHost*          sleep_host_    = nullptr;
+    ShCpu*                cpu_           = nullptr;
+    ShCpuState*           cpu_state_     = nullptr;
+    GuestIdleWait*        idle_          = nullptr;
+    HostRequestChannel*   host_requests_ = nullptr;
 };
 
 }

@@ -63,7 +63,7 @@ GuestEngine::RunStatus MipsJit::Run() {
         const uint32_t req   = channel_->TakeDispatchRequests();
         const bool     reset = (req & MipsInterruptChannel::kDispatchReset) != 0u;
         if (reset) DeliverReset();
-        if (req & MipsInterruptChannel::kDispatchHostClock) host_requests_->ServiceRequests();
+        if (req & MipsInterruptChannel::kDispatchHostClock) host_requests_->RunListeners();
         if (reset) return RunStatus::kRunning;
     }
 

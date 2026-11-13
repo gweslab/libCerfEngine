@@ -18,6 +18,7 @@ void MipsInterruptChannel::OnReady() {
     standby_lines_  = kMipsCauseIpMask & ~device_ip_mask_;
     host_requests_  = &engine_.Get<HostRequestChannel>();
     idle_           = &engine_.Get<GuestIdleWait>();
+    host_requests_->SetKick([this] { RequestDispatch(kDispatchHostClock); });
     engine_.AttachClock(clock_);
 }
 
@@ -84,7 +85,7 @@ bool MipsInterruptChannel::WaitForInterrupt(uint32_t idle) {
         if (ResetRequested() || s.deep_sleep || host_exit_.load(std::memory_order_acquire)) {
             return GuestIdleWait::Poll::kExit;
         }
-        if (TakeHostRequest()) host_requests_->ServiceRequests();
+        if (TakeHostRequest()) host_requests_->RunListeners();
         return InterruptPending(idle) ? GuestIdleWait::Poll::kWoken : GuestIdleWait::Poll::kWait;
     });
 }

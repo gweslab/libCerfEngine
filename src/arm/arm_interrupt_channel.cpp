@@ -52,15 +52,6 @@ void ArmInterruptChannel::SetHostExit(bool requested) {
     idle_->SetExitBit(cpu_state_->chain_exit_request, kChainExitHost, requested);
 }
 
-void ArmInterruptChannel::RequestHostService() {
-    if (host_request_.exchange(1u, std::memory_order_acq_rel) == 0u) idle_->Signal();
-}
-
-bool ArmInterruptChannel::TakeHostRequest() {
-    return host_request_.load(std::memory_order_acquire) != 0u &&
-           host_request_.exchange(0u, std::memory_order_acq_rel) != 0u;
-}
-
 uint32_t CERFENGINE_CDECL ArmInterruptChannel::BackOutForIrqHelper(
     ArmInterruptChannel* channel, uint32_t guest_pc) {
     return channel->BackOutForIrq(guest_pc) ? 1u : 0u;
@@ -114,7 +105,7 @@ bool ArmInterruptChannel::ExitPending() {
     if ((exits & ~(kChainExitIrq | kChainExitFlush | kChainExitClock | kChainExitIdle)) != 0u) {
         return true;
     }
-    if (TakeHostRequest()) host_requests_->ServiceRequests();
+    host_requests_->ServicePending();
     return false;
 }
 

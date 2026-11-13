@@ -56,9 +56,6 @@ public:
     void Wake();
     void SetHostExit(bool requested);
 
-    void RequestHostService();
-    bool TakeHostRequest();
-
     void EnterIdle();
     void ResumeIdle();
     bool LeaveAfterAccess(uint32_t next_pc) {
@@ -84,7 +81,6 @@ private:
     bool                  clock_stopped_ = false;
     std::atomic<uint32_t> irq_line_{0};
     std::atomic<uint32_t> idle_wake_line_{0};
-    std::atomic<uint32_t> host_request_{0};
 
     ArmCpuState*        cpu_state_     = nullptr;
     HostRequestChannel* host_requests_ = nullptr;

@@ -7,9 +7,10 @@ namespace cerfengine {
 constexpr uint32_t kShNumGpr  = 16;
 constexpr uint32_t kShNumBank = 8;
 
-constexpr uint32_t kShChainExitHost      = 1u << 0;
-constexpr uint32_t kShChainExitInterrupt = 1u << 1;
-constexpr uint32_t kShChainExitSleep     = 1u << 2;
+constexpr uint32_t kShChainExitHost        = 1u << 0;
+constexpr uint32_t kShChainExitInterrupt   = 1u << 1;
+constexpr uint32_t kShChainExitSleep       = 1u << 2;
+constexpr uint32_t kShChainExitHostRequest = 1u << 3;
 
 constexpr uint32_t kShSrMd           = 1u << 30;
 constexpr uint32_t kShSrRb           = 1u << 29;

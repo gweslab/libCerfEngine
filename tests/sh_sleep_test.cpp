@@ -51,6 +51,7 @@ public:
         rig_.LoadReturningHandler(kShRigInterruptVector);
         rig_.Interrupts().SetHost(&hosts_);
         rig_.Interrupts().SetSleepHost(&hosts_);
+        rig_.HostRequests().RegisterListener([this] { OnHostRequest(); });
     }
 
     void Run() {
@@ -61,6 +62,9 @@ public:
         StandbyExitTakesThePendingInterrupt();
         StandbyExitWithoutARequestWaitsInPowerDown();
         StandbyWakeLevelIgnoresBlock();
+        HostRequestsCoalesceAtTheDispatcher();
+        RequestPostedByAListenerReachesTheNextDispatch();
+        HostRequestServicedInTheSleepWait();
         std::printf("%s: SH sleep passed\n", mode_);
     }
 
@@ -70,6 +74,16 @@ private:
         rig_.Interrupts().PublishLevel(level);
     }
 
+    void OnHostRequest() {
+        ++host_services_;
+        if (request_on_first_ && host_services_ == 1u) rig_.HostRequests().Request();
+        if (raise_on_service_) Raise(kAboveMask);
+    }
+
+    uint32_t HostRequestBit() const {
+        return rig_.State().chain_exit_request & cerfengine::kShChainExitHostRequest;
+    }
+
     void Reset() {
         Raise(0u);
         hosts_.accepted        = 0u;
@@ -77,6 +91,9 @@ private:
         hosts_.standby_level   = 0u;
         hosts_.standby_entries = 0u;
         hosts_.exited          = false;
+        host_services_         = 0u;
+        request_on_first_      = false;
+        raise_on_service_      = false;
     }
 
     void StepWithoutHostExit(const char* what) {
@@ -204,9 +221,57 @@ private:
         ShRigExpect(mode_, what, "at the mask", rig_.Interrupts().StandbyWakePending() ? 1u : 0u, 0u);
     }
 
+    void HostRequestsCoalesceAtTheDispatcher() {
+        const char* what = "two host requests before one dispatch";
+        Reset();
+        rig_.RunSteps({kShRigNop}, Initial(), 0u, what, Prepare());
+        rig_.HostRequests().Request();
+        rig_.HostRequests().Request();
+        ShRigExpect(mode_, what, "host request bit before the dispatch", HostRequestBit(),
+                    cerfengine::kShChainExitHostRequest);
+        rig_.Step(1u, what);
+        ShRigExpect(mode_, what, "listener runs", host_services_, 1u);
+        ShRigExpect(mode_, what, "host request bit after the dispatch", HostRequestBit(), 0u);
+        rig_.Finish(what);
+        ShRigExpect(mode_, what, "listener runs at the end", host_services_, 1u);
+    }
+
+    void RequestPostedByAListenerReachesTheNextDispatch() {
+        const char* what = "a host request a listener posts while the dispatcher services the last one";
+        Reset();
+        rig_.RunSteps({kShRigBraNextNop, kShRigNop}, Initial(), 0u, what, Prepare());
+        request_on_first_ = true;
+        rig_.HostRequests().Request();
+        rig_.Step(1u, what);
+        ShRigExpect(mode_, what, "listener runs after the first dispatch", host_services_, 1u);
+        ShRigExpect(mode_, what, "host request bit after the first dispatch", HostRequestBit(),
+                    cerfengine::kShChainExitHostRequest);
+        rig_.Finish(what);
+        ShRigExpect(mode_, what, "listener runs at the end", host_services_, 2u);
+        ShRigExpect(mode_, what, "host request bit at the end", HostRequestBit(), 0u);
+    }
+
+    void HostRequestServicedInTheSleepWait() {
+        const char* what = "a host request pending when the SLEEP wait polls";
+        Reset();
+        Raise(kAtMask);
+        const uint32_t start = rig_.RunSteps({kShRigSleep}, Initial(), 8u, what, Prepare());
+        ShRigExpect(mode_, what, "sleeping before the request", rig_.State().sleeping, cerfengine::kShSleepMode);
+        raise_on_service_ = true;
+        rig_.HostRequests().Request();
+        rig_.Step(1u, what);
+        ShRigExpect(mode_, what, "listener runs", host_services_, 1u);
+        ShRigExpect(mode_, what, "accepted interrupts", hosts_.accepted, 1u);
+        rig_.Finish(what);
+        ExpectWake(what, start + 2u);
+    }
+
     ShIrRig     rig_;
     FakeHosts   hosts_;
     const char* mode_;
+    uint32_t    host_services_    = 0u;
+    bool        request_on_first_ = false;
+    bool        raise_on_service_ = false;
 };
 
 }

@@ -105,7 +105,7 @@ GuestEngine::RunStatus ArmJit::Run() {
         return RunStatus::kRunning;
     }
 
-    if (channel_->TakeHostRequest()) host_requests_->ServiceRequests();
+    host_requests_->ServicePending();
     host::ClockDispatch(clock_);
 
     /* QEMU cpu_handle_interrupt (cpu-exec.c): "Clear the interrupt

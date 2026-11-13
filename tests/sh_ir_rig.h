@@ -3,6 +3,7 @@
 #include "test_host.h"
 
 #include <cerfengine/guest_engine.h>
+#include <cerfengine/host_request_channel.h>
 #include <cerfengine/sh/sh_bus_master_coherence.h>
 #include <cerfengine/sh/sh_cpu.h>
 #include <cerfengine/sh/sh_cpu_state.h>
@@ -165,6 +166,7 @@ public:
     cerfengine::ShMmu&            Mmu() { return engine_->Get<cerfengine::ShMmu>(); }
     cerfengine::ShBusMasterCoherence& BusMasterCoherence() { return engine_->Get<cerfengine::ShBusMasterCoherence>(); }
     cerfengine::ShInterruptChannel& Interrupts() { return engine_->Get<cerfengine::ShInterruptChannel>(); }
+    cerfengine::HostRequestChannel& HostRequests() { return engine_->Get<cerfengine::HostRequestChannel>(); }
     const cerfengine::ShCpuState& State() const { return *cpu_->State(); }
     uint32_t                      BlocksCompiled() const { return host_.BlocksCompiled(); }
 
