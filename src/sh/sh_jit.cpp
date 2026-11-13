@@ -12,7 +12,9 @@
 #include "sh_address_space.h"
 #include "sh_block_compiler.h"
 #include "sh_memory_access.h"
+#include "sh_translation_cache.h"
 
+#include <atomic>
 #include <cstdint>
 #include <optional>
 
@@ -27,7 +29,10 @@ public:
     bool ShouldRegister() override { return engine_.GetSetup().isa == Isa::kSh; }
 
     void OnReady() override {
-        cpu_state_   = engine_.Get<ShCpu>().State();
+        cpu_         = &engine_.Get<ShCpu>();
+        cpu_state_   = cpu_->State();
+        cache_       = &engine_.Get<ShTranslationCache>();
+        host_        = &engine_.Host();
         compiler_    = &engine_.Get<ShBlockCompiler>();
         map_         = &engine_.Get<PhysicalMap>();
         block_entry_ = &engine_.Get<GuardedBlockEntry>();
@@ -37,7 +42,13 @@ public:
     }
 
     RunStatus Run() override {
-        if (cpu_state_->sleeping != 0u) {
+        const uint32_t stops =
+            std::atomic_ref<uint32_t>(cpu_state_->chain_exit_request).load(std::memory_order_relaxed);
+        if ((stops & (kShChainExitSleep | kShChainExitReset)) != 0u) {
+            if ((stops & kShChainExitReset) != 0u) {
+                DeliverReset();
+                return RunStatus::kRunning;
+            }
             bool woke  = false;
             auto sleep = [this, &woke] { woke = interrupts_->Sleep(); };
             if (!platform::CallHaltGuarded(sleep)) return RunStatus::kHalted;
@@ -88,7 +99,7 @@ public:
     void SetHostChainExit(bool requested) override { interrupts_->SetHostExit(requested); }
 
     bool     DeepSleep()    const override { return cpu_state_->deep_sleep != 0u; }
-    bool     ResetPending() const override { return false; }
+    bool     ResetPending() const override { return interrupts_->ResetRequested(); }
     uint32_t Pc()           const override { return cpu_state_->pc; }
     uint32_t PhysAddrMask() const override { return UnmappedWindows::kPaMask; }
 
@@ -125,12 +136,12 @@ public:
         engine_.Panic("ShJit: the SH interrupt mask query is not modeled");
     }
 
-    void FlushTranslationCache() override {
-        engine_.Panic("ShJit: a translation-cache flush is not modeled");
-    }
+    void FlushTranslationCache() override { cache_->Flush(); }
 
     void SetResetPending(bool is_resume) override {
-        engine_.Panic("ShJit: a %s reset request is not modeled", is_resume ? "resume" : "cold");
+        host_->OnResetRequested(is_resume);
+        if (!is_resume) host_->OnRebootRequested();
+        interrupts_->RequestReset();
     }
 
     void EnterDeepSleep() override { cpu_state_->deep_sleep = 1u; }
@@ -148,6 +159,12 @@ public:
     }
 
 private:
+    void DeliverReset() {
+        interrupts_->ClearResetRequest();
+        cpu_->ResetState(cpu_->TakePendingResetKind());
+        host_->OnResetDelivered();
+    }
+
     bool HostPa(uint32_t va, uint32_t* pa) {
         if (ShAddressSpace::DirectlyMapped(va) || (ShAddressSpace::Paged(va) && !mmu_->Translates(va))) {
             *pa = ShAddressSpace::Pa(va);
@@ -162,7 +179,10 @@ private:
         return true;
     }
 
+    ShCpu*              cpu_            = nullptr;
     ShCpuState*         cpu_state_      = nullptr;
+    ShTranslationCache* cache_          = nullptr;
+    EngineHost*         host_           = nullptr;
     ShBlockCompiler*    compiler_       = nullptr;
     PhysicalMap*        map_            = nullptr;
     GuardedBlockEntry*  block_entry_    = nullptr;

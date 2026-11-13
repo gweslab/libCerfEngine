@@ -11,6 +11,9 @@ constexpr uint32_t kShChainExitHost        = 1u << 0;
 constexpr uint32_t kShChainExitInterrupt   = 1u << 1;
 constexpr uint32_t kShChainExitSleep       = 1u << 2;
 constexpr uint32_t kShChainExitHostRequest = 1u << 3;
+constexpr uint32_t kShChainExitReset       = 1u << 4;
+
+enum class ShResetKind : uint32_t { kPowerOn, kManual };
 
 constexpr uint32_t kShSrMd           = 1u << 30;
 constexpr uint32_t kShSrRb           = 1u << 29;

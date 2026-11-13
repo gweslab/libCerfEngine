@@ -1,3 +1,4 @@
+#include "test_arm_system.h"
 #include "test_host.h"
 
 namespace cerfengine::host {

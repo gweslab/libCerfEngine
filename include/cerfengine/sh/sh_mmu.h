@@ -4,12 +4,12 @@
 
 #include "../calling_convention.h"
 #include "../engine.h"
+#include "sh_cpu_state.h"
 
 namespace cerfengine {
 
 struct IsaBlockSpace;
 class ShCpu;
-struct ShCpuState;
 
 enum class ShAccess : uint8_t { kRead, kWrite, kFetch };
 
@@ -25,7 +25,7 @@ public:
     bool ShouldRegister() override { return engine_.GetSetup().isa == Isa::kSh; }
     void OnReady() override;
 
-    void PowerOnReset();
+    void Reset(ShResetKind kind);
 
     uint32_t ReadMmucr();
     void     WriteMmucr(uint32_t value);

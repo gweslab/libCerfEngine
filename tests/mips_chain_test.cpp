@@ -124,14 +124,7 @@ private:
 
 class ChainHost : public TestHost {
 public:
-    ChainHost() : TestHost(kMipsRigRamPa, kMipsRigRamSize, 0x10000000u) {}
-
-    void OnResetRequested(bool) override { ++reset_requests; }
-    void OnRebootRequested() override {}
-    void OnResetDelivered() override { ++resets_delivered; }
-
-    uint32_t reset_requests   = 0;
-    uint32_t resets_delivered = 0;
+    ChainHost() : TestHost(kMipsRigRamPa, kMipsRigRamSize, 0x10000000u) { AcceptResets(); }
 };
 
 class ChainRig {
@@ -288,9 +281,9 @@ void TestPowerRequestKicks() {
             TEST_CHECK(rig.Jit().DeepSleep());
             continue;
         }
-        TEST_CHECK(rig.Host().reset_requests == 1u && rig.Host().resets_delivered == 0u);
+        TEST_CHECK(rig.Host().ResetRequests() == 1u && rig.Host().ResetsDelivered() == 0u);
         TEST_CHECK(rig.Step() == RunStatus::kRunning);
-        TEST_CHECK(rig.Host().resets_delivered == 1u);
+        TEST_CHECK(rig.Host().ResetsDelivered() == 1u);
         TEST_CHECK(rig.State().pc == kBase && rig.State().gpr[2] == 0u);
     }
 }

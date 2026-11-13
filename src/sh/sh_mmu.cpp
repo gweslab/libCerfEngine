@@ -61,12 +61,14 @@ void ShMmu::OnReady() {
     cpu_   = &engine_.Get<ShCpu>();
     state_ = cpu_->State();
     space_ = &engine_.Get<ShTranslationCache>().Space();
-    PowerOnReset();
+    Reset(ShResetKind::kPowerOn);
 }
 
-void ShMmu::PowerOnReset() {
-    for (auto& set : tlb_) {
-        for (Entry& e : set) e = Entry{};
+void ShMmu::Reset(ShResetKind kind) {
+    if (kind == ShResetKind::kPowerOn) {
+        for (auto& set : tlb_) {
+            for (Entry& e : set) e = Entry{};
+        }
     }
     mmucr_   = 0u;
     pteh_    = 0u;

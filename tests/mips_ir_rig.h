@@ -6,6 +6,7 @@
 #include <cerfengine/guest_engine.h>
 #include <cerfengine/mips/mips_cpu.h>
 #include <cerfengine/mips/mips_cpu_state.h>
+#include <cerfengine/mips/mips_system_host.h>
 #include <cerfengine/mips/mips_tlb_context.h>
 
 #include <cstddef>

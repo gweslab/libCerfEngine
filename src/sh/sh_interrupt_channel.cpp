@@ -46,6 +46,19 @@ bool ShInterruptChannel::HostExitRequested() const {
             kShChainExitHost) != 0u;
 }
 
+void ShInterruptChannel::RequestReset() {
+    idle_->SetExitBit(cpu_state_->chain_exit_request, kShChainExitReset, true);
+}
+
+bool ShInterruptChannel::ResetRequested() const {
+    return (std::atomic_ref<uint32_t>(cpu_state_->chain_exit_request).load(std::memory_order_acquire) &
+            kShChainExitReset) != 0u;
+}
+
+void ShInterruptChannel::ClearResetRequest() {
+    idle_->SetExitBit(cpu_state_->chain_exit_request, kShChainExitReset, false);
+}
+
 bool ShInterruptChannel::AcceptInterrupt(uint32_t sr) {
     if (!ShSrAcceptsInterrupt(sr, level_.load(std::memory_order_acquire))) return false;
     const uint32_t intevt = host_->AcceptInterrupt(sr);
@@ -108,6 +121,7 @@ bool ShInterruptChannel::Sleep() {
     if (cpu_state_->sleeping == kShSleepStandby && StayInStandby()) return false;
     return idle_->Wait([this] {
         TakeHostRequest();
+        if (ResetRequested()) return GuestIdleWait::Poll::kExit;
         if (WakeOnInterrupt()) return GuestIdleWait::Poll::kWoken;
         return HostExitRequested() ? GuestIdleWait::Poll::kExit : GuestIdleWait::Poll::kWait;
     });

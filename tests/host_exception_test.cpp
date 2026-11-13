@@ -1,5 +1,7 @@
 #include "mmio_store_program.h"
+#include "test_arm_system.h"
 #include "test_host.h"
+#include "test_mips_system.h"
 
 #include <cerfengine/arm/arm_cpu.h>
 #include <cerfengine/guest_engine.h>

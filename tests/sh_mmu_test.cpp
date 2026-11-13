@@ -11,23 +11,6 @@ using cerfengine::ShCpuState;
 using cerfengine::ShMmu;
 using cerfengine::ShTranslation;
 
-constexpr uint32_t kMmucrAt      = 0x001u;
-constexpr uint32_t kMmucrIx      = 0x002u;
-constexpr uint32_t kMmucrTf      = 0x004u;
-constexpr uint32_t kMmucrSv      = 0x100u;
-constexpr uint32_t kMmucrRcShift = 4u;
-constexpr uint32_t kMmucrRc      = 3u << kMmucrRcShift;
-constexpr uint32_t kMmucr620lx   = 0x0Du;
-
-constexpr uint32_t kPtelV    = 0x100u;
-constexpr uint32_t kPtelPrRw = 0x020u;
-constexpr uint32_t kPtelSz   = 0x010u;
-constexpr uint32_t kPtelD    = 0x004u;
-constexpr uint32_t kPtelSh   = 0x002u;
-constexpr uint32_t kPage4kRw = kPtelV | kPtelPrRw | kPtelSz | kPtelD;
-constexpr uint32_t kPage1kRw = kPtelV | kPtelPrRw | kPtelD;
-constexpr uint32_t kAsidMask = 0xFFu;
-
 constexpr uint32_t kSrBank0 = cerfengine::kShSrMd | cerfengine::kShSrImask;
 
 constexpr uint32_t kBankVbr       = 0xA0011000u;
@@ -64,18 +47,6 @@ ShCpuState Initial(uint32_t sr, uint32_t r1) {
     return s;
 }
 
-void ResetMmu(ShMmu& mmu, uint32_t mode, uint8_t asid) {
-    mmu.WriteMmucr(kMmucrAt | kMmucrTf | mode);
-    mmu.WritePteh(asid);
-}
-
-void Preload(ShMmu& mmu, uint32_t way, uint32_t vpn, uint8_t asid, uint32_t ptel) {
-    mmu.WriteMmucr((mmu.ReadMmucr() & ~kMmucrRc) | (way << kMmucrRcShift));
-    mmu.WritePteh(vpn | asid);
-    mmu.WritePtel(ptel);
-    mmu.LoadTlb();
-}
-
 struct Exception {
     uint32_t expevt;
     uint32_t va;
@@ -109,7 +80,7 @@ void LoadMiss(ShIrRig& rig, const char* mode) {
     ShMmu&         mmu  = rig.Mmu();
     const uint32_t start = rig.Run({kShRigLoadLR1R2}, Initial(kShRigSrPrivileged, va), what, [&](ShCpuState& s) {
         s.vbr = kShRigVbr;
-        ResetMmu(mmu, 0u, kShRigAsid);
+        rig.ResetMmu(0u, kShRigAsid);
         mmu.WritePtel(kShRigDataPa | kPage4kRw);
     });
     ShRigExpect(mode, what, "R2", rig.State().gpr[2], DataAt(va & 0xFFFu));
@@ -128,7 +99,7 @@ void SlotLoadMiss(ShIrRig& rig, const char* mode) {
     const uint32_t start =
         rig.Run({kShRigBraNextNop, kShRigLoadLR1R2}, Initial(kShRigSrPrivileged, va), what, [&](ShCpuState& s) {
             s.vbr = kShRigVbr;
-            ResetMmu(mmu, 0u, kShRigAsid);
+            rig.ResetMmu(0u, kShRigAsid);
             mmu.WritePtel(kShRigDataPa | kPage4kRw);
         });
     ShRigExpect(mode, what, "R2", rig.State().gpr[2], DataAt(va & 0xFFFu));
@@ -146,8 +117,8 @@ void InitialPageWrite(ShIrRig& rig, const char* mode) {
     init.gpr[2]          = value;
     const uint32_t start = rig.Run({kStoreR2R1}, init, what, [&](ShCpuState& s) {
         s.vbr = kShRigVbr;
-        ResetMmu(mmu, 0u, kShRigAsid);
-        Preload(mmu, 2u, va, kShRigAsid, clean);
+        rig.ResetMmu(0u, kShRigAsid);
+        rig.Preload(2u, va, kShRigAsid, clean);
         mmu.WritePtel(clean | kPtelD);
     });
     ShRigExpect(mode, what, "MMIO value", static_cast<uint32_t>(rig.Host().MmioValue()), value);
@@ -165,8 +136,8 @@ void ProtectionWrite(ShIrRig& rig, const char* mode) {
     init.gpr[2]              = value;
     const uint32_t start     = rig.Run({kStoreR2R1}, init, what, [&](ShCpuState& s) {
         s.vbr = kShRigVbr;
-        ResetMmu(mmu, 0u, kShRigAsid);
-        Preload(mmu, 1u, va, kShRigAsid, read_only);
+        rig.ResetMmu(0u, kShRigAsid);
+        rig.Preload(1u, va, kShRigAsid, read_only);
         mmu.WritePtel(read_only | kPtelPrRw);
     });
     ShRigExpect(mode, what, "MMIO value", static_cast<uint32_t>(rig.Host().MmioValue()), value);
@@ -181,8 +152,8 @@ void InvalidEntry(ShIrRig& rig, const char* mode) {
     ShMmu&         mmu     = rig.Mmu();
     const uint32_t start   = rig.Run({kShRigLoadLR1R2}, Initial(kShRigSrPrivileged, va), what, [&](ShCpuState& s) {
         s.vbr = kShRigVbr;
-        ResetMmu(mmu, 0u, kShRigAsid);
-        Preload(mmu, 3u, va & kShRigVpnMask, kShRigAsid, invalid);
+        rig.ResetMmu(0u, kShRigAsid);
+        rig.Preload(3u, va & kShRigVpnMask, kShRigAsid, invalid);
         mmu.WritePtel(invalid | kPtelV);
     });
     ShRigExpect(mode, what, "R2", rig.State().gpr[2], DataAt(va & 0xFFFu));
@@ -198,7 +169,7 @@ void FetchMiss(ShIrRig& rig, const char* mode) {
     rig.LoadCode(code_pa, {kAddOneR10, kShRigRts, kShRigNop});
     rig.Run({kShRigJsrR1, kShRigNop}, Initial(kShRigSrPrivileged, code_va), what, [&](ShCpuState& s) {
         s.vbr = kShRigVbr;
-        ResetMmu(mmu, 0u, kShRigAsid);
+        rig.ResetMmu(0u, kShRigAsid);
         mmu.WritePtel(code_pa | kPage4kRw);
     });
     ShRigExpect(mode, what, "R10", rig.State().gpr[10], kR10Start + 1u);
@@ -218,8 +189,8 @@ void SlotFetchMiss(ShIrRig& rig, const char* mode) {
     rig.LoadCode(next_pa, {kShRigNop, kShRigNop});
     rig.Run({kShRigJsrR1, kShRigNop}, Initial(kShRigSrPrivileged, next_va - 4u), what, [&](ShCpuState& s) {
         s.vbr = kShRigVbr;
-        ResetMmu(mmu, 0u, kShRigAsid);
-        Preload(mmu, 0u, page_va, kShRigAsid, page_pa | kPage1kRw);
+        rig.ResetMmu(0u, kShRigAsid);
+        rig.Preload(0u, page_va, kShRigAsid, page_pa | kPage1kRw);
         mmu.WritePtel(next_pa | kPage1kRw);
     });
     ShRigExpect(mode, what, "R10", rig.State().gpr[10], kR10Start + 1u);
@@ -236,7 +207,7 @@ void RteRestoresBankBeforeSlot(ShIrRig& rig, const char* mode) {
     init.gpr[0]           = body_r0;
     rig.Run({kShRigLoadLR1R2}, init, what, [&](ShCpuState& s) {
         s.vbr = kBankVbr;
-        ResetMmu(mmu, 0u, kShRigAsid);
+        rig.ResetMmu(0u, kShRigAsid);
         mmu.WritePtel(kShRigDataPa | kPage4kRw);
     });
     const ShCpuState& s = rig.State();
@@ -255,7 +226,7 @@ void RteRightAfterLdtlb(ShIrRig& rig, const char* mode) {
     ShMmu&         mmu  = rig.Mmu();
     const uint32_t start = rig.Run({kShRigLoadLR1R2}, Initial(kShRigSrPrivileged, va), what, [&](ShCpuState& s) {
         s.vbr = kQuickVbr;
-        ResetMmu(mmu, 0u, kShRigAsid);
+        rig.ResetMmu(0u, kShRigAsid);
         mmu.WritePtel(kShRigDataPa | kPage4kRw);
     });
     ShRigExpect(mode, what, "R2", rig.State().gpr[2], DataAt(va & 0xFFFu));
@@ -269,7 +240,7 @@ void UntranslatedLoadAfterLdtlb(ShIrRig& rig, const char* mode) {
     ShMmu&         mmu  = rig.Mmu();
     rig.Run({kLdtlb, kShRigLoadLR1R2, kShRigNop}, Initial(kShRigSrPrivileged, va), what, [&](ShCpuState& s) {
         s.vbr = kShRigVbr;
-        ResetMmu(mmu, 0u, kShRigAsid);
+        rig.ResetMmu(0u, kShRigAsid);
         mmu.WritePteh(0x00405000u | kShRigAsid);
         mmu.WritePtel(kShRigDataPa | kPage4kRw);
     });
@@ -295,9 +266,9 @@ void RemapSplitTail(ShIrRig& rig, const char* mode) {
     rig.Run({kShRigJsrR1, kShRigNop, kLdtlb, kShRigNop, kShRigNop, kShRigJsrR1, kShRigNop},
             Initial(kShRigSrPrivileged, tail_va - 2u), what, [&](ShCpuState& s) {
                 s.vbr = kShRigVbr;
-                ResetMmu(mmu, 0u, kShRigAsid);
-                Preload(mmu, 0u, page_va, kShRigAsid, page_pa | kPage1kRw);
-                Preload(mmu, 1u, tail_va, kShRigAsid, old_tail | kPage1kRw);
+                rig.ResetMmu(0u, kShRigAsid);
+                rig.Preload(0u, page_va, kShRigAsid, page_pa | kPage1kRw);
+                rig.Preload(1u, tail_va, kShRigAsid, old_tail | kPage1kRw);
                 mmu.WritePtel(new_tail | kPage1kRw);
             });
     ShRigExpect(mode, what, "R10", rig.State().gpr[10], kR10Start + 1u + 16u);
@@ -335,8 +306,8 @@ void ReplaceCodePage(ShIrRig& rig, const char* mode, const Remap& r) {
     rig.Run({kShRigJsrR1, kShRigNop, kLdtlb, kShRigNop, kShRigJsrR1, kShRigNop},
             Initial(kShRigSrPrivileged, r.va), r.what, [&](ShCpuState& s) {
                 s.vbr = kShRigVbr;
-                ResetMmu(mmu, r.mmucr_mode, r.old_asid);
-                Preload(mmu, 0u, r.old_va, r.old_asid, r.old_pa | kPage4kRw | r.shared);
+                rig.ResetMmu(r.mmucr_mode, r.old_asid);
+                rig.Preload(0u, r.old_va, r.old_asid, r.old_pa | kPage4kRw | r.shared);
                 mmu.WritePteh(r.load_va | r.asid);
                 mmu.WritePtel(r.pa | kPage4kRw | r.shared);
                 ShTranslation t{};
@@ -351,9 +322,9 @@ void ReplaceCodePage(ShIrRig& rig, const char* mode, const Remap& r) {
     }
 }
 
-void ExpectProbe(ShMmu& mmu, const char* what, uint32_t va, bool hit, uint32_t pa, bool global) {
+void ExpectProbe(ShIrRig& rig, const char* what, uint32_t va, bool hit, uint32_t pa, bool global) {
     ShTranslation t{};
-    const bool    got = mmu.Probe(va, ShAccess::kRead, &t);
+    const bool    got = rig.Mmu().Probe(va, ShAccess::kRead, &t);
     if (got != hit) TestFail("match rules %s: Probe(0x%08X) = %d, want %d", what, va, got ? 1 : 0, hit ? 1 : 0);
     if (hit && (t.pa != pa || t.global != global)) {
         TestFail("match rules %s: 0x%08X -> PA 0x%08X global %d, want PA 0x%08X global %d", what, va, t.pa,
@@ -369,37 +340,37 @@ void MatchRules(ShIrRig& rig) {
     mmu.WriteMmucr(kMmucr620lx);
     if (mmu.ReadMmucr() != kMmucrAt) TestFail("match rules: MMUCR reads 0x%08X after 0x0D", mmu.ReadMmucr());
 
-    ResetMmu(mmu, 0u, 5u);
-    Preload(mmu, 0u, 0x00440000u, 5u, kShRigDataPa | kPage4kRw);
-    ExpectProbe(mmu, "same ASID", 0x00440004u, true, kShRigDataPa + 4u, false);
+    rig.ResetMmu(0u, 5u);
+    rig.Preload(0u, 0x00440000u, 5u, kShRigDataPa | kPage4kRw);
+    ExpectProbe(rig, "same ASID", 0x00440004u, true, kShRigDataPa + 4u, false);
     mmu.WritePteh(6u);
-    ExpectProbe(mmu, "other ASID", 0x00440004u, false, 0u, false);
-    ResetMmu(mmu, kMmucrSv, 5u);
-    Preload(mmu, 0u, 0x00440000u, 5u, kShRigDataPa | kPage4kRw);
+    ExpectProbe(rig, "other ASID", 0x00440004u, false, 0u, false);
+    rig.ResetMmu(kMmucrSv, 5u);
+    rig.Preload(0u, 0x00440000u, 5u, kShRigDataPa | kPage4kRw);
     mmu.WritePteh(6u);
-    ExpectProbe(mmu, "single virtual memory in privileged mode", 0x00440004u, true, kShRigDataPa + 4u, true);
-    ResetMmu(mmu, 0u, 5u);
-    Preload(mmu, 1u, 0x00460000u, 5u, kShRigDataPa | kPage4kRw | kPtelSh);
+    ExpectProbe(rig, "single virtual memory in privileged mode", 0x00440004u, true, kShRigDataPa + 4u, true);
+    rig.ResetMmu(0u, 5u);
+    rig.Preload(1u, 0x00460000u, 5u, kShRigDataPa | kPage4kRw | kPtelSh);
     mmu.WritePteh(6u);
-    ExpectProbe(mmu, "shared page", 0x00460008u, true, kShRigDataPa + 8u, true);
+    ExpectProbe(rig, "shared page", 0x00460008u, true, kShRigDataPa + 8u, true);
 
-    ResetMmu(mmu, 0u, kShRigAsid);
-    Preload(mmu, 0u, 0x00480400u, kShRigAsid, (kShRigDataPa + 0x400u) | kPage1kRw);
-    ExpectProbe(mmu, "1 KB page", 0x00480410u, true, kShRigDataPa + 0x410u, false);
-    ExpectProbe(mmu, "1 KB page, other VPN bits 11-10", 0x00480010u, false, 0u, false);
-    Preload(mmu, 1u, 0x004A0000u, kShRigAsid, kShRigDataPa | kPage4kRw);
-    ExpectProbe(mmu, "4 KB page", 0x004A0C10u, true, kShRigDataPa + 0xC10u, false);
-    Preload(mmu, 2u, 0x004C0000u, kShRigAsid, (0x60000000u | kShRigDataPa) | kPage4kRw);
-    ExpectProbe(mmu, "PPN above the 29-bit space", 0x004C0020u, true, kShRigDataPa + 0x20u, false);
+    rig.ResetMmu(0u, kShRigAsid);
+    rig.Preload(0u, 0x00480400u, kShRigAsid, (kShRigDataPa + 0x400u) | kPage1kRw);
+    ExpectProbe(rig, "1 KB page", 0x00480410u, true, kShRigDataPa + 0x410u, false);
+    ExpectProbe(rig, "1 KB page, other VPN bits 11-10", 0x00480010u, false, 0u, false);
+    rig.Preload(1u, 0x004A0000u, kShRigAsid, kShRigDataPa | kPage4kRw);
+    ExpectProbe(rig, "4 KB page", 0x004A0C10u, true, kShRigDataPa + 0xC10u, false);
+    rig.Preload(2u, 0x004C0000u, kShRigAsid, (0x60000000u | kShRigDataPa) | kPage4kRw);
+    ExpectProbe(rig, "PPN above the 29-bit space", 0x004C0020u, true, kShRigDataPa + 0x20u, false);
     mmu.WriteMmucr(kMmucrAt | kMmucrTf);
-    ExpectProbe(mmu, "after TLB flush", 0x004A0C10u, false, 0u, false);
+    ExpectProbe(rig, "after TLB flush", 0x004A0C10u, false, 0u, false);
 
-    ResetMmu(mmu, kMmucrIx, 3u);
-    Preload(mmu, 0u, 0x00510000u, 3u, kShRigDataPa | kPage4kRw);
-    ExpectProbe(mmu, "IX index, same ASID", 0x00510000u, true, kShRigDataPa, false);
+    rig.ResetMmu(kMmucrIx, 3u);
+    rig.Preload(0u, 0x00510000u, 3u, kShRigDataPa | kPage4kRw);
+    ExpectProbe(rig, "IX index, same ASID", 0x00510000u, true, kShRigDataPa, false);
     mmu.WritePteh(5u);
-    ExpectProbe(mmu, "IX index, unshared alias", 0x00516000u, false, 0u, false);
-    ExpectProbe(mmu, "IX index, other set", 0x00510000u, false, 0u, false);
+    ExpectProbe(rig, "IX index, unshared alias", 0x00516000u, false, 0u, false);
+    ExpectProbe(rig, "IX index, other set", 0x00510000u, false, 0u, false);
 }
 
 void RunAll(bool verify, const char* mode) {

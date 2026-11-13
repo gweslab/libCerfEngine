@@ -1,7 +1,5 @@
+#include "sh_fake_hosts.h"
 #include "sh_ir_rig.h"
-
-#include <cerfengine/sh/sh_interrupt_host.h>
-#include <cerfengine/sh/sh_sleep_host.h>
 
 #include <cstdint>
 #include <cstdio>
@@ -13,37 +11,9 @@ using cerfengine::ShCpuState;
 
 constexpr uint32_t kImask5     = 5u << cerfengine::kShSrImaskShift;
 constexpr uint32_t kSrSleeping = cerfengine::kShSrMd | cerfengine::kShSrRb | cerfengine::kShSrBl | kImask5;
-constexpr uint32_t kIntevt     = 0x400u;
 constexpr uint32_t kAboveMask  = 6u;
 constexpr uint32_t kAtMask     = 5u;
 constexpr uint16_t kBraOverOne = 0xA001u;
-
-class FakeHosts final : public cerfengine::ShInterruptHost, public cerfengine::ShSleepHost {
-public:
-    uint32_t AcceptInterrupt(uint32_t sr) override {
-        if (!cerfengine::ShSrAcceptsInterrupt(sr, level)) return 0u;
-        ++accepted;
-        return kIntevt;
-    }
-
-    uint32_t StandbyWakeLevel() override { return standby_level; }
-
-    bool StandbySelected() const override { return standby; }
-
-    void EnterStandby() override {
-        ++standby_entries;
-        exited = false;
-    }
-
-    bool StandbyExited() const override { return exited; }
-
-    uint32_t level           = 0u;
-    uint32_t standby_level   = 0u;
-    uint32_t accepted        = 0u;
-    uint32_t standby_entries = 0u;
-    bool     standby         = false;
-    bool     exited          = false;
-};
 
 class SleepCases {
 public:
@@ -69,10 +39,7 @@ public:
     }
 
 private:
-    void Raise(uint32_t level) {
-        hosts_.level = level;
-        rig_.Interrupts().PublishLevel(level);
-    }
+    void Raise(uint32_t level) { hosts_.Raise(rig_.Interrupts(), level); }
 
     void OnHostRequest() {
         ++host_services_;
@@ -94,12 +61,6 @@ private:
         host_services_         = 0u;
         request_on_first_      = false;
         raise_on_service_      = false;
-    }
-
-    void StepWithoutHostExit(const char* what) {
-        rig_.Interrupts().SetHostExit(false);
-        rig_.Step(1u, what);
-        rig_.Interrupts().SetHostExit(true);
     }
 
     void ExpectStandby(const char* what, uint32_t entries) {
@@ -126,7 +87,7 @@ private:
         const ShCpuState& s = rig_.State();
         ShRigExpect(mode_, what, "interrupt handler entries", s.gpr[9], 1u);
         ShRigExpect(mode_, what, "accepted interrupts", hosts_.accepted, 1u);
-        ShRigExpect(mode_, what, "INTEVT", s.intevt, kIntevt);
+        ShRigExpect(mode_, what, "INTEVT", s.intevt, kShRigFakeIntevt);
         ShRigExpect(mode_, what, "SPC", s.spc, spc);
         ShRigExpect(mode_, what, "SSR", s.ssr, kSrSleeping);
         ShRigExpect(mode_, what, "SR", s.sr, kSrSleeping);
@@ -176,7 +137,7 @@ private:
     void StandbyStaysWithoutAnExit() {
         const char* what     = "SLEEP with STBCR.STBY set and no standby exit";
         const uint32_t start = EnterStandbyWithARequest(what);
-        StepWithoutHostExit(what);
+        rig_.StepWithoutHostExit(what);
         ExpectStandby(what, 2u);
         rig_.Step(1u, what);
         ExpectStandby(what, 2u);
@@ -266,8 +227,8 @@ private:
         ExpectWake(what, start + 2u);
     }
 
-    ShIrRig     rig_;
-    FakeHosts   hosts_;
+    ShIrRig        rig_;
+    ShRigFakeHosts hosts_;
     const char* mode_;
     uint32_t    host_services_    = 0u;
     bool        request_on_first_ = false;

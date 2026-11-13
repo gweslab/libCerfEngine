@@ -1,3 +1,4 @@
+#include "test_arm_system.h"
 #include "test_host.h"
 
 #include <cerfengine/arm/arm_cpu.h>

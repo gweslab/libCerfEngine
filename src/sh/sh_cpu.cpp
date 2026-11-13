@@ -14,8 +14,13 @@ namespace {
 constexpr uint32_t kResetSr              = 0x700000F0u;
 constexpr uint32_t kResetPc              = 0xA0000000u;
 constexpr uint32_t kPowerOnResetExpevt   = 0x000u;
+constexpr uint32_t kManualResetExpevt    = 0x020u;
 
 constexpr bool Bank1Active(uint32_t sr) { return (sr & kShSrMd) != 0u && (sr & kShSrRb) != 0u; }
+
+constexpr uint32_t ResetExpevt(ShResetKind kind) {
+    return kind == ShResetKind::kManual ? kManualResetExpevt : kPowerOnResetExpevt;
+}
 
 }
 
@@ -23,19 +28,31 @@ void ShCpu::OnReady() {
     sr_writable_ = engine_.GetSetup().sh.dsp ? kShSrWritableDsp : kShSrWritableSh3;
 }
 
-void ShCpu::ResetState() {
+void ShCpu::ResetState(ShResetKind kind) {
     state_.sr     = kResetSr;
     state_.vbr    = 0u;
     state_.pc     = kResetPc;
     state_.dsr    = 0u;
-    state_.expevt       = kPowerOnResetExpevt;
+    state_.expevt       = ResetExpevt(kind);
     state_.ldtlb_shadow = 0u;
     state_.rte_slot     = 0u;
     state_.sleeping     = kShSleepNone;
     state_.deep_sleep   = 0u;
     state_.mmio_access  = 0u;
     std::atomic_ref<uint32_t>(state_.chain_exit_request).fetch_and(~kShChainExitSleep, std::memory_order_acq_rel);
-    engine_.Get<ShMmu>().PowerOnReset();
+    engine_.Get<ShMmu>().Reset(kind);
+}
+
+void ShCpu::ReportResetKind(ShResetKind kind) {
+    state_.expevt = ResetExpevt(kind);
+}
+
+void ShCpu::SetPendingResetKind(ShResetKind kind) {
+    pending_reset_kind_.store(kind, std::memory_order_release);
+}
+
+ShResetKind ShCpu::TakePendingResetKind() {
+    return pending_reset_kind_.exchange(ShResetKind::kPowerOn, std::memory_order_acq_rel);
 }
 
 void ShCpu::WriteSr(uint32_t value) {

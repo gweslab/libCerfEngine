@@ -27,6 +27,9 @@ public:
     void SetSleepHost(ShSleepHost* host);
     void PublishLevel(uint32_t level);
     void SetHostExit(bool requested);
+    void RequestReset();
+    bool ResetRequested() const;
+    void ClearResetRequest();
     void DeliverPending();
     bool Sleep();
     bool LevelEndsSleep(uint32_t level) const;

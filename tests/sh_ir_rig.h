@@ -45,6 +45,22 @@ constexpr uint32_t kShRigDataVa          = kShRigVaBase + kShRigDataPa;
 constexpr uint32_t kShRigVpnMask         = 0xFFFFFC00u;
 constexpr uint8_t  kShRigAsid            = 0x2Au;
 
+constexpr uint32_t kMmucrAt      = 0x001u;
+constexpr uint32_t kMmucrIx      = 0x002u;
+constexpr uint32_t kMmucrTf      = 0x004u;
+constexpr uint32_t kMmucrSv      = 0x100u;
+constexpr uint32_t kMmucrRcShift = 4u;
+constexpr uint32_t kMmucrRc      = 3u << kMmucrRcShift;
+constexpr uint32_t kMmucr620lx   = 0x0Du;
+
+constexpr uint32_t kPtelV    = 0x100u;
+constexpr uint32_t kPtelPrRw = 0x020u;
+constexpr uint32_t kPtelSz   = 0x010u;
+constexpr uint32_t kPtelD    = 0x004u;
+constexpr uint32_t kPtelSh   = 0x002u;
+constexpr uint32_t kPage4kRw = kPtelV | kPtelPrRw | kPtelSz | kPtelD;
+constexpr uint32_t kPage1kRw = kPtelV | kPtelPrRw | kPtelD;
+
 constexpr uint32_t kShRigExpevtAddressRead         = 0x0E0u;
 constexpr uint32_t kShRigExpevtAddressWrite        = 0x100u;
 constexpr uint32_t kShRigExpevtReservedInstruction = 0x180u;
@@ -122,6 +138,20 @@ public:
         host_.LoadWords(pa, words.data(), words.size());
     }
 
+    void ResetMmu(uint32_t mode, uint8_t asid) {
+        cerfengine::ShMmu& mmu = Mmu();
+        mmu.WriteMmucr(kMmucrAt | kMmucrTf | mode);
+        mmu.WritePteh(asid);
+    }
+
+    void Preload(uint32_t way, uint32_t vpn, uint8_t asid, uint32_t ptel) {
+        cerfengine::ShMmu& mmu = Mmu();
+        mmu.WriteMmucr((mmu.ReadMmucr() & ~kMmucrRc) | (way << kMmucrRcShift));
+        mmu.WritePteh(vpn | asid);
+        mmu.WritePtel(ptel);
+        mmu.LoadTlb();
+    }
+
     void LoadReturningHandler(uint32_t vector) {
         LoadCode(ShRigPa(kShRigVbr + vector), {kShRigAddOneR9, kShRigJmpR13, kShRigNop});
     }
@@ -157,12 +187,20 @@ public:
         }
     }
 
+    void StepWithoutHostExit(const char* what) {
+        guest_->SetHostChainExit(false);
+        Step(1u, what);
+        guest_->SetHostChainExit(true);
+    }
+
     void Finish(const char* what) {
         if (Advance()) TestFail("%s: halted: %s", what, engine_->LastHalt().detail);
         if (cpu_->State()->pc != end_va_) TestFail("%s: did not reach 0x%08X, PC 0x%08X", what, end_va_, cpu_->State()->pc);
     }
 
     TestHost&                     Host() { return host_; }
+    cerfengine::ShCpu&            Cpu() { return *cpu_; }
+    cerfengine::GuestEngine&      Guest() { return *guest_; }
     cerfengine::ShMmu&            Mmu() { return engine_->Get<cerfengine::ShMmu>(); }
     cerfengine::ShBusMasterCoherence& BusMasterCoherence() { return engine_->Get<cerfengine::ShBusMasterCoherence>(); }
     cerfengine::ShInterruptChannel& Interrupts() { return engine_->Get<cerfengine::ShInterruptChannel>(); }
@@ -184,7 +222,7 @@ private:
         next_va_             = end_va_;
         LoadCode(ShRigPa(start), std::move(body));
 
-        cpu_->ResetState();
+        cpu_->ResetState(cerfengine::ShResetKind::kPowerOn);
         cerfengine::ShCpuState& s = *cpu_->State();
         std::memcpy(s.gpr, initial.gpr, sizeof(s.gpr));
         s.sr                  = initial.sr;

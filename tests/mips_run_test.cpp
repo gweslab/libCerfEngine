@@ -1,5 +1,6 @@
 #include "mmio_store_program.h"
 #include "test_host.h"
+#include "test_mips_system.h"
 
 #include <cerfengine/guest_engine.h>
 #include <cerfengine/mips/mips_cpu.h>

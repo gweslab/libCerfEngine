@@ -1,6 +1,5 @@
 #pragma once
 
-#include <cerfengine/arm/arm_system_host.h>
 #include <cerfengine/byte_order.h>
 #include <cerfengine/calling_convention.h>
 #include <cerfengine/clock_host.h>
@@ -9,7 +8,6 @@
 #include <cerfengine/engine_setup.h>
 #include <cerfengine/host_exception.h>
 #include <cerfengine/mips/mips_cpu_state.h>
-#include <cerfengine/mips/mips_system_host.h>
 #include <cerfengine/mmio_bus_host.h>
 #include <cerfengine/physical_memory_host.h>
 
@@ -123,9 +121,20 @@ public:
         return {cerfengine::DramRegion{ram_base_, static_cast<uint32_t>(ram_.size())}};
     }
 
-    void OnResetRequested(bool) override { TestFail("the guest requested a reset"); }
-    void OnRebootRequested() override { TestFail("the guest requested a reboot"); }
-    void OnResetDelivered() override {}
+    void     AcceptResets() { accept_resets_ = true; }
+    uint32_t ResetRequests() const { return reset_requests_; }
+    uint32_t RebootRequests() const { return reboot_requests_; }
+    uint32_t ResetsDelivered() const { return resets_delivered_; }
+
+    void OnResetRequested(bool) override {
+        if (!accept_resets_) TestFail("the guest requested a reset");
+        ++reset_requests_;
+    }
+    void OnRebootRequested() override {
+        if (!accept_resets_) TestFail("the guest requested a reboot");
+        ++reboot_requests_;
+    }
+    void OnResetDelivered() override { ++resets_delivered_; }
     void OnPowerDownRequest() override { TestFail("the guest requested power down"); }
     void OnBlockCompiled(const cerfengine::BlockCompileStats& stats) override {
         ++blocks_compiled_;
@@ -322,173 +331,8 @@ private:
     uint64_t              compile_ns_      = 0;
     std::vector<uint32_t> traced_pcs_;
     uint32_t              trace_hits_      = 0;
-};
-
-class TestCoprocessor {
-public:
-    virtual ~TestCoprocessor() = default;
-    virtual cerfengine::ArmCoprocDecision Decide(const cerfengine::ArmCoprocAccess& access) = 0;
-};
-
-class TestArmSystem : public cerfengine::ArmSystemHost {
-public:
-    void Attach(cerfengine::Setup& setup) {
-        setup.arm_translation     = this;
-        setup.arm_alignment_fault = this;
-        setup.arm_system          = this;
-    }
-
-    void SetCoprocessor(TestCoprocessor* coprocessor) { coprocessor_ = coprocessor; }
-
-    cerfengine::ArmCoprocDecision ArmCoprocessor(const cerfengine::ArmCoprocAccess& a) override {
-        if (coprocessor_ == nullptr) TestFail("unexpected coprocessor access cp%u", a.cp_num);
-        return coprocessor_->Decide(a);
-    }
-    cerfengine::ArmResetResult ArmReset() override { return {}; }
-
-    void AllowAlignmentFaults() { allow_alignment_faults_ = true; }
-    void RecordAlignmentFault(uint32_t va, bool write) {
-        if (!allow_alignment_faults_) TestFail("unexpected alignment fault at 0x%08X", va);
-        ++alignment_faults_;
-        last_fault_va_    = va;
-        last_fault_write_ = write;
-    }
-    uint32_t AlignmentFaults() const { return alignment_faults_; }
-    uint32_t LastFaultVa() const { return last_fault_va_; }
-    bool     LastFaultWrite() const { return last_fault_write_; }
-
-    void EnableIdentityWalk(uint32_t hole_base, uint32_t hole_size) {
-        walk_enabled_ = true;
-        hole_base_    = hole_base;
-        hole_size_    = hole_size;
-    }
-
-    void EnablePrivilegedRegion(uint32_t base, uint32_t size) {
-        privileged_base_ = base;
-        privileged_size_ = size;
-    }
-
-    void SetPagesGlobal(bool global) { pages_global_ = global; }
-
-    void RemapPage(uint32_t va_page, uint32_t pa_page) {
-        remap_va_ = va_page;
-        remap_pa_ = pa_page;
-    }
-
-    cerfengine::ArmTranslation Walk(uint32_t mva, bool write, bool user) {
-        if (!walk_enabled_) TestUnexpectedWalk(mva);
-        cerfengine::ArmTranslation t;
-        if (mva - hole_base_ < hole_size_ || (user && mva - privileged_base_ < privileged_size_)) {
-            ++walk_faults_;
-            last_walk_fault_va_    = mva;
-            last_walk_fault_write_ = write;
-            return t;
-        }
-        t.mapped = true;
-        t.pa     = MappedPa(mva);
-        t.global = pages_global_;
-        return t;
-    }
-
-    bool Probe(uint32_t mva, uint32_t* pa) {
-        if (!walk_enabled_) TestFail("unexpected ARM probe translation of 0x%08X", mva);
-        if (mva - hole_base_ < hole_size_) return false;
-        *pa = MappedPa(mva);
-        return true;
-    }
-
-    uint32_t MappedPa(uint32_t mva) const {
-        return (mva & ~0xFFFu) == remap_va_ ? remap_pa_ | (mva & 0xFFFu) : mva;
-    }
-
-    uint32_t WalkFaults() const { return walk_faults_; }
-    uint32_t LastWalkFaultVa() const { return last_walk_fault_va_; }
-    bool     LastWalkFaultWrite() const { return last_walk_fault_write_; }
-
-private:
-    TestCoprocessor* coprocessor_ = nullptr;
-
-    bool     allow_alignment_faults_ = false;
-    uint32_t alignment_faults_       = 0;
-    uint32_t last_fault_va_          = 0;
-    bool     last_fault_write_       = false;
-    bool     walk_enabled_           = false;
-    uint32_t hole_base_              = 0;
-    uint32_t hole_size_              = 0;
-    uint32_t privileged_base_        = 0;
-    uint32_t privileged_size_        = 0;
-    bool     pages_global_           = true;
-    uint32_t remap_va_               = 0xFFFFFFFFu;
-    uint32_t remap_pa_               = 0;
-    uint32_t walk_faults_            = 0;
-    uint32_t last_walk_fault_va_     = 0;
-    bool     last_walk_fault_write_  = false;
-};
-
-class TestMipsSystem : public cerfengine::MipsSystemHost {
-public:
-    explicit TestMipsSystem(uint32_t entry) : entry_(entry) {}
-
-    void Attach(cerfengine::Setup& setup) {
-        setup.mips_tlb.context                  = this;
-        setup.mips_tlb.map_address              = &MapAddress;
-        setup.mips_tlb.page_global              = &PageGlobal;
-        setup.mips_tlb.write_indexed            = &WriteIndexed;
-        setup.mips_tlb.write_random             = &WriteRandom;
-        setup.mips_tlb.probe                    = &Probe;
-        setup.mips_tlb.read                     = &Read;
-        setup.mips_exception.context            = this;
-        setup.mips_exception.enter              = &EnterException;
-        setup.mips_exception.set_mmu_fault_regs = &SetMmuFaultRegs;
-        setup.mips_exception.interrupts_enabled = &InterruptsEnabled;
-        setup.mips_exception.eret               = &Eret;
-        setup.mips_exception.rfe                = &Rfe;
-        setup.mips_system                       = this;
-    }
-
-    cerfengine::MipsCp0Decision MipsCp0(uint32_t rd) override {
-        TestFail("unexpected CP0 register %u", rd);
-    }
-    void MipsReset(cerfengine::MipsCpuState* st) override {
-        st->min_page_shift = 12;
-        st->pc             = entry_;
-    }
-
-private:
-    static cerfengine::MipsTlbResult CERFENGINE_FASTCALL MapAddress(
-        void*, cerfengine::MipsCpuState*, uint32_t va, cerfengine::MipsAccess, uint32_t*) {
-        TestFail("unexpected mapped MIPS access at 0x%08X", va);
-    }
-    static bool CERFENGINE_FASTCALL PageGlobal(void*, cerfengine::MipsCpuState*, uint32_t va) {
-        TestFail("unexpected mapped MIPS page query at 0x%08X", va);
-    }
-    static void CERFENGINE_FASTCALL WriteIndexed(void*, cerfengine::MipsTlbContext&) {
-        TestFail("TLBWI");
-    }
-    static void CERFENGINE_FASTCALL WriteRandom(void*, cerfengine::MipsTlbContext&) {
-        TestFail("TLBWR");
-    }
-    static void CERFENGINE_FASTCALL Probe(void*, cerfengine::MipsTlbContext&) {
-        TestFail("TLBP");
-    }
-    static void CERFENGINE_FASTCALL Read(void*, cerfengine::MipsTlbContext&) {
-        TestFail("TLBR");
-    }
-
-    static void CERFENGINE_FASTCALL EnterException(void*, cerfengine::MipsCpuState* st,
-                                                   uint32_t cause, bool) {
-        TestFail("unexpected MIPS exception %u at 0x%08X", cause, st->pc);
-    }
-    static void CERFENGINE_FASTCALL SetMmuFaultRegs(void*, cerfengine::MipsCpuState*,
-                                                    uint32_t va) {
-        TestFail("unexpected MIPS MMU fault at 0x%08X", va);
-    }
-    static bool CERFENGINE_FASTCALL InterruptsEnabled(void*, const cerfengine::MipsCpuState&) {
-        return false;
-    }
-
-    static void CERFENGINE_FASTCALL Eret(void*, cerfengine::MipsCpuState*) { TestFail("ERET"); }
-    static void CERFENGINE_FASTCALL Rfe(void*, cerfengine::MipsCpuState*) { TestFail("RFE"); }
-
-    uint32_t entry_;
+    bool                  accept_resets_    = false;
+    uint32_t              reset_requests_   = 0;
+    uint32_t              reboot_requests_  = 0;
+    uint32_t              resets_delivered_ = 0;
 };
