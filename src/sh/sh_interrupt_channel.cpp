@@ -29,12 +29,13 @@ void ShInterruptChannel::SetSleepHost(ShSleepHost* host) {
     sleep_host_ = host;
 }
 
-void ShInterruptChannel::PublishLevel(uint32_t level) {
-    const uint32_t prev = level_.exchange(level, std::memory_order_acq_rel);
-    if (prev == level) return;
+void ShInterruptChannel::PublishLevel(uint32_t level, bool ignores_block) {
+    const uint32_t request = level | (ignores_block ? kShSrBl : 0u);
+    const uint32_t prev    = request_.exchange(request, std::memory_order_acq_rel);
+    if (prev == request) return;
     std::atomic_ref<uint32_t>(cpu_state_->chain_exit_request)
         .fetch_or(kShChainExitInterrupt, std::memory_order_acq_rel);
-    if (level > prev) idle_->Signal();
+    if (level > (prev & ~kShSrBl)) idle_->Signal();
 }
 
 void ShInterruptChannel::SetHostExit(bool requested) {
@@ -65,7 +66,8 @@ void ShInterruptChannel::OnCpuStateRestored(bool reset_pending) {
 }
 
 bool ShInterruptChannel::AcceptInterrupt(uint32_t sr) {
-    if (!ShSrAcceptsInterrupt(sr, level_.load(std::memory_order_acquire))) return false;
+    const uint32_t request = request_.load(std::memory_order_acquire);
+    if (!ShSrAcceptsInterrupt(sr & ~(request & kShSrBl), request & ~kShSrBl)) return false;
     const uint32_t intevt = host_->AcceptInterrupt(sr);
     if (intevt == 0u) return false;
     cpu_->EnterInterrupt(intevt);

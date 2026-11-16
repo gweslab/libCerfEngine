@@ -10,6 +10,7 @@
 #include "../cerfir_types.h"
 #include "a64_operand.h"
 #include "a64_pinned_slots.h"
+#include "a64_soft_tlb.h"
 
 namespace cerfengine::cerfir {
 
@@ -33,9 +34,12 @@ struct A64MemoryTail {
 };
 
 struct A64MissStub {
-    uint8_t*    call;
-    const void* target;
-    uint32_t    pin_dirty;
+    SoftTlbMissSites misses;
+    const void*  target;
+    uint8_t*     resume;
+    uint32_t     pin_dirty;
+    uint32_t     pc;
+    bool         keep_pc;
 };
 
 class A64MemoryTails {
@@ -61,9 +65,10 @@ public:
         return t;
     }
 
-    CERFENGINE_FORCEINLINE void AddMissStub(uint8_t* call, const void* target, uint32_t pin_dirty) {
+    CERFENGINE_FORCEINLINE void AddMissStub(const SoftTlbMissSites& misses, const void* target, uint8_t* resume,
+                                            uint32_t pin_dirty, uint32_t pc, bool keep_pc) {
         if (stub_count_ == stubs_.size()) stubs_.resize(stubs_.empty() ? 16u : stubs_.size() * 2u);
-        stubs_[stub_count_++] = A64MissStub{call, target, pin_dirty};
+        stubs_[stub_count_++] = A64MissStub{misses, target, resume, pin_dirty, pc, keep_pc};
     }
 
     static void RecordBranch(A64MemoryTail& t, const A64PinState& pins);

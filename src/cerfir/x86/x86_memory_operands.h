@@ -155,9 +155,12 @@ CERFENGINE_FORCEINLINE uint8_t* X86EmitTlbLookup(X86Lowering& l, uint8_t* c, con
                                                  TlbAccess access) {
     const X86SoftTlb& tlb  = *l.Target().tlb;
     const BlockLink&  link = *l.Target().link;
-    if (m.unpriv) return tlb.EmitUserLookup(c, access);
-    if (link.translation_off) return tlb.EmitMissCall(c, access);
-    return tlb.EmitLookup(c, link.privilege, access);
+    if (m.unpriv) return tlb.EmitUserLookup(c, access, m.guest_pc);
+    if (link.translation_off) return tlb.EmitMissCall(c, access, m.guest_pc);
+    SoftTlbMissSites misses;
+    uint8_t* const end = tlb.EmitLookup(c, link.privilege, access, &misses);
+    l.Tails().AddMissStub(misses, tlb.MissTarget(link.privilege, access), end, m.guest_pc, tlb.KeepsPc());
+    return end;
 }
 
 CERFENGINE_FORCEINLINE void X86PrepareMemoryTail(X86Lowering& l, X86MemoryTail& t,

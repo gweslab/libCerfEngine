@@ -25,7 +25,7 @@ public:
 
     void SetHost(ShInterruptHost* host);
     void SetSleepHost(ShSleepHost* host);
-    void PublishLevel(uint32_t level);
+    void PublishLevel(uint32_t level, bool ignores_block);
     void SetHostExit(bool requested);
     void RequestReset();
     bool ResetRequested() const;
@@ -43,7 +43,7 @@ private:
     bool StayInStandby();
     bool HostExitRequested() const;
 
-    std::atomic<uint32_t> level_{0};
+    std::atomic<uint32_t> request_{0};
     ShInterruptHost*      host_          = nullptr;
     ShSleepHost*          sleep_host_    = nullptr;
     ShCpu*                cpu_           = nullptr;

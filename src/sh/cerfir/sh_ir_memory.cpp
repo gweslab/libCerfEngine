@@ -9,16 +9,10 @@ using cerfir::Type;
 
 namespace {
 
-constexpr uint32_t kDelaySlotOffset = 2u;
-
-uint32_t AccessPc(const ShIrContext& c) {
-    return c.in_delay_slot ? c.d->guest_address - kDelaySlotOffset : c.d->guest_address;
-}
-
 cerfir::MemAttr& NewAccessAttr(ShIrContext& c, uint32_t* index) {
     cerfir::MemAttr& m = c.b->NewMemAttr(index);
     m.width_bytes      = c.d->width;
-    m.guest_pc         = AccessPc(c);
+    m.guest_pc         = ShIrRestartPc(c);
     return m;
 }
 
@@ -44,7 +38,7 @@ void LoadInto(ShIrContext& c, Ref address, uint32_t base_slot, uint32_t offset, 
     cerfir::Builder&     b = *c.b;
     const ShDecodedInsn& d = *c.d;
     if (address == kNoRef && b.SimpleLoad(d.width, d.width < 4u, base_slot, offset, dest_slot,
-                                          static_cast<uint32_t>(cerfir::kNoSlot), AccessPc(c))) {
+                                          static_cast<uint32_t>(cerfir::kNoSlot), ShIrRestartPc(c))) {
         return;
     }
     uint32_t         index = 0;
@@ -66,7 +60,7 @@ void StoreFrom(ShIrContext& c, Ref address, uint32_t base_slot, uint32_t offset,
         ShIrStoreAt(c, address, b.ReadSlot(source_slot));
         return;
     }
-    if (b.SimpleStore(d.width, base_slot, offset, b.ReadSlot(source_slot), AccessPc(c))) return;
+    if (b.SimpleStore(d.width, base_slot, offset, b.ReadSlot(source_slot), ShIrRestartPc(c))) return;
     uint32_t         index = 0;
     cerfir::MemAttr& m     = NewAccessAttr(c, &index);
     m.base_slot            = static_cast<int32_t>(base_slot);

@@ -298,7 +298,6 @@ void Builder::CallConstRecorded(const CallSpec& spec, uint32_t num_args, CallArg
     call.extra[0]  = a3;
     call.store_pc  = spec.store_pc;
     call.pc        = spec.pc;
-    if (spec.store_pc) NoteSlotWrite(block_.PcSlot(), 4u);
     Call(call, Type::kVoid, ConstArg(a0), ConstArg(a1), ConstArg(a2));
 }
 
@@ -318,8 +317,9 @@ void Builder::OrSticky(Ref cond, uint32_t sticky_slot, uint32_t sticky_mask) {
     NoteSlotWrite(static_cast<int32_t>(sticky_slot), 4u);
 }
 
-Ref Builder::Call(const CallDesc& call, Type result, Ref a, Ref b, Ref c) {
-    const Ref refs[3] = {a, b, c};
+Ref Builder::Call(const CallDesc& requested, Type result, Ref a, Ref b, Ref c) {
+    const CallDesc call    = WithCallPc(requested);
+    const Ref      refs[3] = {a, b, c};
     for (uint32_t i = 0; i < 3u; ++i) {
         if ((refs[i] != kNoRef) != (i < call.num_args)) {
             Reject("helper argument count mismatch", Op::kCallHelper);
@@ -329,8 +329,10 @@ Ref Builder::Call(const CallDesc& call, Type result, Ref a, Ref b, Ref c) {
     if (DirectCallShape(result, a, b, c)) {
         DirectCall(call.fn, call.conv, call.num_args, a, b, c, call.extra, call.num_extra,
                    call.store_pc, call.pc);
+        NoteCallPcStore(call.store_pc, call.pc);
         return kNoRef;
     }
+    NoteCallPcStore(call.store_pc, call.pc);
     return Emit(Op::kCallHelper, result, a, b, c, block_.AddCall(call), 0u);
 }
 

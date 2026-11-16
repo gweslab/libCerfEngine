@@ -99,16 +99,23 @@ ArmPsrFull* ArmCpu::BankedSpsr(uint32_t mode) {
     return &state_.spsr_bank[kSpsrIdx(SelectSpsrBank(mode))];
 }
 
-void ArmCpu::UpdateCpsrWithFlags(ArmPsrFull psr) {
+void ArmCpu::RequireCpsrWritable(ArmPsrFull psr) {
     if (psr.bits.thumb_mode && !engine_.GetSetup().arm.thumb) {
         engine_.Halt(cerfengine::HaltReason::kUnpredictable,
                      "ArmCpu: CPSR write sets T on a core that reports no Thumb state");
     }
+    if (psr.bits.mode != state_.cpsr.bits.mode) SelectBank(psr.bits.mode);
+}
 
+void ArmCpu::ApplyCpsr(ArmPsrFull psr) {
     const uint32_t old_mode = state_.cpsr.bits.mode;
-
     ArmApplyCpsr(state_, psr.word);
     SwitchModeBanks(old_mode, state_.cpsr.bits.mode);
+}
+
+void ArmCpu::UpdateCpsrWithFlags(ArmPsrFull psr) {
+    RequireCpsrWritable(psr);
+    ApplyCpsr(psr);
 }
 
 /* ARM ARM DDI 0406C.c B1.9, pp. B1-1206 (Undefined Instruction), B1-1210 (SVC),
@@ -358,7 +365,7 @@ void CERFENGINE_CDECL ArmCpu::WriteUserRegHelper(ArmCpu* cpu, uint32_t reg,
     st->gprs[reg] = value;
 }
 
-uint32_t ArmCpu::ReturnFromException(uint32_t new_cpsr_word, uint32_t new_pc) {
+ArmPsrFull ArmCpu::PrepareExceptionReturn(uint32_t new_cpsr_word) {
     /* ARM DDI 0406C.c B3.15.5 (p. B3-1461) + Glossary "Context
        synchronization operation": returning from an exception synchronizes
        as its first step. */
@@ -383,16 +390,31 @@ uint32_t ArmCpu::ReturnFromException(uint32_t new_cpsr_word, uint32_t new_pc) {
                      "ArmCpu: exception return restores CPSR.E; big-endian "
                      "data accesses are not modelled");
     }
-    UpdateCpsrWithFlags(merged);
+    RequireCpsrWritable(merged);
+    return merged;
+}
+
+ArmPsrFull ArmCpu::PrepareSpsrReturn() {
+    return PrepareExceptionReturn(BankedSpsr(state_.cpsr.bits.mode)->word);
+}
+
+uint32_t ArmCpu::CompleteExceptionReturn(ArmPsrFull psr, uint32_t new_pc) {
+    ApplyCpsr(psr);
     /* BranchWritePC (ARM DDI 0406C.c A2.3.2, p. A2-47). */
-    return merged.bits.thumb_mode ? (new_pc & ~1u) : (new_pc & ~3u);
+    return psr.bits.thumb_mode ? (new_pc & ~1u) : (new_pc & ~3u);
 }
 
 /* ARM DDI 0406C.c B9.3.5 (p. B9-1987): CPSRWriteByInstr(SPSR[], '1111',
    TRUE) then BranchWritePC(new_pc_value). */
 uint32_t CERFENGINE_CDECL ArmCpu::ExceptionReturnHelper(ArmCpu* cpu, uint32_t new_pc) {
-    const uint32_t spsr = cpu->BankedSpsr(cpu->state_.cpsr.bits.mode)->word;
-    return cpu->ReturnFromException(spsr, new_pc);
+    return cpu->CompleteExceptionReturn(cpu->PrepareSpsrReturn(), new_pc);
+}
+
+uint32_t CERFENGINE_CDECL ArmCpu::ExceptionReturnWritebackHelper(ArmCpu* cpu, uint32_t new_pc,
+                                                                 uint32_t writeback, uint32_t rn) {
+    const ArmPsrFull psr  = cpu->PrepareSpsrReturn();
+    cpu->state_.gprs[rn] = writeback;
+    return cpu->CompleteExceptionReturn(psr, new_pc);
 }
 
 void ArmCpu::OnStateRestored() {

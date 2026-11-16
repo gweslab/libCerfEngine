@@ -46,6 +46,8 @@ public:
 
     /* QEMU cpu_exit() (cpu-common.c). */
     virtual void SetHostChainExit(bool) {}
+
+    virtual void SettleRestartPoint() {}
 };
 
 }

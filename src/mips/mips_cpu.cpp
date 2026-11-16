@@ -72,9 +72,12 @@ void CERFENGINE_FASTCALL MipsCpu::Dmtc0WidthHelper(MipsCpu* cpu, uint32_t rd) {
                       "CP0 state is not modeled", rd);
 }
 
-void CERFENGINE_FASTCALL MipsCpu::Mtc0ZeroOnlyHelper(MipsCpu* cpu, uint32_t rd) {
+void CERFENGINE_FASTCALL MipsCpu::Mtc0FixedFieldsHelper(MipsCpu* cpu, uint32_t rd, uint32_t value) {
+    const MipsCp0Decision dec = cpu->engine_.GetSetup().mips_system->MipsCp0(rd);
     cpu->engine_.Halt(HaltReason::kUnimplemented,
-                      "MipsCpu: MTC0 to cp0[%u] sets bits that the host supports at 0 only", rd);
+                      "MipsCpu: MTC0 to cp0[%u] writes 0x%08X; fields 0x%08X are 0x%08X, the host "
+                      "supports 0x%08X only", rd, value, dec.fixed_mask, value & dec.fixed_mask,
+                      dec.fixed_value);
 }
 
 }

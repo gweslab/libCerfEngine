@@ -154,14 +154,14 @@ CERFENGINE_FORCEINLINE uint8_t* A64EmitTlbLookup(A64Lowering& l, uint8_t* c, con
     const BlockLink&  link = *l.Target().link;
     A64PinnedSlots&   pins = l.Pins();
     if (!A64InlineLookup(l, m)) {
-        uint8_t* call = nullptr;
-        c = tlb.EmitLookup(c, link.privilege, access, &call);
-        const uint32_t dirty = pins.State().dirty;
-        if (dirty != 0u) l.Tails().AddMissStub(call, tlb.MissTarget(link.privilege, access), dirty);
+        SoftTlbMissSites misses;
+        c = tlb.EmitLookup(c, link.privilege, access, &misses);
+        l.Tails().AddMissStub(misses, tlb.MissTarget(link.privilege, access), c, pins.State().dirty,
+                              m.guest_pc, tlb.KeepsPc());
         return c;
     }
     pins.Flush(c);
-    c = m.unpriv ? tlb.EmitUserLookup(c, access) : tlb.EmitMissCall(c, access);
+    c = m.unpriv ? tlb.EmitUserLookup(c, access, m.guest_pc) : tlb.EmitMissCall(c, access, m.guest_pc);
     pins.StaleCallerSaved();
     return c;
 }

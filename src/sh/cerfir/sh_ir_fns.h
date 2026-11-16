@@ -20,8 +20,9 @@ cerfir::Ref ShIrTAsCarry(cerfir::Builder& b);
 cerfir::Ref ShIrExtend(cerfir::Builder& b, cerfir::Op op, cerfir::Type from, cerfir::Ref value);
 void        ShIrLinkProcedure(ShIrContext& c);
 
-cerfir::CallDesc ShIrHostCall(const ShIrContext& c, const void* fn, uint8_t num_args);
-cerfir::CallSpec ShIrHostCallConst(const void* fn, uint32_t guest_pc);
+uint32_t         ShIrRestartPc(const ShIrContext& c);
+cerfir::CallDesc ShIrHostCall(const void* fn, uint8_t num_args);
+cerfir::CallSpec ShIrHostCallConst(const void* fn);
 
 void ShIrTranslateMovPcRel(ShIrContext& c);
 void ShIrTranslateMov(ShIrContext& c);
@@ -73,12 +74,15 @@ void ShIrTranslateClrmac(ShIrContext& c);
 void ShIrTranslateMac(ShIrContext& c);
 void ShIrTranslateLdtlb(ShIrContext& c);
 void ShIrTranslateRte(ShIrContext& c);
+void ShIrRestoreSrFromSsr(ShIrContext& c);
 void ShIrTranslateClearSrBits(ShIrContext& c);
 void ShIrTranslateSetSrBits(ShIrContext& c);
 void ShIrTranslateSleep(ShIrContext& c);
+void ShIrTranslateTrapa(ShIrContext& c);
 
 void ShIrTranslateDspTransfer(ShIrContext& c);
 void ShIrTranslateDspParallel(ShIrContext& c);
+void ShIrTranslateDspRepeatControl(ShIrContext& c);
 void ShIrTranslateDspSingleTransfer(ShIrContext& c);
 void ShIrSetGuardFromSign(ShIrContext& c, uint32_t guard_slot, cerfir::Ref value);
 

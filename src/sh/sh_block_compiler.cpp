@@ -23,6 +23,7 @@ CERFENGINE_REGISTER(ShBlockCompiler);
 
 void ShBlockCompiler::OnReady() {
     cpu_state_       = engine_.Get<ShCpu>().State();
+    on_chip_code_    = engine_.GetSetup().sh_on_chip_code;
     map_             = &engine_.Get<PhysicalMap>();
     cache_           = &engine_.Get<ShTranslationCache>();
     mmu_             = &engine_.Get<ShMmu>();
@@ -126,13 +127,6 @@ uint32_t ShBlockCompiler::DecodeBlock(uint32_t pc, uint32_t phys_start) {
         const ShDecodedInsn d =
             wide ? decoder_->DecodeWide(first, FetchHalf(va + kShInsnBytes, pc, phys_start, page_end), va)
                  : decoder_->Decode(first, va);
-        if (d.kind == ShInsnKind::kUnimplemented) {
-            if (count == 0u || must_follow) {
-                engine_.Halt(HaltReason::kUnimplemented, "ShBlockCompiler: SH opcode 0x%04X at PC 0x%08X", d.raw,
-                             va);
-            }
-            break;
-        }
         if (!slot_next && d.delayed_branch != 0u && count + 2u > kMaxBlockInsns) break;
         if (d.kind == ShInsnKind::kLdtlb) {
             if (must_follow) {
@@ -170,6 +164,11 @@ void* ShBlockCompiler::FindBlockNativeStart(uint32_t pc) {
 }
 
 void* ShBlockCompiler::Compile(uint32_t pc) {
+    if (on_chip_code_ != nullptr && ShAddressSpace::OnChipCode(pc) && (pc & 1u) == 0u &&
+        ProcessorMode() == kBlockPrivileged) {
+        on_chip_code_->Call(pc, *cpu_state_);
+        return nullptr;
+    }
     ShTranslation start{};
     if (!TranslateFetch(pc, true, pc, &start)) return nullptr;
     const uint32_t phys_start = start.pa;

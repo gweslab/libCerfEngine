@@ -19,7 +19,7 @@ Ref MemoryBuild::Swap(Type type, Ref address, Ref value, uint32_t attr) {
     if (m.writeback_slot != kNoSlot) Reject("a swap has no writeback", Op::kSwap);
     if (type == Type::kI64 || m.width_bytes == 8u) WidthMismatch(Op::kSwap);
     const Ref r = Emit(Op::kSwap, type, address, value, kNoRef, attr, 0u);
-    NoteMemorySlots(m);
+    NoteAccess(m);
     return r;
 }
 
@@ -38,7 +38,6 @@ void MemoryBuild::TransferWords(uint32_t attr, uint32_t list) {
                       static_cast<uint16_t>(list), attr, 0u, 0u);
     }
     lowering_.EmitTransferWords(attr, list);
-    if (!record_) return;
     if (!w.store) {
         for (uint32_t k = 0; k < w.count; ++k) NoteSlotWrite(w.slot[k], 4u);
     }

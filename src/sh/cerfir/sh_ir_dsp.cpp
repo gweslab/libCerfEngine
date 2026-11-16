@@ -46,7 +46,7 @@ void WriteLoaded(ShIrContext& c, const XyLoad& load) {
 }
 
 void CallParallelHelper(ShIrContext& c, uint32_t field_a) {
-    c.b->CallConst(ShIrHostCallConst(reinterpret_cast<const void*>(&ShDspUnit::ParallelHelper), c.d->guest_address),
+    c.b->CallConst(ShIrHostCallConst(reinterpret_cast<const void*>(&ShDspUnit::ParallelHelper)),
                    3u, cerfir::CallHostAddress(c.dsp), (field_a << 16) | c.d->raw_b,
                    ShDspPackOperation(ShDspDecodeOperation(c.d->raw_b)), 0u);
 }
@@ -90,8 +90,7 @@ void ShIrTranslateDspTransfer(ShIrContext& c) {
     const XyLoad   x       = Transfer(c, field_a, true);
     const XyLoad   y       = Transfer(c, field_a, false);
     if (ShDspUpdatesPointer(ShDspXMode(field_a)) || ShDspUpdatesPointer(ShDspYMode(field_a))) {
-        c.b->CallConst(ShIrHostCallConst(reinterpret_cast<const void*>(&ShDspUnit::TransferHelper),
-                                         c.d->guest_address),
+        c.b->CallConst(ShIrHostCallConst(reinterpret_cast<const void*>(&ShDspUnit::TransferHelper)),
                        2u, cerfir::CallHostAddress(c.dsp), field_a, 0u, 0u);
     }
     WriteLoaded(c, x);
@@ -109,6 +108,11 @@ void ShIrTranslateDspParallel(ShIrContext& c) {
     CallParallelHelper(c, field_a);
     WriteLoaded(c, x);
     WriteLoaded(c, y);
+}
+
+void ShIrTranslateDspRepeatControl(ShIrContext& c) {
+    c.b->CallConst(ShIrHostCallConst(reinterpret_cast<const void*>(&ShDspUnit::RepeatControlHelper)),
+                   3u, cerfir::CallHostAddress(c.dsp), c.d->raw, c.d->guest_address, 0u);
 }
 
 void ShIrTranslateDspSingleTransfer(ShIrContext& c) {

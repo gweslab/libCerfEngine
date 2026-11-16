@@ -26,8 +26,9 @@ void MipsInsnDecoder::OnReady() {
                        cfg.isa_level == cerfengine::MipsIsaLevel::kMips4,
                        cfg.vr41xx_power_modes,
                        has_64bit, has_eret, has_rfe, cfg.mips16,
-                       cfg.tx39_multiply_add, cfg.cop1_cop2_unusable);
-    m16_decoder_.Configure(has_64bit);
+                       cfg.tx39_multiply_add, cfg.macc_dmacc, cfg.madd16_dmadd16,
+                       cfg.cop1_cop2_unusable);
+    m16_decoder_.Configure(has_64bit, cfg.mips16_syscall);
 }
 
 CERFENGINE_NOINLINE bool MipsInsnDecoder::FetchPageOf(MipsBlockContext* ctx, uint32_t va,

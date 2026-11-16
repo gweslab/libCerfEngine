@@ -32,6 +32,12 @@ void CERFENGINE_CDECL ShDspUnit::TransferHelper(ShDspUnit* unit, uint32_t field_
     unit->UpdatePointer(field_a, false);
 }
 
+void CERFENGINE_CDECL ShDspUnit::RepeatControlHelper(ShDspUnit* unit, uint32_t code, uint32_t guest_pc) {
+    unit->engine_.Halt(HaltReason::kUnimplemented,
+                       "ShDspUnit: repeat control instruction 0x%04X at PC 0x%08X with SR.DSP set is not modeled", code,
+                       guest_pc);
+}
+
 uint32_t ShDspUnit::NextPointer(uint32_t pointer, ShDspAddressing mode, bool x) const {
     const uint32_t modulo_bits = state_->sr & (kShSrDmx | kShSrDmy);
     const bool     modulo      = x ? modulo_bits == kShSrDmx : (modulo_bits & kShSrDmy) != 0u;

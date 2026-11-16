@@ -17,7 +17,10 @@ enum class Mips16DecodeKind {
    mips16e_translate.c.inc decode_ase_mips16e / decode_extended_mips16_opc. */
 class Mips16Decoder {
 public:
-    void Configure(bool has_64bit) { has_64bit_ = has_64bit; }
+    void Configure(bool has_64bit, bool has_syscall) {
+        has_64bit_   = has_64bit;
+        has_syscall_ = has_syscall;
+    }
 
     /* EXTEND (op 11110) and JAL/JALX (op 00011) are 32 bits and may cross a
        word boundary (U15509EJ2V0UM 3.6 p59, Table 3-5 p64). */
@@ -64,7 +67,8 @@ private:
         return static_cast<uint32_t>(static_cast<int32_t>(v << sh) >> sh);
     }
 
-    bool has_64bit_ = false;
+    bool has_64bit_   = false;
+    bool has_syscall_ = false;
 };
 
 }

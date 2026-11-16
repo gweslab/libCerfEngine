@@ -98,6 +98,11 @@ void MipsExceptionDelivery::RaiseCoprocessorUnusable(uint32_t unit) {
     Unwind();
 }
 
+void MipsExceptionDelivery::RaiseReservedInstruction() {
+    EnterException(MipsExcCode::kRI, false);
+    Unwind();
+}
+
 void MipsExceptionDelivery::LeaveBlock() {
     Unwind();
 }
@@ -139,6 +144,10 @@ void CERFENGINE_FASTCALL MipsExceptionDelivery::Cop0UsableHelper(MipsExceptionDe
 void CERFENGINE_FASTCALL MipsExceptionDelivery::CopUnusableHelper(MipsExceptionDelivery* ex,
                                                                   uint32_t unit) {
     ex->RaiseCoprocessorUnusable(unit);
+}
+
+void CERFENGINE_FASTCALL MipsExceptionDelivery::ReservedInstructionHelper(MipsExceptionDelivery* ex) {
+    ex->RaiseReservedInstruction();
 }
 
 void CERFENGINE_CDECL MipsExceptionDelivery::ArithOverflowHelper(MipsExceptionDelivery* ex,

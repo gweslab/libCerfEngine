@@ -125,6 +125,7 @@ public:
     uint32_t ResetRequests() const { return reset_requests_; }
     uint32_t RebootRequests() const { return reboot_requests_; }
     uint32_t ResetsDelivered() const { return resets_delivered_; }
+    uint32_t CpuResets() const { return cpu_resets_; }
 
     void OnResetRequested(bool) override {
         if (!accept_resets_) TestFail("the guest requested a reset");
@@ -135,6 +136,7 @@ public:
         ++reboot_requests_;
     }
     void OnResetDelivered() override { ++resets_delivered_; }
+    void OnCpuReset() override { ++cpu_resets_; }
     void OnPowerDownRequest() override { TestFail("the guest requested power down"); }
     void OnBlockCompiled(const cerfengine::BlockCompileStats& stats) override {
         ++blocks_compiled_;
@@ -335,4 +337,5 @@ private:
     uint32_t              reset_requests_   = 0;
     uint32_t              reboot_requests_  = 0;
     uint32_t              resets_delivered_ = 0;
+    uint32_t              cpu_resets_       = 0;
 };

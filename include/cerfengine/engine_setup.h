@@ -8,6 +8,7 @@
 #include "mips/mips_system_host.h"
 #include "mmio_bus_host.h"
 #include "physical_memory_host.h"
+#include "sh/sh_on_chip_code_host.h"
 
 namespace cerfengine {
 
@@ -56,7 +57,10 @@ struct MipsFeatures {
     bool fpu                = false;
     bool llsc               = false;
     bool mips16             = false;
+    bool mips16_syscall     = false;
     bool tx39_multiply_add  = false;
+    bool macc_dmacc         = false;
+    bool madd16_dmadd16     = false;
     bool vr41xx_power_modes = false;
     bool cop1_cop2_unusable = false;
     uint32_t device_ip_mask = 0;
@@ -84,6 +88,7 @@ struct Setup {
     MipsTlbHooks          mips_tlb;
     MipsExceptionHooks    mips_exception;
     MipsSystemHost*       mips_system     = nullptr;
+    ShOnChipCodeHost*     sh_on_chip_code = nullptr;
 };
 
 }

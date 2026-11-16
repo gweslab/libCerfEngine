@@ -223,13 +223,20 @@ void RunConfig(const Config& cfg) {
 
 int main(int argc, char**) {
     g_trace = argc > 1;
+    Config vr4102{"vr4102", {}, 10u, 3000u, 5u};
+    vr4102.features.isa_level          = cerfengine::MipsIsaLevel::kMips3;
+    vr4102.features.vr41xx_power_modes = true;
+    vr4102.features.madd16_dmadd16     = true;
+    vr4102.features.phys_addr_mask     = 0x1FFFFFFFu;
     Config vr4121{"vr4121", {}, 10u, 3000u, 1u};
     vr4121.features.isa_level          = cerfengine::MipsIsaLevel::kMips3;
     vr4121.features.vr41xx_power_modes = true;
+    vr4121.features.macc_dmacc         = true;
     vr4121.features.phys_addr_mask     = 0x1FFFFFFFu;
     Config vr4122                      = vr4121;
     vr4122.name                        = "vr4122";
     vr4122.features.mips16             = true;
+    vr4122.features.mips16_syscall     = true;
     vr4122.programs                    = 5000u;
     vr4122.seed                        = 2u;
     Config tx39{"tx39", {}, 12u, 3000u, 3u};
@@ -238,6 +245,7 @@ int main(int argc, char**) {
     vr5500.features.isa_level = cerfengine::MipsIsaLevel::kMips4;
     vr5500.features.fpu       = true;
     vr5500.features.llsc      = true;
+    RunConfig(vr4102);
     RunConfig(vr4121);
     RunConfig(vr4122);
     RunConfig(tx39);

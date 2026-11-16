@@ -262,6 +262,7 @@ Mips16DecodeKind Mips16Decoder::DecodeRr(uint16_t hw0, MipsDecodedInsn* d,
             *synth = R(0, ry, ry, rxf == 0 ? 8u : rxf, MipsSpecial::kDSRL);
             return Mips16DecodeKind::kSynth;
         case 0x09:  /* syscall (Table 3-6 row 01 col 001; p83) */
+            if (!has_syscall_) return Mips16DecodeKind::kReserved;
             *synth = MipsSpecial::kSYSCALL;
             return Mips16DecodeKind::kSynth;
         case 0x0A:

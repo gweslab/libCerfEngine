@@ -11,10 +11,6 @@ using cerfengine::ShCpuState;
 using cerfengine::ShResetKind;
 using cerfengine::ShTranslation;
 
-constexpr uint32_t kResetPc            = 0xA0000000u;
-constexpr uint32_t kResetSr            = 0x700000F0u;
-constexpr uint32_t kPowerOnResetExpevt = 0x000u;
-constexpr uint32_t kManualResetExpevt  = 0x020u;
 constexpr uint32_t kMappedVa           = 0x00400000u;
 constexpr uint32_t kImask5             = 5u << cerfengine::kShSrImaskShift;
 constexpr uint32_t kSrAwake            = cerfengine::kShSrMd | cerfengine::kShSrRb | kImask5;
@@ -81,8 +77,8 @@ private:
         const uint32_t delivered = rig_.Host().ResetsDelivered();
         rig_.Step(1u, what);
         const ShCpuState& s = rig_.State();
-        ShRigExpect(mode_, what, "PC", s.pc, kResetPc);
-        ShRigExpect(mode_, what, "SR", s.sr, kResetSr);
+        ShRigExpect(mode_, what, "PC", s.pc, kShRigResetPc);
+        ShRigExpect(mode_, what, "SR", s.sr, kShRigResetSr);
         ShRigExpect(mode_, what, "VBR", s.vbr, 0u);
         ShRigExpect(mode_, what, "EXPEVT", s.expevt, expevt);
         ShRigExpect(mode_, what, "sleeping", s.sleeping, cerfengine::kShSleepNone);
@@ -118,37 +114,37 @@ private:
     void ManualResetKeepsTheTlb() {
         const char* what = "a manual reset";
         LoadMapping(what);
-        Reset(ShResetKind::kManual, what, kManualResetExpevt);
+        Reset(ShResetKind::kManual, what, kShRigManualResetExpevt);
         ShRigExpect(mode_, what, "mapped after the reset", Mapped() ? 1u : 0u, 1u);
     }
 
     void PowerOnResetClearsTheTlb() {
         const char* what = "a power-on reset";
         LoadMapping(what);
-        Reset(ShResetKind::kPowerOn, what, kPowerOnResetExpevt);
+        Reset(ShResetKind::kPowerOn, what, kShRigPowerOnResetExpevt);
         ShRigExpect(mode_, what, "mapped after the reset", Mapped() ? 1u : 0u, 0u);
     }
 
     void ResetKindFallsBackToPowerOn() {
         const char* what = "a reset request that names no kind after a manual reset";
         StartAwake(0u, what);
-        Reset(ShResetKind::kManual, what, kManualResetExpevt);
+        Reset(ShResetKind::kManual, what, kShRigManualResetExpevt);
         const uint32_t requests = rig_.Host().ResetRequests();
         rig_.Guest().SetResetPending(false);
         ExpectRequested(what, requests + 1u, rig_.Host().ResetsDelivered());
-        DeliverAndExpect(what, kPowerOnResetExpevt);
+        DeliverAndExpect(what, kShRigPowerOnResetExpevt);
     }
 
     void PendingInterruptWaitsForTheReset() {
         const char* what = "a reset with an interrupt above the mask pending";
         StartAwake(kAboveMask, what);
-        Reset(ShResetKind::kManual, what, kManualResetExpevt);
+        Reset(ShResetKind::kManual, what, kShRigManualResetExpevt);
     }
 
     void ResetEndsSleep() {
         const char* what = "a reset requested while the CPU sleeps";
         StartAsleep(what);
-        Reset(ShResetKind::kManual, what, kManualResetExpevt);
+        Reset(ShResetKind::kManual, what, kShRigManualResetExpevt);
     }
 
     void ResetPostedInsideTheSleepWait() {
@@ -161,7 +157,7 @@ private:
         rig_.StepWithoutHostExit(what);
         ShRigExpect(mode_, what, "sleeping after the wait", rig_.State().sleeping, cerfengine::kShSleepMode);
         ExpectRequested(what, requests + 1u, delivered);
-        DeliverAndExpect(what, kManualResetExpevt);
+        DeliverAndExpect(what, kShRigManualResetExpevt);
     }
 
     ShIrRig        rig_;

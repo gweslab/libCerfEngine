@@ -20,11 +20,9 @@ uint64_t SignedImm64(const MipsDecodedInsn& d) {
 }
 
 void RaiseOverflow(MipsIrContext& c) {
-    const bool stored = c.pc_stored;
     MipsIrCdeclConst(c, reinterpret_cast<const void*>(&MipsExceptionDelivery::ArithOverflowHelper),
                      2u, cerfir::CallHostAddress(c.block->emit->Exceptions()), c.d->guest_address,
                      0u);
-    c.pc_stored = stored;
 }
 
 Ref Rhs32(MipsIrContext& c, bool imm) {

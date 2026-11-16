@@ -40,6 +40,8 @@ namespace MipsStatusBit {
     constexpr uint32_t kFR  = 26;
     constexpr uint32_t kBEV = 22;
     constexpr uint32_t kIM  = 8;
+    constexpr uint32_t kSX  = 6;
+    constexpr uint32_t kUX  = 5;
     constexpr uint32_t kKSU = 3;
     constexpr uint32_t kERL = 2;
     constexpr uint32_t kEXL = 1;

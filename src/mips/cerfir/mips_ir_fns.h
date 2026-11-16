@@ -11,9 +11,21 @@ namespace cerfengine {
 
 using MipsIrTranslateFn = void (*)(MipsIrContext& c);
 
-extern const std::array<MipsIrTranslateFn, kMipsInsnKindCount> kMipsIrTranslateTable;
+enum class MipsUnprivilegedCheck : uint8_t {
+    kNone,
+    kCop0Usable,
+    kWide64Enabled,
+    kCop0UsableWide64Enabled,
+};
 
-inline MipsIrTranslateFn MipsIrTranslateFnFor(MipsInsnKind kind) {
+struct MipsIrTranslation {
+    MipsIrTranslateFn     fn;
+    MipsUnprivilegedCheck check;
+};
+
+extern const std::array<MipsIrTranslation, kMipsInsnKindCount> kMipsIrTranslateTable;
+
+inline const MipsIrTranslation& MipsIrTranslationFor(MipsInsnKind kind) {
     return kMipsIrTranslateTable[static_cast<size_t>(kind)];
 }
 
@@ -75,6 +87,10 @@ void MipsIrDdiv(MipsIrContext& c);
 void MipsIrDdivu(MipsIrContext& c);
 void MipsIrMadd(MipsIrContext& c);
 void MipsIrMaddu(MipsIrContext& c);
+void MipsIrMacc(MipsIrContext& c);
+void MipsIrDmacc(MipsIrContext& c);
+void MipsIrMadd16(MipsIrContext& c);
+void MipsIrDmadd16(MipsIrContext& c);
 void MipsIrMfhi(MipsIrContext& c);
 void MipsIrMflo(MipsIrContext& c);
 void MipsIrMthi(MipsIrContext& c);

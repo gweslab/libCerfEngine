@@ -72,6 +72,7 @@ uint32_t CERFENGINE_FASTCALL ArmExceptionFrame::RfeHelper(uint32_t           rn_
                     " - RFE from non-RAM or aborted load not supported", address + 4u);
     }
     const uint32_t new_cpsr = le::U32(host_cpsr_ptr);
+    const ArmPsrFull psr    = frame->cpu_->PrepareExceptionReturn(new_cpsr);
 
     /* ddi0406c B9.3.13 Operation (p. B9-2001): "if wback then R[n] = ..."
        precedes "CPSRWriteByInstr(spsr_value, '1111', TRUE)". */
@@ -82,8 +83,7 @@ uint32_t CERFENGINE_FASTCALL ArmExceptionFrame::RfeHelper(uint32_t           rn_
     /* ddi0406c B9.3.13 Operation (p. B9-2001):
          CPSRWriteByInstr(spsr_value, '1111', TRUE);
          ... else BranchWritePC(new_pc_value); */
-    state->gprs[ArmGpr::kR15] =
-        frame->cpu_->ReturnFromException(new_cpsr, new_pc);
+    state->gprs[ArmGpr::kR15] = frame->cpu_->CompleteExceptionReturn(psr, new_pc);
     return 0u;
 }
 

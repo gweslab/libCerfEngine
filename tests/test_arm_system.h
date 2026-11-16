@@ -53,6 +53,8 @@ public:
 
     void SetPagesGlobal(bool global) { pages_global_ = global; }
 
+    void ThrowOnWalkOf(uint32_t page) { throw_page_ = page; }
+
     void RemapPage(uint32_t va_page, uint32_t pa_page) {
         remap_va_ = va_page;
         remap_pa_ = pa_page;
@@ -60,6 +62,7 @@ public:
 
     cerfengine::ArmTranslation Walk(uint32_t mva, bool write, bool user) {
         if (!walk_enabled_) TestUnexpectedWalk(mva);
+        if ((mva & ~0xFFFu) == throw_page_) ThrowFromHost(mva);
         cerfengine::ArmTranslation t;
         if (mva - hole_base_ < hole_size_ || (user && mva - privileged_base_ < privileged_size_)) {
             ++walk_faults_;
@@ -102,6 +105,7 @@ private:
     uint32_t privileged_size_        = 0;
     bool     pages_global_           = true;
     uint32_t remap_va_               = 0xFFFFFFFFu;
+    uint32_t throw_page_             = 0xFFFFFFFFu;
     uint32_t remap_pa_               = 0;
     uint32_t walk_faults_            = 0;
     uint32_t last_walk_fault_va_     = 0;

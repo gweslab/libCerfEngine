@@ -41,6 +41,7 @@ public:
         }
         last_terminal_ = false;
         lowering_.EmitSetSlotConst(offset, value, false);
+        NoteSlotWrite(static_cast<int32_t>(offset), 4u);
     }
 
     CERFENGINE_FORCEINLINE void SetSlotSextConst(uint32_t offset, uint32_t value) {
@@ -50,6 +51,7 @@ public:
         }
         last_terminal_ = false;
         lowering_.EmitSetSlotConst(offset, value, true);
+        NoteSlotWrite(static_cast<int32_t>(offset), 8u);
     }
 
     CERFENGINE_FORCEINLINE Ref Compute(Op op, Ref a, Ref b, Ref c, uint8_t want, FlagSet* flags) {
@@ -109,7 +111,10 @@ public:
         const bool identity = op == Op::kAnd ? imm == 0xFFFFFFFFu : imm == 0u;
         if (!record_ && !identity) {
             last_terminal_ = false;
-            if (lowering_.EmitSlotImm(op, a_disp, imm, dest, sext)) return;
+            if (lowering_.EmitSlotImm(op, a_disp, imm, dest, sext)) {
+                NoteSlotWrite(static_cast<int32_t>(dest), sext ? 8u : 4u);
+                return;
+            }
         }
         if (sext) ComputeSlotInto<true>(op, a_disp, Const32(imm), 0u, dest);
         else      ComputeSlotInto<false>(op, a_disp, Const32(imm), 0u, dest);
@@ -119,6 +124,7 @@ public:
         if (!record_ &&
             lowering_.EmitShiftedSlotAlu(op, a_disp, b_disp, shift, amount, store, dest)) {
             last_terminal_ = false;
+            if (dest != kNoDest) NoteSlotWrite(static_cast<int32_t>(dest), 4u);
             return;
         }
         const Ref shifted = ComputeInto(shift, ReadSlot(b_disp), Const32(amount), kNoRef, 0u, kNoDest);
@@ -132,6 +138,7 @@ public:
         }
         last_terminal_ = false;
         lowering_.EmitSlotCopy32(dest, src, sext);
+        NoteSlotWrite(static_cast<int32_t>(dest), sext ? 8u : 4u);
     }
     CERFENGINE_FORCEINLINE void SlotCopy64(uint32_t dest, uint32_t src) {
         if (record_) {
@@ -141,6 +148,7 @@ public:
         }
         last_terminal_ = false;
         lowering_.EmitSlotCopy64(dest, src);
+        NoteSlotWrite(static_cast<int32_t>(dest), 8u);
     }
     CERFENGINE_FORCEINLINE void SlotSlotInto(Op op, uint32_t a_disp, uint32_t b_disp,
                                              uint32_t dest, bool sext) {
@@ -151,6 +159,7 @@ public:
         }
         last_terminal_ = false;
         lowering_.EmitSlotSlot(op, a_disp, b_disp, dest, sext);
+        NoteSlotWrite(static_cast<int32_t>(dest), sext ? 8u : 4u);
     }
     CERFENGINE_FORCEINLINE void SlotImmFlags(Op op, uint32_t a_disp, uint32_t imm, uint8_t store,
                                              uint32_t dest) {
@@ -160,6 +169,7 @@ public:
         }
         last_terminal_ = false;
         lowering_.EmitSlotImmFlags(op, a_disp, imm, store, dest);
+        if (dest != kNoDest) NoteSlotWrite(static_cast<int32_t>(dest), 4u);
     }
     CERFENGINE_FORCEINLINE void SlotSlotFlags(Op op, uint32_t a_disp, uint32_t b_disp, uint8_t store,
                                               uint32_t dest) {
@@ -169,6 +179,7 @@ public:
         }
         last_terminal_ = false;
         lowering_.EmitSlotSlotFlags(op, a_disp, b_disp, store, dest);
+        if (dest != kNoDest) NoteSlotWrite(static_cast<int32_t>(dest), 4u);
     }
     CERFENGINE_FORCEINLINE Ref Pair(Ref lo, Ref hi) {
         if (IsConstRef(lo) && IsConstRef(hi)) {
@@ -202,6 +213,7 @@ public:
 
     uint32_t NewLabel() { return block_.NewLabel(); }
     CERFENGINE_FORCEINLINE void Label(uint32_t label) {
+        JoinCallPc(label);
         cycle_site_    = nullptr;
         last_terminal_ = false;
         Record(Op::kLabel, Type::kVoid, kNoRef, kNoRef, label, 0u);
@@ -213,12 +225,14 @@ public:
             Drop(cond);
             return;
         }
+        NoteBranchCallPc(label);
         cycle_site_    = nullptr;
         last_terminal_ = false;
         Record(if_true ? Op::kBranchIf : Op::kBranchIfNot, Type::kVoid, cond, kNoRef, label, 0u);
         lowering_.EmitBranch(cond, label, if_true);
     }
     CERFENGINE_FORCEINLINE void BranchSlots(const SlotTest& test, uint32_t label) {
+        NoteBranchCallPc(label);
         cycle_site_    = nullptr;
         last_terminal_ = false;
         if (record_) {
@@ -235,53 +249,64 @@ public:
         }
         last_terminal_ = false;
         lowering_.EmitSetSlotTest(test, dest);
+        NoteSlotWrite(static_cast<int32_t>(dest), 4u);
     }
 
     struct Guard {
         uint8_t* site;
         uint32_t label;
+        bool     pc_stored;
     };
     CERFENGINE_FORCEINLINE Guard GuardBranch(const SlotTest& test) {
         if (record_) {
             const uint32_t label = NewLabel();
             BranchSlots(test, label);
-            return Guard{nullptr, label};
+            return Guard{nullptr, label, false};
         }
         cycle_site_    = nullptr;
         last_terminal_ = false;
-        return Guard{lowering_.EmitGuardBranch(test), 0u};
+        return Guard{lowering_.EmitGuardBranch(test), 0u, call_pc_stored_};
     }
     CERFENGINE_FORCEINLINE void GuardBind(const Guard& guard) {
         if (record_) {
             Label(guard.label);
             return;
         }
+        call_pc_stored_ = guard.pc_stored && (last_terminal_ || call_pc_stored_);
         cycle_site_    = nullptr;
         last_terminal_ = false;
         lowering_.EmitGuardBind(guard.site);
     }
 
+    CERFENGINE_FORCEINLINE void SetCallPc(uint32_t pc) {
+        call_pc_          = pc;
+        call_pc_set_      = true;
+        call_pc_stored_   = false;
+        pc_branch_stored_ = 0u;
+    }
+
     Ref  Call(const CallDesc& call, Type result, Ref a, Ref b, Ref c);
-    CERFENGINE_FORCEINLINE Ref Call(const CallSpec& spec, Ref a, Ref b, Ref c) {
-        const uint8_t num_args = c != kNoRef ? 3u : (b != kNoRef ? 2u : (a != kNoRef ? 1u : 0u));
+    CERFENGINE_FORCEINLINE Ref Call(const CallSpec& requested, Ref a, Ref b, Ref c) {
+        const CallSpec spec     = WithCallPc(requested);
+        const uint8_t  num_args = c != kNoRef ? 3u : (b != kNoRef ? 2u : (a != kNoRef ? 1u : 0u));
         if ((num_args >= 2u && a == kNoRef) || (num_args == 3u && b == kNoRef) ||
             (spec.store_pc && block_.PcSlot() == kNoSlot)) {
             CallShapeFault();
         }
         if (DirectCallShape(spec.result, a, b, c)) {
             DirectCall(spec.fn, spec.conv, num_args, a, b, c, nullptr, 0u, spec.store_pc, spec.pc);
+            NoteCallPcStore(spec.store_pc, spec.pc);
             return kNoRef;
         }
         CallDesc& d = block_.NewCall(spec.fn, spec.conv, num_args, 0u);
-        if (spec.store_pc) {
-            d.store_pc = true;
-            d.pc       = spec.pc;
-            NoteSlotWrite(block_.PcSlot(), 4u);
-        }
+        d.store_pc  = spec.store_pc;
+        d.pc        = spec.pc;
+        NoteCallPcStore(spec.store_pc, spec.pc);
         return Emit(Op::kCallHelper, spec.result, a, b, c, block_.CallCount() - 1u, 0u);
     }
-    CERFENGINE_FORCEINLINE void CallConst(const CallSpec& spec, uint32_t num_args, CallArg a0,
+    CERFENGINE_FORCEINLINE void CallConst(const CallSpec& requested, uint32_t num_args, CallArg a0,
                                           CallArg a1, CallArg a2, CallArg a3) {
+        const CallSpec spec = WithCallPc(requested);
         if (spec.result != Type::kVoid || num_args > kMaxConstCallArgs ||
             (spec.store_pc && block_.PcSlot() == kNoSlot) || AnyHostWord(a0, a1, a2, a3)) {
             ConstCallFault();
@@ -293,6 +318,7 @@ public:
         cycle_site_    = nullptr;
         last_terminal_ = false;
         lowering_.EmitCallConst(spec, num_args, a0, a1, a2, a3);
+        NoteCallPcStore(spec.store_pc, spec.pc);
     }
     Ref  HostLoad(const void* address, uint8_t width, bool sign_extend);
     void HostStore(const void* address, Ref value, uint8_t width);
@@ -325,6 +351,38 @@ public:
     }
 
 private:
+    template <class CallShape>
+    CERFENGINE_FORCEINLINE CallShape WithCallPc(CallShape call) const {
+        if (call_pc_set_ && !call_pc_stored_ && !call.store_pc) {
+            call.store_pc = true;
+            call.pc       = call_pc_;
+        }
+        return call;
+    }
+
+    CERFENGINE_FORCEINLINE void NoteBranchCallPc(uint32_t label) {
+        if (label >= 64u) return;
+        const uint64_t bit = uint64_t{1} << label;
+        if ((pc_branch_seen_ & bit) == 0u) {
+            pc_branch_seen_ |= bit;
+            if (call_pc_stored_) pc_branch_stored_ |= bit;
+            else                 pc_branch_stored_ &= ~bit;
+        } else if (!call_pc_stored_) {
+            pc_branch_stored_ &= ~bit;
+        }
+    }
+    CERFENGINE_FORCEINLINE void JoinCallPc(uint32_t label) {
+        bool reached = !last_terminal_;
+        bool stored  = last_terminal_ || call_pc_stored_;
+        if (label >= 64u) {
+            stored = false;
+        } else if ((pc_branch_seen_ & (uint64_t{1} << label)) != 0u) {
+            reached = true;
+            stored  = stored && (pc_branch_stored_ & (uint64_t{1} << label)) != 0u;
+        }
+        call_pc_stored_ = reached && stored;
+    }
+
     CERFENGINE_FORCEINLINE bool DirectCallShape(Type result, Ref a, Ref b, Ref c) const {
         return !record_ && result == Type::kVoid && !IsValueRef(a) && !IsValueRef(b) &&
                !IsValueRef(c);

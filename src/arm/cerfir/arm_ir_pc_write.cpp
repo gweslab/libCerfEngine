@@ -20,6 +20,14 @@ void BranchWritePc(ArmIrContext& c, Ref address) {
     ArmIrWriteGpr(c, ArmGpr::kR15, b.Op2(Op::kAnd, address, b.Const32(mask)));
 }
 
+void ExceptionReturnCall(ArmIrContext& c, const cerfir::CallDesc& ret, Ref address, Ref writeback) {
+    cerfir::Builder& b      = *c.b;
+    const Ref        new_pc = b.Call(ret, cerfir::Type::kI32, b.ConstPtr(c.block->emit->Cpu()), address,
+                                     writeback);
+    ArmIrWriteGpr(c, ArmGpr::kR15, new_pc);
+    ArmIrFinishPcWrite(c);
+}
+
 }
 
 /* BXWritePC (DDI 0406C A2.3.2, p. A2-47): bit0==1 -> Thumb at
@@ -85,13 +93,17 @@ void ArmIrAluWritePc(ArmIrContext& c, Ref address) {
 /* B9.3.20 (p. B9-2013): CPSRWriteByInstr(SPSR[], '1111', TRUE), then
    BranchWritePC(result). */
 void ArmIrExceptionReturn(ArmIrContext& c, Ref address) {
-    cerfir::Builder&       b = *c.b;
     const cerfir::CallDesc ret{reinterpret_cast<const void*>(&ArmCpu::ExceptionReturnHelper),
                                cerfir::CallConv::kCdecl, 2u};
-    const Ref new_pc = b.Call(ret, cerfir::Type::kI32, b.ConstPtr(c.block->emit->Cpu()), address,
-                              cerfir::kNoRef);
-    ArmIrWriteGpr(c, ArmGpr::kR15, new_pc);
-    ArmIrFinishPcWrite(c);
+    ExceptionReturnCall(c, ret, address, cerfir::kNoRef);
+}
+
+void ArmIrExceptionReturnWriteback(ArmIrContext& c, Ref address, uint32_t rn, Ref writeback) {
+    cerfir::CallDesc ret{reinterpret_cast<const void*>(&ArmCpu::ExceptionReturnWritebackHelper),
+                         cerfir::CallConv::kCdecl, 3u};
+    ret.num_extra = 1u;
+    ret.extra[0]  = rn;
+    ExceptionReturnCall(c, ret, address, writeback);
 }
 
 /* B9.3.20 (p. B9-2013): UNPREDICTABLE in User and System mode. */

@@ -32,6 +32,7 @@ void ArmIrFinishPcWrite(ArmIrContext& c);
 void ArmIrLoadWritePc(ArmIrContext& c, cerfir::Ref address);
 void ArmIrAluWritePc(ArmIrContext& c, cerfir::Ref address);
 void ArmIrExceptionReturn(ArmIrContext& c, cerfir::Ref address);
+void ArmIrExceptionReturnWriteback(ArmIrContext& c, cerfir::Ref address, uint32_t rn, cerfir::Ref writeback);
 void ArmIrSpsrModeGuard(ArmIrContext& c, uint32_t system_label = kArmIrNoLabel);
 void ArmIrSingleDataTransfer(ArmIrContext& c);
 void ArmIrLoadStoreExtension(ArmIrContext& c);

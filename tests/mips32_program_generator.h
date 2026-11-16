@@ -27,6 +27,8 @@ public:
           wide_(f.isa_level != cerfengine::MipsIsaLevel::kMips1),
           movz_(f.isa_level == cerfengine::MipsIsaLevel::kMips4),
           madd_(f.tx39_multiply_add),
+          macc_(f.macc_dmacc),
+          madd16_(f.madd16_dmadd16),
           power_(f.vr41xx_power_modes),
           mips16_(f.mips16),
           llsc_fpu_(f.llsc || f.fpu) {}
@@ -141,7 +143,7 @@ private:
         static constexpr uint32_t kNarrow[] = {S::kMULT, S::kMULTU, S::kDIV, S::kDIVU};
         static constexpr uint32_t kWide[]   = {S::kDMULT, S::kDMULTU, S::kDDIV, S::kDDIVU};
         static constexpr uint32_t kMove[]   = {S::kMFHI, S::kMFLO, S::kMTHI, S::kMTLO};
-        switch (Pick(madd_ ? 4u : 3u)) {
+        switch (Pick(madd_ || macc_ || madd16_ ? 4u : 3u)) {
         case 0u: {
             const bool     wide  = wide_ && Pick(3u) == 0u;
             const uint32_t rs    = Src();
@@ -159,6 +161,19 @@ private:
             const uint32_t rs    = Src();
             const uint32_t rt    = Src();
             const uint32_t rd    = Dest();
+            if (macc_) {
+                const uint32_t sat     = Pick(2u);
+                const uint32_t hi      = Pick(2u);
+                const uint32_t us      = Pick(2u);
+                const uint32_t options = Pick(16u) == 0u ? Pick(32u) : (sat << 4) | (hi << 3) | us;
+                const uint32_t funct   = Pick(2u) == 0u ? S::kMACC : S::kDMACC;
+                return MipsGenR(rs, rt, rd, options, funct);
+            }
+            if (madd16_) {
+                const bool     reserved = Pick(16u) == 0u;
+                const uint32_t funct    = Pick(2u) == 0u ? S::kMADD16 : S::kDMADD16;
+                return MipsGenR(rs, rt, reserved ? rd : 0u, reserved ? Pick(32u) : 0u, funct);
+            }
             const uint32_t funct = Pick(2u);
             return (cerfengine::MipsOp::kSPECIAL2 << 26) | MipsGenR(rs, rt, rd, 0u, funct);
         }
@@ -340,6 +355,8 @@ private:
     const bool            wide_;
     const bool            movz_;
     const bool            madd_;
+    const bool            macc_;
+    const bool            madd16_;
     const bool            power_;
     const bool            mips16_;
     const bool            llsc_fpu_;

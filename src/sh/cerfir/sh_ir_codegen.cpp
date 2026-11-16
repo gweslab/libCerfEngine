@@ -11,7 +11,6 @@
 #include <cerfengine/sh/sh_mmu.h>
 #include "../../cerfir/cerfir_builder.h"
 #include "../../cerfir/cerfir_verify.h"
-#include "../../host_platform.h"
 #include "../sh_memory_access.h"
 #include "sh_ir_fns.h"
 
@@ -83,6 +82,8 @@ constexpr Translator kTranslators[] = {
     &ShIrTranslateDspTransfer,
     &ShIrTranslateDspParallel,
     &ShIrTranslateDspSingleTransfer,
+    &ShIrTranslateTrapa,
+    &ShIrTranslateDspRepeatControl,
 };
 
 static_assert(std::size(kTranslators) + 1u == static_cast<size_t>(ShInsnKind::kCount),
@@ -139,30 +140,25 @@ void CERFENGINE_CDECL ShIrCodegen::TraceDispatchPcHelper(ShIrCodegen* codegen, u
 }
 
 void ShIrCodegen::EmitPcHelperCall(cerfir::Builder& b, PcHelper helper, uint32_t guest_pc) {
-    b.CallConst(ShIrHostCallConst(reinterpret_cast<const void*>(helper), guest_pc), 2u, cerfir::CallHostAddress(this),
+    b.CallConst(ShIrHostCallConst(reinterpret_cast<const void*>(helper)), 2u, cerfir::CallHostAddress(this),
                 guest_pc, 0u, 0u);
-}
-
-void ShIrCodegen::RaiseIllegalInstruction(uint32_t expevt, uint32_t exception_pc) {
-    cpu_->RaiseException(expevt, kShVectorGeneral, exception_pc);
-    platform::RaiseUnwind(platform::kGuestUnwindCode);
 }
 
 template <uint32_t kExpevt>
 void CERFENGINE_CDECL ShIrCodegen::IllegalInstructionHelper(ShIrCodegen* codegen, uint32_t exception_pc) {
-    codegen->RaiseIllegalInstruction(kExpevt, exception_pc);
+    codegen->cpu_->RaiseGeneralException(kExpevt, exception_pc);
 }
 
 template <uint32_t kExpevt>
 void CERFENGINE_CDECL ShIrCodegen::DspModeCheckHelper(ShIrCodegen* codegen, uint32_t exception_pc) {
     if ((codegen->cpu_state_->sr & kShSrDsp) != 0u) return;
-    codegen->RaiseIllegalInstruction(kExpevt, exception_pc);
+    codegen->cpu_->RaiseGeneralException(kExpevt, exception_pc);
 }
 
 template <uint32_t kExpevt>
 void CERFENGINE_CDECL ShIrCodegen::PrivilegedModeCheckHelper(ShIrCodegen* codegen, uint32_t exception_pc) {
     if ((codegen->cpu_state_->sr & kShSrMd) != 0u) return;
-    codegen->RaiseIllegalInstruction(kExpevt, exception_pc);
+    codegen->cpu_->RaiseGeneralException(kExpevt, exception_pc);
 }
 
 void ShIrCodegen::TranslateBlock(const ShDecodedInsn* insns, uint32_t count) {
@@ -177,7 +173,8 @@ void ShIrCodegen::TranslateBlock(const ShDecodedInsn* insns, uint32_t count) {
         c.in_ldtlb_shadow            = shadow_last != kNoLdtlbShadow && index <= shadow_last;
         const bool     slot          = c.in_delay_slot;
         const bool     rte_slot      = slot && insns[index - 1u].kind == ShInsnKind::kRte;
-        const uint32_t exception_pc  = slot ? insns[index - 1u].guest_address : d.guest_address;
+        const uint32_t exception_pc  = ShIrRestartPc(c);
+        b.SetCallPc(exception_pc);
         if (traced && host_->HasPcTrace(d.guest_address)) {
             EmitPcHelperCall(b, &ShIrCodegen::TraceDispatchPcHelper, d.guest_address);
         }
@@ -219,7 +216,7 @@ void ShIrCodegen::TranslateBlock(const ShDecodedInsn* insns, uint32_t count) {
             return;
         }
         if (d.delayed_branch != 0u && d.kind != ShInsnKind::kBranchDelayed && insns[i + 1u].slot_illegal != 0u) {
-            if (d.kind == ShInsnKind::kRte) b.SetSlotConst(ShStateDisp(offsetof(ShCpuState, rte_slot)), 1u);
+            if (d.kind == ShInsnKind::kRte) ShIrRestoreSrFromSsr(c);
             ShIrLinkProcedure(c);
             c.in_delay_slot = true;
             begin(insns[i + 1u]);

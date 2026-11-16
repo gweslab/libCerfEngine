@@ -68,20 +68,17 @@ void ToCop0(MipsIrContext& c, bool is_dword) {
         const uint32_t ok   = b.NewLabel();
         const Ref      sext = b.Op2(Op::kAsr, MipsIrReadLo(c, d.rt), b.Const32(31u));
         b.Branch(b.Compare(Op::kCmpEq, MipsIrReadHi(c, d.rt), sext), ok, true);
-        const bool stored = c.pc_stored;
         MipsIrFastcall(c, reinterpret_cast<const void*>(&MipsCpu::Dmtc0WidthHelper),
                        Type::kVoid, b.ConstPtr(c.block->emit->Cpu()), b.Const32(d.rd));
-        c.pc_stored = stored;
         b.Label(ok);
     }
-    if (dec.zero_only != 0u) {
+    if (dec.fixed_mask != 0u) {
         const uint32_t ok   = b.NewLabel();
-        const Ref      bits = b.Op2(Op::kAnd, MipsIrReadLo(c, d.rt), b.Const32(dec.zero_only));
-        b.Branch(b.Compare(Op::kCmpEq, bits, b.Const32(0u)), ok, true);
-        const bool stored = c.pc_stored;
-        MipsIrFastcall(c, reinterpret_cast<const void*>(&MipsCpu::Mtc0ZeroOnlyHelper),
-                       Type::kVoid, b.ConstPtr(c.block->emit->Cpu()), b.Const32(d.rd));
-        c.pc_stored = stored;
+        const Ref      bits = b.Op2(Op::kAnd, MipsIrReadLo(c, d.rt), b.Const32(dec.fixed_mask));
+        b.Branch(b.Compare(Op::kCmpEq, bits, b.Const32(dec.fixed_value)), ok, true);
+        MipsIrFastcall(c, reinterpret_cast<const void*>(&MipsCpu::Mtc0FixedFieldsHelper),
+                       Type::kVoid, b.ConstPtr(c.block->emit->Cpu()), b.Const32(d.rd),
+                       MipsIrReadLo(c, d.rt));
         b.Label(ok);
     }
     MipsMmu* const mmu = c.block->emit->Mmu();
@@ -89,10 +86,8 @@ void ToCop0(MipsIrContext& c, bool is_dword) {
         const uint32_t clear = b.NewLabel();
         const Ref      erl   = b.Op2(Op::kAnd, MipsIrReadLo(c, d.rt), b.Const32(mmu->ErlMask()));
         b.Branch(b.Compare(Op::kCmpEq, erl, b.Const32(0u)), clear, true);
-        const bool stored = c.pc_stored;
         MipsIrFastcall(c, reinterpret_cast<const void*>(&MipsMmu::ErlSetHelper), Type::kVoid,
                        b.ConstPtr(mmu), kNoRef);
-        c.pc_stored = stored;
         b.Label(clear);
     }
     if (dec.write != nullptr) {

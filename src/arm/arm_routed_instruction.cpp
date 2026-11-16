@@ -327,6 +327,7 @@ ArmRoutedInstruction::Outcome ArmRoutedInstruction::BlockTransfer(
 
     uint32_t rn_word_addr = 0;
     bool     rn_word_seen = false;
+    uint32_t loaded_pc    = 0;
     for (uint32_t i = 0; i < 16u; ++i) {
         if (((list >> i) & 1u) == 0u) {
             continue;
@@ -343,7 +344,7 @@ ArmRoutedInstruction::Outcome ArmRoutedInstruction::BlockTransfer(
                 return Abort(d, do_wback, cpu_state_->gprs[d->rn] + delta);
             }
             if (i == ArmGpr::kR15) {
-                cpu_state_->gprs[ArmGpr::kR15] = value;
+                loaded_pc = value;
             } else if (user_regs) {
                 ArmCpu::WriteUserRegHelper(cpu_, i, value);
             } else {
@@ -365,33 +366,32 @@ ArmRoutedInstruction::Outcome ArmRoutedInstruction::BlockTransfer(
         address += 4u;
     }
 
-    if (rn_word_seen) {
-        uint32_t value = 0;
-        if (!access_->Load(pc, rn_word_addr, 4u, &value, false)) {
-            return Abort(d, do_wback, cpu_state_->gprs[d->rn] + delta);
-        }
-        if (user_regs) {
-            ArmCpu::WriteUserRegHelper(cpu_, d->rn, value);
-        } else {
-            cpu_state_->gprs[d->rn] = value;
-        }
+    uint32_t rn_value = 0;
+    if (rn_word_seen && !access_->Load(pc, rn_word_addr, 4u, &rn_value, false)) {
+        return Abort(d, do_wback, cpu_state_->gprs[d->rn] + delta);
     }
 
+    const ArmPsrFull return_psr = exc_return ? cpu_->PrepareSpsrReturn() : ArmPsrFull{};
+    if (rn_word_seen) {
+        if (user_regs) {
+            ArmCpu::WriteUserRegHelper(cpu_, d->rn, rn_value);
+        } else {
+            cpu_state_->gprs[d->rn] = rn_value;
+        }
+    }
     if (do_wback) {
         cpu_state_->gprs[d->rn] += delta;
     }
 
     if (load && pc_in_list) {
-        const uint32_t loaded = cpu_state_->gprs[ArmGpr::kR15];
         if (exc_return) {
             /* DDI 0406C.c B9.3.5 LDM (exception return) (p. B9-1987):
                CPSRWriteByInstr(SPSR[], '1111', TRUE), which B1.3.3
                (p. B1-1148) places IT[7:0] inside. */
-            cpu_state_->gprs[ArmGpr::kR15] =
-                ArmCpu::ExceptionReturnHelper(cpu_, loaded);
+            cpu_state_->gprs[ArmGpr::kR15] = cpu_->CompleteExceptionReturn(return_psr, loaded_pc);
             return Outcome::kExceptionEntered;
         }
-        LoadWritePc(loaded);
+        LoadWritePc(loaded_pc);
         return Outcome::kPcWritten;
     }
     return Outcome::kNextInsn;

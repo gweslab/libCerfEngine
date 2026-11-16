@@ -317,6 +317,8 @@ ShDecodedInsn ShDecoder::Decode(uint16_t raw, uint32_t guest_address) const {
             d.kind   = ShInsnKind::kTas;
             d.width  = 1u;
             d.cycles = dsp_ ? 4u : 3u;
+        } else if ((raw & 0x00FFu) == 0x0014u) {
+            SetRepeatControl(d);
         } else if (low4 == 0xAu) {
             SetSystemTransfer(d, ShInsnKind::kSystemLoad);
         } else if (low4 == 0x6u) {
@@ -385,6 +387,11 @@ ShDecodedInsn ShDecoder::Decode(uint16_t raw, uint32_t guest_address) const {
             SetCompare(d, ShCmp::kEqImm);
             d.disp = SignExtend8(raw);
             break;
+        case 0x2u:
+        case 0xCu:
+        case 0xEu:
+            SetRepeatControl(d);
+            break;
         case 0x9u: SetBranch(d, false, true); break;
         case 0xBu: SetBranch(d, false, false); break;
         case 0xDu: SetBranch(d, true, true); break;
@@ -408,6 +415,12 @@ ShDecodedInsn ShDecoder::Decode(uint16_t raw, uint32_t guest_address) const {
             SetDisplacementMove(d, ShInsnKind::kMovStoreGbr, 0u, 0u, SizeOf(d.n), raw & 0xFFu);
         } else if (d.n >= 0x4u && d.n <= 0x6u) {
             SetDisplacementMove(d, ShInsnKind::kMovLoadGbr, 0u, 0u, SizeOf(d.n), raw & 0xFFu);
+        } else if (d.n == 0x3u) {
+            d.kind         = ShInsnKind::kTrapa;
+            d.disp         = (raw & 0xFFu) << 2;
+            d.cycles       = dsp_ ? 8u : 6u;
+            d.slot_illegal = 1u;
+            d.ends_block   = 1u;
         } else if (d.n == 0x7u) {
             d.kind = ShInsnKind::kMova;
             d.disp = (raw & 0xFFu) << 2;
@@ -443,7 +456,14 @@ ShDecodedInsn ShDecoder::Decode(uint16_t raw, uint32_t guest_address) const {
     default:
         break;
     }
+    if (d.kind == ShInsnKind::kUnimplemented) SetReserved(d);
     return d;
+}
+
+void ShDecoder::SetRepeatControl(ShDecodedInsn& d) const {
+    if (!dsp_) return;
+    d.kind     = ShInsnKind::kDspRepeatControl;
+    d.dsp_mode = 1u;
 }
 
 }

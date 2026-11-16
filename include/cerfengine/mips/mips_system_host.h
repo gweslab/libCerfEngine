@@ -67,7 +67,8 @@ struct MipsCp0Decision {
     MipsCp0Write write         = nullptr;
     void*        write_context = nullptr;
     uint32_t     write_mask    = 0xFFFFFFFFu;
-    uint32_t     zero_only     = 0u;
+    uint32_t     fixed_mask    = 0u;
+    uint32_t     fixed_value   = 0u;
 };
 
 class MipsSystemHost {

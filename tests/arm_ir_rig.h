@@ -45,7 +45,7 @@ public:
         host_.LoadWords(kRigRamBase, program.data(), program.size());
         cpu_->RaiseResetException(kRigRamBase, false);
         engine_->Get<cerfengine::ArmMmu>().SetControlRegister(sctlr);
-        if (mode_cpsr != 0u) cpu_->ReturnFromException(mode_cpsr, kRigRamBase);
+        if (mode_cpsr != 0u) cpu_->CompleteExceptionReturn(cpu_->PrepareExceptionReturn(mode_cpsr), kRigRamBase);
         if (spsr != 0u) cpu_->BankedSpsr(cpu_->State()->cpsr.bits.mode)->word = spsr;
         guest_->FlushTranslationCache();
         cerfengine::ArmCpuState& s = *cpu_->State();

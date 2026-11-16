@@ -20,7 +20,9 @@ public:
 
     void UpdateCpsrWithFlags(ArmPsrFull psr);
 
-    uint32_t ReturnFromException(uint32_t new_cpsr_word, uint32_t new_pc);
+    ArmPsrFull PrepareExceptionReturn(uint32_t new_cpsr_word);
+    ArmPsrFull PrepareSpsrReturn();
+    uint32_t   CompleteExceptionReturn(ArmPsrFull psr, uint32_t new_pc);
 
     uint32_t*   BankedSp(uint32_t mode);
     ArmPsrFull* BankedSpsr(uint32_t mode);
@@ -55,8 +57,12 @@ public:
     static void     CERFENGINE_CDECL WriteUserRegHelper(ArmCpu* cpu, uint32_t reg,
                                                         uint32_t value);
     static uint32_t CERFENGINE_CDECL ExceptionReturnHelper(ArmCpu* cpu, uint32_t new_pc);
+    static uint32_t CERFENGINE_CDECL ExceptionReturnWritebackHelper(ArmCpu* cpu, uint32_t new_pc,
+                                                                    uint32_t writeback, uint32_t rn);
 
 private:
+    void     RequireCpsrWritable(ArmPsrFull psr);
+    void     ApplyCpsr(ArmPsrFull psr);
     ArmBank     SelectBank(uint32_t mode);
     ArmSpsrBank SelectSpsrBank(uint32_t mode);
     void     SwitchModeBanks(uint32_t old_mode, uint32_t new_mode);

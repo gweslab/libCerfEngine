@@ -47,17 +47,17 @@ inline std::vector<uint16_t> DspParallel(uint16_t field_a, uint16_t field_b) {
 }
 
 struct DspRegs {
-    uint64_t a0;
-    uint64_t a1;
-    uint32_t x0;
-    uint32_t x1;
-    uint32_t y0;
-    uint32_t y1;
-    uint32_t m0;
-    uint32_t m1;
-    uint32_t dsr;
-    uint32_t mach;
-    uint32_t macl;
+    uint64_t a0   = 0;
+    uint64_t a1   = 0;
+    uint32_t x0   = 0;
+    uint32_t x1   = 0;
+    uint32_t y0   = 0;
+    uint32_t y1   = 0;
+    uint32_t m0   = 0;
+    uint32_t m1   = 0;
+    uint32_t dsr  = 0;
+    uint32_t mach = 0;
+    uint32_t macl = 0;
 };
 
 inline void DspLoad(cerfengine::ShCpuState& s, const DspRegs& r) {

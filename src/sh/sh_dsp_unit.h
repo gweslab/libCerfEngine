@@ -22,6 +22,7 @@ public:
 
     static void CERFENGINE_CDECL ParallelHelper(ShDspUnit* unit, uint32_t code, uint32_t operation);
     static void CERFENGINE_CDECL TransferHelper(ShDspUnit* unit, uint32_t field_a);
+    static void CERFENGINE_CDECL RepeatControlHelper(ShDspUnit* unit, uint32_t code, uint32_t guest_pc);
 
 private:
     uint32_t NextPointer(uint32_t pointer, ShDspAddressing mode, bool x) const;

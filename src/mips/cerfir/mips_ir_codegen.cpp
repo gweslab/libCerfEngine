@@ -31,8 +31,8 @@ using cerfir::SlotTest;
 using cerfir::Type;
 
 bool IsPcRelative(MipsInsnKind kind) {
-    return kind == MipsInsnKind::kMips16Addiupc || kind == MipsInsnKind::kMips16Lwpc ||
-           kind == MipsInsnKind::kMips16Ldpc;
+    return kind == MipsInsnKind::kMips16Addiupc || kind == MipsInsnKind::kMips16Daddiupc ||
+           kind == MipsInsnKind::kMips16Lwpc || kind == MipsInsnKind::kMips16Ldpc;
 }
 
 SlotTest BcondSet() {
@@ -63,7 +63,8 @@ constexpr uint8_t kSlotWritesRt   = 3u;
 constexpr std::array<uint8_t, kMipsInsnKindCount> DelaySlotClasses() {
     std::array<uint8_t, kMipsInsnKindCount> classes{};
     for (MipsInsnKind k : {MipsInsnKind::kNop, MipsInsnKind::kCache, MipsInsnKind::kMthi,
-                           MipsInsnKind::kMtlo, MipsInsnKind::kMult, MipsInsnKind::kMultu}) {
+                           MipsInsnKind::kMtlo, MipsInsnKind::kMult, MipsInsnKind::kMultu,
+                           MipsInsnKind::kMadd16, MipsInsnKind::kDmadd16}) {
         classes[static_cast<size_t>(k)] = kSlotWritesNone;
     }
     for (MipsInsnKind k : {MipsInsnKind::kAddu,  MipsInsnKind::kSubu,   MipsInsnKind::kAnd,
@@ -72,6 +73,7 @@ constexpr std::array<uint8_t, kMipsInsnKindCount> DelaySlotClasses() {
                            MipsInsnKind::kSra,   MipsInsnKind::kSrl,    MipsInsnKind::kSllv,
                            MipsInsnKind::kSrlv,  MipsInsnKind::kSrav,   MipsInsnKind::kMfhi,
                            MipsInsnKind::kMflo,  MipsInsnKind::kMadd,   MipsInsnKind::kMaddu,
+                           MipsInsnKind::kMacc,  MipsInsnKind::kDmacc,
                            MipsInsnKind::kDaddu, MipsInsnKind::kDsubu,  MipsInsnKind::kDsll,
                            MipsInsnKind::kDsrl,  MipsInsnKind::kDsra,   MipsInsnKind::kDsll32,
                            MipsInsnKind::kDsrl32, MipsInsnKind::kDsra32}) {
@@ -80,7 +82,7 @@ constexpr std::array<uint8_t, kMipsInsnKindCount> DelaySlotClasses() {
     for (MipsInsnKind k : {MipsInsnKind::kAddiu, MipsInsnKind::kLui,   MipsInsnKind::kOri,
                            MipsInsnKind::kXori,  MipsInsnKind::kAndi,  MipsInsnKind::kSlti,
                            MipsInsnKind::kSltiu, MipsInsnKind::kDaddiu,
-                           MipsInsnKind::kMips16Addiupc}) {
+                           MipsInsnKind::kMips16Addiupc, MipsInsnKind::kMips16Daddiupc}) {
         classes[static_cast<size_t>(k)] = kSlotWritesRt;
     }
     return classes;
@@ -101,41 +103,47 @@ uint32_t DelaySlotWrites(const MipsDecodedInsn& d, uint8_t cls) {
     return 0u;
 }
 
-/* QEMU MIPS translate.c decode_opc_legacy OPC_CP0 and OPC_CACHE: check_cp0_enabled raises
-   Coprocessor Unusable before the instruction. */
-constexpr std::array<bool, kMipsInsnKindCount> Cop0Kinds() {
-    std::array<bool, kMipsInsnKindCount> kinds{};
-    for (MipsInsnKind k : {MipsInsnKind::kMtc0,  MipsInsnKind::kMfc0,  MipsInsnKind::kDmtc0,
-                           MipsInsnKind::kDmfc0, MipsInsnKind::kTlbwi, MipsInsnKind::kTlbwr,
-                           MipsInsnKind::kTlbp,  MipsInsnKind::kTlbr,  MipsInsnKind::kRfe,
-                           MipsInsnKind::kEret,  MipsInsnKind::kHibernate,
-                           MipsInsnKind::kWait,  MipsInsnKind::kCache}) {
-        kinds[static_cast<size_t>(k)] = true;
-    }
-    return kinds;
+bool NeedsCop0Usable(MipsUnprivilegedCheck check) {
+    return check == MipsUnprivilegedCheck::kCop0Usable ||
+           check == MipsUnprivilegedCheck::kCop0UsableWide64Enabled;
 }
 
-constexpr std::array<bool, kMipsInsnKindCount> kCop0Kind = Cop0Kinds();
-
-bool IsCop0(const MipsDecodedInsn& d) { return kCop0Kind[static_cast<size_t>(d.kind)]; }
+bool NeedsWide64Enabled(MipsUnprivilegedCheck check) {
+    return check == MipsUnprivilegedCheck::kWide64Enabled ||
+           check == MipsUnprivilegedCheck::kCop0UsableWide64Enabled;
+}
 
 void EmitCop0UsableCheck(MipsIrContext& c) {
     MipsIrFastcallConst(c, reinterpret_cast<const void*>(&MipsExceptionDelivery::Cop0UsableHelper),
                         1u, cerfir::CallHostAddress(c.block->emit->Exceptions()), 0u);
 }
 
-template <bool kCop0Checked>
-CERFENGINE_FORCEINLINE void TranslateOne(MipsIrContext& c) {
-    if constexpr (kCop0Checked) {
-        if (IsCop0(*c.d)) EmitCop0UsableCheck(c);
-    }
-    MipsIrTranslateFnFor(c.d->kind)(c);
+void EmitWide64EnabledCheck(MipsIrContext& c) {
+    cerfir::Builder& b      = *c.b;
+    const uint32_t   enable = c.privilege == kBlockSupervisor ? MipsStatusBit::kSX : MipsStatusBit::kUX;
+    const uint32_t   ok     = b.NewLabel();
+    const cerfir::Ref bit   = b.Op2(Op::kAnd, b.ReadSlot(static_cast<uint32_t>(offsetof(MipsCpuState, cp0_status))),
+                                    b.Const32(1u << enable));
+    b.Branch(b.Compare(Op::kCmpNe, bit, b.Const32(0u)), ok, true);
+    MipsIrFastcall(c, reinterpret_cast<const void*>(&MipsExceptionDelivery::ReservedInstructionHelper),
+                   Type::kVoid, b.ConstPtr(c.block->emit->Exceptions()), kNoRef);
+    b.Label(ok);
 }
 
-template <bool kCop0Checked>
+template <bool kUnprivileged>
+CERFENGINE_FORCEINLINE void TranslateOne(MipsIrContext& c) {
+    const MipsIrTranslation& translation = MipsIrTranslationFor(c.d->kind);
+    if constexpr (kUnprivileged) {
+        if (NeedsCop0Usable(translation.check)) EmitCop0UsableCheck(c);
+        if (NeedsWide64Enabled(translation.check)) EmitWide64EnabledCheck(c);
+    }
+    translation.fn(c);
+}
+
+template <bool kUnprivileged>
 CERFENGINE_FORCEINLINE uint8_t BranchDelaySlotClass(const MipsDecodedInsn& slot) {
-    if constexpr (kCop0Checked) {
-        if (IsCop0(slot)) return kSlotUnsafe;
+    if constexpr (kUnprivileged) {
+        if (MipsIrTranslationFor(slot.kind).check != MipsUnprivilegedCheck::kNone) return kSlotUnsafe;
     }
     return DelaySlotClass(slot);
 }
@@ -216,7 +224,7 @@ CERFENGINE_FORCEINLINE void MipsIrCodegen::ExitTaken(MipsIrContext& c) {
 
 void MipsIrCodegen::TranslateBlock(const MipsIrBlockInput& in) {
     cerfir::Builder              b(block_, lowering_, verify_);
-    MipsIrContext c{&b,    in.ctx, this,  nullptr, false, MipsIrBranch{}, wide_gprs_,
+    MipsIrContext c{&b,    in.ctx, this,  nullptr, MipsIrBranch{}, wide_gprs_,
                     false, 0u,     false, in.link->mode_set ? 1u : 0u,    in.link->privilege};
     const MipsDecodedInsn* const insns = in.ctx->insns;
     const uint32_t               n     = in.ctx->num_insns;
@@ -239,7 +247,7 @@ void MipsIrCodegen::TranslateBlock(const MipsIrBlockInput& in) {
     }
 }
 
-template <bool kTraced, bool kCop0Checked>
+template <bool kTraced, bool kUnprivileged>
 CERFENGINE_FORCEINLINE void MipsIrCodegen::TranslateInsns(const MipsIrBlockInput& in,
                                                           MipsIrContext& c) {
     cerfir::Builder&             b     = *c.b;
@@ -249,7 +257,7 @@ CERFENGINE_FORCEINLINE void MipsIrCodegen::TranslateInsns(const MipsIrBlockInput
     for (uint32_t i = 0; i < n; ++i) {
         const MipsDecodedInsn& d = insns[i];
         c.d                      = &d;
-        c.pc_stored              = false;
+        b.SetCallPc(d.guest_address);
         if constexpr (kTraced) {
             if (host_->HasPcTrace(d.guest_address)) EmitPcTrace(c, in.compiler);
         }
@@ -265,13 +273,13 @@ CERFENGINE_FORCEINLINE void MipsIrCodegen::TranslateInsns(const MipsIrBlockInput
             c.lean_branch = false;
             if (!in.pending_entry && i + 1u < n) {
                 const MipsDecodedInsn& slot = insns[i + 1u];
-                const uint8_t          cls  = BranchDelaySlotClass<kCop0Checked>(slot);
+                const uint8_t          cls  = BranchDelaySlotClass<kUnprivileged>(slot);
                 const bool traced_slot      = kTraced && host_->HasPcTrace(slot.guest_address);
                 c.lean_branch               = cls != kSlotUnsafe && !traced_slot;
                 c.slot_writes               = DelaySlotWrites(slot, cls);
             }
         }
-        TranslateOne<kCop0Checked>(c);
+        TranslateOne<kUnprivileged>(c);
         if (d.ends_block != 0u) {
             EmitDispatcherEnd(c, delay_slot);
             return;
@@ -417,7 +425,7 @@ void MipsIrCodegen::TranslatePendingEntry(const MipsIrBlockInput& in, MipsIrCont
     const MipsDecodedInsn& d           = in.ctx->insns[0];
     const uint32_t         fallthrough = d.guest_address + d.length;
     c.d                                = &d;
-    c.pc_stored                        = false;
+    b.SetCallPc(d.guest_address);
     if (traced && host_->HasPcTrace(d.guest_address)) EmitPcTrace(c, in.compiler);
     b.CycleAdd(1u);
     const cerfir::Ref nullified =

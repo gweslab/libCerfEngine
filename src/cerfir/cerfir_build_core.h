@@ -75,7 +75,17 @@ protected:
     }
 
     CERFENGINE_FORCEINLINE void NoteSlotWrite(int32_t disp, uint32_t bytes) {
+        const int32_t pc = block_.PcSlot();
+        if (disp != kNoSlot && pc != kNoSlot && disp <= pc && pc < disp + static_cast<int32_t>(bytes)) {
+            call_pc_stored_ = false;
+        }
         if (record_) epochs_.NoteWrite(disp, bytes);
+    }
+    CERFENGINE_FORCEINLINE void NotePcStored(uint32_t pc) { call_pc_stored_ = call_pc_set_ && pc == call_pc_; }
+    CERFENGINE_FORCEINLINE void NoteCallPcStore(bool store_pc, uint32_t pc) {
+        if (!store_pc) return;
+        NoteSlotWrite(block_.PcSlot(), 4u);
+        NotePcStored(pc);
     }
     CERFENGINE_FORCEINLINE void NoteFlagWrites(uint8_t store) {
         if (!record_) return;
@@ -151,6 +161,11 @@ protected:
     uint32_t      cycle_total_   = 0;
     bool          record_        = false;
     bool          last_terminal_ = false;
+    uint32_t      call_pc_          = 0u;
+    bool          call_pc_set_      = false;
+    bool          call_pc_stored_   = false;
+    uint64_t      pc_branch_seen_   = 0u;
+    uint64_t      pc_branch_stored_ = 0u;
 
 private:
     void DupView(Ref view);

@@ -198,19 +198,21 @@ ShMmu::Fault ShMmu::Lookup(uint32_t va, ShAccess access, ShTranslation* out, uin
 
 void ShMmu::Raise(Fault fault, uint32_t va, ShAccess access, uint32_t way, uint32_t exception_pc) {
     const bool write = access == ShAccess::kWrite;
-    uint32_t   rc    = way;
-    if (fault == Fault::kMiss) {
-        const ShTlbEntry* set = regs_.tlb[SetIndex(va, Asid())];
-        rc                    = ((regs_.mmucr >> kMmucrRcShift) + 1u) & 3u;
-        for (uint32_t w = 0; w < kShTlbWays; ++w) {
-            if (!set[w].valid) {
-                rc = w;
-                break;
+    if (!cpu_->BlocksExceptions()) {
+        uint32_t rc = way;
+        if (fault == Fault::kMiss) {
+            const ShTlbEntry* set = regs_.tlb[SetIndex(va, Asid())];
+            rc                    = ((regs_.mmucr >> kMmucrRcShift) + 1u) & 3u;
+            for (uint32_t w = 0; w < kShTlbWays; ++w) {
+                if (!set[w].valid) {
+                    rc = w;
+                    break;
+                }
             }
         }
+        regs_.mmucr = (regs_.mmucr & ~kMmucrRc) | (rc << kMmucrRcShift);
+        LatchFaultAddress(va);
     }
-    regs_.mmucr = (regs_.mmucr & ~kMmucrRc) | (rc << kMmucrRcShift);
-    LatchFaultAddress(va);
     uint32_t expevt = write ? kExpevtMissWrite : kExpevtMissRead;
     if (fault == Fault::kProtection) expevt = write ? kExpevtProtWrite : kExpevtProtRead;
     if (fault == Fault::kInitialWrite) expevt = kExpevtFirstWrite;
@@ -224,7 +226,7 @@ void ShMmu::LatchFaultAddress(uint32_t va) {
 }
 
 void ShMmu::RaiseAddressError(uint32_t va, ShAccess access, uint32_t exception_pc) {
-    LatchFaultAddress(va);
+    if (!cpu_->BlocksExceptions()) LatchFaultAddress(va);
     cpu_->RaiseException(access == ShAccess::kWrite ? kExpevtAddrWrite : kExpevtAddrRead, kShVectorGeneral,
                          exception_pc);
 }

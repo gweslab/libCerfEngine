@@ -11,6 +11,10 @@ using cerfengine::ShCpuState;
 constexpr uint32_t kSrHandler  = kShRigSrPrivileged | cerfengine::kShSrBl;
 constexpr uint32_t kR2Sentinel = 0x5A5AA5A5u;
 
+constexpr uint32_t kTeaBefore = 0x12345678u;
+constexpr uint32_t kSpcBefore = 0x8C001234u;
+constexpr uint32_t kSsrBefore = 0x40000001u;
+
 constexpr uint16_t kStoreWR2R1 = 0x2121u;
 constexpr uint16_t kStoreLR2R1 = 0x2122u;
 
@@ -49,6 +53,34 @@ void RunCase(ShIrRig& rig, const Case& c, const char* mode) {
     }
 }
 
+void RunBlockedCase(ShIrRig& rig, const char* mode) {
+    const char* what = "longword load from 4n + 2 with SR.BL set";
+    ShCpuState  initial{};
+    initial.sr     = kSrHandler;
+    initial.gpr[1] = kShRigDataVa + 2u;
+    initial.gpr[2]        = kR2Sentinel;
+    const uint32_t resets = rig.Host().CpuResets();
+    rig.RunSteps({kShRigLoadLR1R2}, initial, 1u, what, [&](ShCpuState& s) {
+        s.vbr = kShRigVbr;
+        s.spc = kSpcBefore;
+        s.ssr = kSsrBefore;
+        rig.Mmu().WritePteh(kShRigAsid);
+        rig.Mmu().WriteTea(kTeaBefore);
+    });
+    const ShCpuState& s = rig.State();
+    ShRigExpect(mode, what, "PC", s.pc, kShRigResetPc);
+    ShRigExpect(mode, what, "SR", s.sr, kShRigResetSr);
+    ShRigExpect(mode, what, "VBR", s.vbr, 0u);
+    ShRigExpect(mode, what, "EXPEVT", s.expevt, kShRigManualResetExpevt);
+    ShRigExpect(mode, what, "CPU reset notices", rig.Host().CpuResets(), resets + 1u);
+    ShRigExpect(mode, what, "general handler entries", s.gpr[9], 0u);
+    ShRigExpect(mode, what, "R2", s.gpr[2], kR2Sentinel);
+    ShRigExpect(mode, what, "SPC", s.spc, kSpcBefore);
+    ShRigExpect(mode, what, "SSR", s.ssr, kSsrBefore);
+    ShRigExpect(mode, what, "TEA", rig.Mmu().ReadTea(), kTeaBefore);
+    ShRigExpect(mode, what, "PTEH", rig.Mmu().ReadPteh(), kShRigAsid);
+}
+
 void RunAll(bool verify, const char* mode) {
     ShIrRig rig(false, verify, true);
     rig.LoadReturningHandler(kShRigGeneralVector);
@@ -63,6 +95,7 @@ void RunAll(bool verify, const char* mode) {
          kShRigExpevtAddressRead, false, true},
     };
     for (const Case& c : cases) RunCase(rig, c, mode);
+    RunBlockedCase(rig, mode);
     std::printf("%s: SH address errors passed\n", mode);
 }
 

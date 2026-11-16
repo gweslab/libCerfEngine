@@ -36,12 +36,14 @@ public:
         if (record_ || !lowering_.EmitLeanLoad(m)) return false;
         cycle_site_    = nullptr;
         last_terminal_ = false;
+        NoteAccess(m);
         return true;
     }
     CERFENGINE_FORCEINLINE bool LeanStore(const MemAttr& m, Ref value) {
         if (record_ || !lowering_.EmitLeanStore(m, value)) return false;
         cycle_site_    = nullptr;
         last_terminal_ = false;
+        NoteAccess(m);
         return true;
     }
     CERFENGINE_FORCEINLINE bool SimpleLoad(uint32_t width, bool sign, uint32_t base_slot,
@@ -55,6 +57,9 @@ public:
         }
         cycle_site_    = nullptr;
         last_terminal_ = false;
+        NoteHelperAccessPc(guest_pc);
+        NoteSlotWrite(static_cast<int32_t>(result_slot), 4u);
+        NoteSlotWrite(static_cast<int32_t>(result_slot2), 4u);
         return true;
     }
     CERFENGINE_FORCEINLINE bool SimpleStore(uint32_t width, uint32_t base_slot, uint32_t offset,
@@ -65,11 +70,20 @@ public:
         }
         cycle_site_    = nullptr;
         last_terminal_ = false;
+        NoteHelperAccessPc(guest_pc);
         return true;
     }
     Ref Swap(Type type, Ref address, Ref value, uint32_t attr);
 
 private:
+    CERFENGINE_FORCEINLINE void NoteHelperAccessPc(uint32_t guest_pc) {
+        const GuestModel& model = *lowering_.Target().model;
+        if (model.memory == MemoryModelKind::kHelper && model.helper.store_pc) NotePcStored(guest_pc);
+    }
+    CERFENGINE_FORCEINLINE void NoteAccess(const MemAttr& m) {
+        NoteHelperAccessPc(m.guest_pc);
+        NoteMemorySlots(m);
+    }
     CERFENGINE_FORCEINLINE Ref CheckedLoad(Type type, Ref address, Ref writeback, uint32_t attr,
                                            const MemAttr& m) {
         CheckValueWidth(Op::kLoad, type, m);
@@ -78,7 +92,7 @@ private:
             return kNoRef;
         }
         const Ref r = Build(Op::kLoad, type, address, writeback, kNoRef, attr, 0u, kNoDest, 0u, 1u);
-        NoteMemorySlots(m);
+        NoteAccess(m);
         return r;
     }
 
@@ -90,7 +104,7 @@ private:
         last_terminal_ = false;
         if (record_) block_.Append(Op::kLoad, type, address, writeback, kNoRef, 0u, attr, 0u, 0u);
         lowering_.EmitLoad(address, writeback, attr);
-        NoteMemorySlots(m);
+        NoteAccess(m);
     }
 
     CERFENGINE_FORCEINLINE void DirectStore(Ref address, Ref value, Ref writeback, uint32_t attr,
@@ -105,7 +119,7 @@ private:
             block_.Append(Op::kStore, Type::kVoid, address, value, writeback, 0u, attr, 0u, 0u);
         }
         lowering_.EmitStore(address, value, writeback, attr);
-        NoteMemorySlots(m);
+        NoteAccess(m);
     }
 
     CERFENGINE_FORCEINLINE void CheckAddressing(Op op, Ref address, Ref writeback,

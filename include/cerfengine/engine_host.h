@@ -31,6 +31,7 @@ public:
     virtual void OnResetRequested(bool is_resume) = 0;
     virtual void OnRebootRequested()              = 0;
     virtual void OnResetDelivered()               = 0;
+    virtual void OnCpuReset()                     = 0;
     virtual void OnPowerDownRequest()             = 0;
     virtual void OnBlockCompiled(const BlockCompileStats& stats) = 0;
 

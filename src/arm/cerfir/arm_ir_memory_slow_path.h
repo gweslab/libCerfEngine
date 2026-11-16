@@ -34,9 +34,7 @@ public:
     }
 
 private:
-    static ArmIrMemorySlowPath* Owner(const ArmIrSlowDesc* desc) {
-        return static_cast<ArmIrMemorySlowPath*>(const_cast<void*>(desc->context));
-    }
+    static ArmIrMemorySlowPath* Enter(const ArmIrSlowDesc* desc);
 
     template <bool kStore, bool kWb>
     uint64_t CompleteAbort(const ArmIrSlowDesc& d, uint32_t wb);

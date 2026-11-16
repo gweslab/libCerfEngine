@@ -38,7 +38,7 @@ public:
 
 private:
     void TranslateBlock(const MipsIrBlockInput& in);
-    template <bool kTraced, bool kCop0Checked>
+    template <bool kTraced, bool kUnprivileged>
     void TranslateInsns(const MipsIrBlockInput& in, MipsIrContext& c);
     void TranslatePendingEntry(const MipsIrBlockInput& in, MipsIrContext& c, bool traced);
     void EmitNullifyGate(MipsIrContext& c);

@@ -30,6 +30,7 @@ private:
     void    SetSystemTransfer(ShDecodedInsn& d, ShInsnKind kind) const;
     void    SetControlTransfer(ShDecodedInsn& d, ShInsnKind kind) const;
     uint8_t ControlCycles(ShInsnKind kind, const ShControlClass& r) const;
+    void    SetRepeatControl(ShDecodedInsn& d) const;
 
     bool dsp_ = false;
 };

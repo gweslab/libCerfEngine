@@ -33,6 +33,12 @@ CERFENGINE_FORCEINLINE uint32_t Extend(uint32_t value, uint8_t width, bool sign)
 
 }
 
+CERFENGINE_FORCEINLINE ArmIrMemorySlowPath* ArmIrMemorySlowPath::Enter(const ArmIrSlowDesc* desc) {
+    ArmIrMemorySlowPath* const owner = static_cast<ArmIrMemorySlowPath*>(const_cast<void*>(desc->context));
+    owner->state_->gprs[ArmGpr::kR15] = desc->guest_pc;
+    return owner;
+}
+
 CERFENGINE_FORCEINLINE void ArmIrMemorySlowPath::StoreSlot(int32_t disp, uint32_t value) {
     std::memcpy(reinterpret_cast<uint8_t*>(state_) + disp, &value, sizeof(value));
 }
@@ -73,29 +79,29 @@ CERFENGINE_FORCEINLINE uint64_t ArmIrMemorySlowPath::AbortAs(uint32_t va, const 
 
 template <bool kStore, uint8_t kWidth, bool kSign, bool kWb, bool kStop>
 uint64_t CERFENGINE_FASTCALL ArmIrMemorySlowPath::Abort0(uint32_t va, const ArmIrSlowDesc* desc) {
-    return Owner(desc)->AbortAs<kStore, kWidth, kSign, kWb, kStop>(va, *desc, 0u, 0u);
+    return Enter(desc)->AbortAs<kStore, kWidth, kSign, kWb, kStop>(va, *desc, 0u, 0u);
 }
 
 template <bool kStore, uint8_t kWidth, bool kSign, bool kWb, bool kStop>
 uint64_t CERFENGINE_FASTCALL ArmIrMemorySlowPath::Abort1(uint32_t va, const ArmIrSlowDesc* desc,
                                                          uint32_t operand) {
     if constexpr (kStore) {
-        return Owner(desc)->AbortAs<kStore, kWidth, kSign, kWb, kStop>(va, *desc, operand, 0u);
+        return Enter(desc)->AbortAs<kStore, kWidth, kSign, kWb, kStop>(va, *desc, operand, 0u);
     } else {
-        return Owner(desc)->AbortAs<kStore, kWidth, kSign, kWb, kStop>(va, *desc, 0u, operand);
+        return Enter(desc)->AbortAs<kStore, kWidth, kSign, kWb, kStop>(va, *desc, 0u, operand);
     }
 }
 
 template <bool kStore, uint8_t kWidth, bool kSign, bool kWb, bool kStop>
 uint64_t CERFENGINE_FASTCALL ArmIrMemorySlowPath::Abort2(uint32_t va, const ArmIrSlowDesc* desc,
                                                          uint32_t value, uint32_t wb) {
-    return Owner(desc)->AbortAs<kStore, kWidth, kSign, kWb, kStop>(va, *desc, value, wb);
+    return Enter(desc)->AbortAs<kStore, kWidth, kSign, kWb, kStop>(va, *desc, value, wb);
 }
 
 template <bool kStore, uint8_t kWidth, bool kSign, bool kWb, bool kStop>
 uint64_t CERFENGINE_FASTCALL ArmIrMemorySlowPath::Align0(uint32_t va, const ArmIrSlowDesc* desc) {
     constexpr Shape kShape = ShapeOf<kStore, kWidth, kSign, kWb, kStop>();
-    return Owner(desc)->Access(va, *desc, 0u, 0u, kShape);
+    return Enter(desc)->Access(va, *desc, 0u, 0u, kShape);
 }
 
 template <bool kStore, uint8_t kWidth, bool kSign, bool kWb, bool kStop>
@@ -103,9 +109,9 @@ uint64_t CERFENGINE_FASTCALL ArmIrMemorySlowPath::Align1(uint32_t va, const ArmI
                                                          uint32_t operand) {
     constexpr Shape kShape = ShapeOf<kStore, kWidth, kSign, kWb, kStop>();
     if constexpr (kStore) {
-        return Owner(desc)->Access(va, *desc, operand, 0u, kShape);
+        return Enter(desc)->Access(va, *desc, operand, 0u, kShape);
     } else {
-        return Owner(desc)->Access(va, *desc, 0u, operand, kShape);
+        return Enter(desc)->Access(va, *desc, 0u, operand, kShape);
     }
 }
 
@@ -113,7 +119,7 @@ template <bool kStore, uint8_t kWidth, bool kSign, bool kWb, bool kStop>
 uint64_t CERFENGINE_FASTCALL ArmIrMemorySlowPath::Align2(uint32_t va, const ArmIrSlowDesc* desc,
                                                          uint32_t value, uint32_t wb) {
     constexpr Shape kShape = ShapeOf<kStore, kWidth, kSign, kWb, kStop>();
-    return Owner(desc)->Access(va, *desc, value, wb, kShape);
+    return Enter(desc)->Access(va, *desc, value, wb, kShape);
 }
 
 template <bool kStore, uint8_t kWidth, bool kSign, bool kWb, bool kStop>
@@ -188,9 +194,9 @@ template <bool kStore, bool kAlign>
 uint64_t CERFENGINE_FASTCALL ArmIrMemorySlowPath::CompleteNoWb(uint32_t va,
                                                                const ArmIrSlowDesc* desc) {
     if constexpr (kAlign) {
-        return Owner(desc)->CompleteAlign<kStore, false>(va, *desc, 0u);
+        return Enter(desc)->CompleteAlign<kStore, false>(va, *desc, 0u);
     } else {
-        return Owner(desc)->CompleteAbort<kStore, false>(*desc, 0u);
+        return Enter(desc)->CompleteAbort<kStore, false>(*desc, 0u);
     }
 }
 
@@ -198,9 +204,9 @@ template <bool kStore, bool kAlign>
 uint64_t CERFENGINE_FASTCALL ArmIrMemorySlowPath::CompleteWb(uint32_t va, const ArmIrSlowDesc* desc,
                                                              uint32_t wb) {
     if constexpr (kAlign) {
-        return Owner(desc)->CompleteAlign<kStore, true>(va, *desc, wb);
+        return Enter(desc)->CompleteAlign<kStore, true>(va, *desc, wb);
     } else {
-        return Owner(desc)->CompleteAbort<kStore, true>(*desc, wb);
+        return Enter(desc)->CompleteAbort<kStore, true>(*desc, wb);
     }
 }
 

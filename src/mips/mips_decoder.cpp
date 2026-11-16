@@ -35,6 +35,7 @@ Kind Cop0Kind(const MipsDecodedInsn* d) {
 void MipsDecoder::Configure(bool has_fpu, bool has_llsc, bool has_mips4,
                             bool has_vr41xx_power_modes, bool has_64bit, bool has_eret,
                             bool has_rfe, bool has_mips16, bool has_tx39_multiply_add,
+                            bool has_macc_dmacc, bool has_madd16_dmadd16,
                             bool has_cop1_cop2_unusable) {
     has_cop1_cop2_unusable_ = has_cop1_cop2_unusable;
     has_fpu_                = has_fpu;
@@ -46,6 +47,8 @@ void MipsDecoder::Configure(bool has_fpu, bool has_llsc, bool has_mips4,
     has_rfe_                = has_rfe;
     has_mips16_             = has_mips16;
     has_tx39_multiply_add_  = has_tx39_multiply_add;
+    has_macc_dmacc_         = has_macc_dmacc;
+    has_madd16_dmadd16_     = has_madd16_dmadd16;
     for (uint32_t i = 0; i < 64u; ++i) {
         primary_[i] = ClassifyPrimary(i);
         special_[i] = ClassifySpecial(i);
@@ -158,6 +161,9 @@ MipsDecoder::Entry MipsDecoder::ClassifySpecial(uint32_t funct) const {
     case MipsSpecial::kOR:      return entry(Kind::kOr, true);
     case MipsSpecial::kXOR:     return entry(Kind::kXor, true);
     case MipsSpecial::kNOR:     return entry(Kind::kNor, true);
+    case MipsSpecial::kMACC:
+    case MipsSpecial::kDMACC:
+        return has_macc_dmacc_ || has_madd16_dmadd16_ ? Entry{Kind::kUndefined, kRare} : Entry{};
     case MipsSpecial::kSLT:     return entry(Kind::kSlt, true);
     case MipsSpecial::kSLTU:    return entry(Kind::kSltu, true);
     case MipsSpecial::kDADD:    return entry(Kind::kDadd, has_64bit_);
@@ -202,6 +208,20 @@ bool MipsDecoder::DecodeRare(MipsDecodedInsn* d) const {
     d->is_branch = 0;
     d->is_likely = 0;
     bool recognized = false;
+    if (d->op == MipsOp::kSPECIAL && has_macc_dmacc_) {
+        recognized = (d->sa & 0x6u) == 0u;
+        d->kind    = !recognized                      ? Kind::kUndefined
+                     : d->funct == MipsSpecial::kMACC ? Kind::kMacc
+                                                      : Kind::kDmacc;
+        return recognized;
+    }
+    if (d->op == MipsOp::kSPECIAL) {
+        recognized = d->rd == 0u && d->sa == 0u;
+        d->kind    = !recognized                        ? Kind::kUndefined
+                     : d->funct == MipsSpecial::kMADD16 ? Kind::kMadd16
+                                                        : Kind::kDmadd16;
+        return recognized;
+    }
     if (d->op == MipsOp::kSPECIAL2) {
         /* MADD / MADDU: rs, rt, rd, bits 10..6 zero, funct 000000 / 000001 (TMPR39xx-um
            p.155-156). */

@@ -27,6 +27,8 @@ constexpr bool DirectlyMapped(uint32_t va) {
 
 constexpr bool Paged(uint32_t va) { return va < kP1Base || (va >= kP3Base && va < kP4Base); }
 
+constexpr bool OnChipCode(uint32_t va) { return va >= kP4Base && va < kCacheAddressArray; }
+
 constexpr bool PrivilegedOnly(uint32_t va) { return va >= kP1Base; }
 
 constexpr bool UserReachable(uint32_t va, uint32_t sr) {

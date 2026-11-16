@@ -2,7 +2,6 @@
 
 #include <cstring>
 
-#include <cerfengine/byte_order.h>
 #include "../../a64_emit.h"
 #include "../../a64_emit_alu.h"
 #include "../../a64_emit_memory.h"
@@ -30,11 +29,12 @@ bool A64MemoryTails::Emit(A64Lowering& l) {
 }
 
 void A64MemoryTails::EmitMissStub(A64Lowering& l, const A64MissStub& s) {
-    uint8_t*       c    = l.Cursor();
-    uint8_t* const stub = c;
+    uint8_t* c = l.Cursor();
+    for (uint32_t i = 0; i < s.misses.count; ++i) a64::FixupLabel(s.misses.site[i], c);
     l.Pins().EmitStores(c, s.pin_dirty);
-    a64::EmitB(c, s.target);
-    le::Put32(s.call, 0x94000000u | a64::Imm26(s.call, stub));
+    if (s.keep_pc) a64::EmitMovImm32(c, A64SoftTlb::kPcReg, s.pc);
+    a64::EmitBl(c, s.target);
+    a64::FixupLabel(a64::EmitBLabel(c), s.resume);
     l.Cursor() = c;
 }
 

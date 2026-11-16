@@ -49,7 +49,8 @@ private:
     uint32_t            tail_split_     = 0;
     uint32_t            tail_page_pa_   = 0;
     bool                report_compiles_ = false;
-    const ShCpuState*   cpu_state_      = nullptr;
+    ShCpuState*         cpu_state_      = nullptr;
+    ShOnChipCodeHost*   on_chip_code_   = nullptr;
     PhysicalMap*        map_            = nullptr;
     ShTranslationCache* cache_          = nullptr;
     ShIrCodegen*        codegen_        = nullptr;

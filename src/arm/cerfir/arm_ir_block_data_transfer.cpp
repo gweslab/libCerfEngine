@@ -33,6 +33,7 @@ struct TransferPlan {
     uint32_t base_off;
     bool     defer_rn;
     bool     final_wb;
+    bool     rn_in_return;
     bool     ignore_low;
 };
 
@@ -80,6 +81,15 @@ void StoreRegister(ArmIrContext& c, TransferShape& s, uint32_t reg, Ref address)
     b.Store(address, value, s.fault_wb, attr);
 }
 
+Ref AddOffset(cerfir::Builder& b, Ref base, uint32_t offset) {
+    return offset != 0u ? b.Op2(Op::kAdd, base, b.Const32(offset)) : base;
+}
+
+Ref WordAddress(cerfir::Builder& b, const TransferPlan& p, Ref base, uint32_t offset) {
+    const Ref address = AddOffset(b, base, offset);
+    return p.ignore_low ? b.Op2(Op::kAnd, address, b.Const32(0xFFFFFFFCu)) : address;
+}
+
 void TransferUserRegisters(ArmIrContext& c, TransferShape& s, const TransferPlan& p) {
     const DecodedInsn& d    = *c.d;
     cerfir::Builder&   b    = *c.b;
@@ -91,10 +101,9 @@ void TransferUserRegisters(ArmIrContext& c, TransferShape& s, const TransferPlan
     const Ref      base   = b.GetSlot(Type::kI32, p.rn_disp);
     b.Share(base, 1u + (s.writeback_on_fault ? 1u : 0u) + (p.defer_rn ? 1u : 0u) +
                       (p.final_wb ? 1u : 0u));
-    Ref      start       = p.base_off != 0u ? b.Op2(Op::kAdd, base, b.Const32(p.base_off)) : base;
-    uint32_t align_fault = kArmIrNoLabel;
+    const Ref start       = WordAddress(b, p, base, p.base_off);
+    uint32_t  align_fault = kArmIrNoLabel;
     if (p.ignore_low) {
-        start = b.Op2(Op::kAnd, start, b.Const32(0xFFFFFFFCu));
         b.Share(start, direct);
     } else {
         b.Share(start, direct + 1u);
@@ -116,7 +125,7 @@ void TransferUserRegisters(ArmIrContext& c, TransferShape& s, const TransferPlan
             offset += 4u;
             continue;
         }
-        const Ref address = offset != 0u ? b.Op2(Op::kAdd, start, b.Const32(offset)) : start;
+        const Ref address = AddOffset(b, start, offset);
         if (load) {
             LoadRegister(c, s, i, address);
         } else {
@@ -124,11 +133,7 @@ void TransferUserRegisters(ArmIrContext& c, TransferShape& s, const TransferPlan
         }
         offset += 4u;
     }
-    if (p.defer_rn) {
-        Ref address = rn_word_off != 0u ? b.Op2(Op::kAdd, base, b.Const32(rn_word_off)) : base;
-        if (p.ignore_low) address = b.Op2(Op::kAnd, address, b.Const32(0xFFFFFFFCu));
-        LoadRegister(c, s, d.rn, address);
-    }
+    if (p.defer_rn) LoadRegister(c, s, d.rn, WordAddress(b, p, base, rn_word_off));
     if (p.final_wb) b.SetSlot(p.rn_disp, b.Op2(Op::kAdd, base, b.Const32(p.delta)));
 
     if (align_fault == kArmIrNoLabel) return;
@@ -136,8 +141,7 @@ void TransferUserRegisters(ArmIrContext& c, TransferShape& s, const TransferPlan
     b.Branch(b.Const1(true), done, true);
     b.Label(align_fault);
     const Ref fault_base = b.GetSlot(Type::kI32, p.rn_disp);
-    const Ref fault_va =
-        p.base_off != 0u ? b.Op2(Op::kAdd, fault_base, b.Const32(p.base_off)) : fault_base;
+    const Ref fault_va   = AddOffset(b, fault_base, p.base_off);
     const cerfir::CallDesc fault{
         load ? reinterpret_cast<const void*>(&ArmMmu::AlignmentFaultReadHelper)
              : reinterpret_cast<const void*>(&ArmMmu::AlignmentFaultWriteHelper),
@@ -157,7 +161,18 @@ void AddWord(cerfir::WordList& w, int32_t offset, int32_t slot, uint32_t imm) {
     w.imm[k]         = imm;
 }
 
-void TransferWordList(ArmIrContext& c, const TransferShape& s, const TransferPlan& p) {
+Ref LoadRnForReturn(ArmIrContext& c, const TransferShape& s, const TransferPlan& p, int32_t rn_off) {
+    cerfir::Builder& b     = *c.b;
+    TransferShape    shape = s;
+    shape.first            = false;
+    uint32_t attr          = 0;
+    NewAccess(c, shape, &attr);
+    const Ref address =
+        WordAddress(b, p, b.GetSlot(Type::kI32, p.rn_disp), p.base_off + static_cast<uint32_t>(rn_off));
+    return b.Load(Type::kI32, address, kNoRef, attr);
+}
+
+Ref TransferWordList(ArmIrContext& c, const TransferShape& s, const TransferPlan& p) {
     const DecodedInsn& d    = *c.d;
     cerfir::Builder&   b    = *c.b;
     const bool         load = d.l != 0u;
@@ -192,9 +207,11 @@ void TransferWordList(ArmIrContext& c, const TransferShape& s, const TransferPla
         }
         offset += 4;
     }
-    if (p.defer_rn) AddWord(w, rn_off, ArmGprDisp(d.rn), 0u);
+    if (p.defer_rn && !p.rn_in_return) AddWord(w, rn_off, ArmGprDisp(d.rn), 0u);
     b.TransferWords(attr, list_index);
-    if (p.final_wb) b.ComputeSlotInto(Op::kAdd, p.rn_disp, b.Const32(p.delta), 0u, p.rn_disp);
+    if (p.final_wb && !p.rn_in_return) b.ComputeSlotInto(Op::kAdd, p.rn_disp, b.Const32(p.delta), 0u, p.rn_disp);
+    if (!p.defer_rn || !p.rn_in_return) return kNoRef;
+    return LoadRnForReturn(c, s, p, rn_off);
 }
 
 }
@@ -223,6 +240,7 @@ void ArmIrBlockDataTransfer(ArmIrContext& c) {
     if (d.p == d.u) p.base_off += 4u;
     p.defer_rn = load && rn_in_list;
     p.final_wb = wback && !(load && rn_in_list);
+    p.rn_in_return = exc_return && (p.final_wb || p.defer_rn);
 
     TransferShape s{};
     s.policy             = ArmBlockTransferAlign(c.block);
@@ -231,15 +249,20 @@ void ArmIrBlockDataTransfer(ArmIrContext& c) {
     s.first              = true;
     p.ignore_low         = s.policy == cerfir::AlignPolicy::kIgnoreLowBits;
 
+    Ref rn_word = kNoRef;
     if (s.user_regs) {
         TransferUserRegisters(c, s, p);
     } else {
-        TransferWordList(c, s, p);
+        rn_word = TransferWordList(c, s, p);
     }
 
     if (!load || !pc_in_list) return;
     const Ref pc = b.GetSlot(Type::kI32, static_cast<uint32_t>(ArmGprDisp(ArmGpr::kR15)));
-    if (exc_return) {
+    if (p.rn_in_return) {
+        const Ref rn_value =
+            p.defer_rn ? rn_word : b.Op2(Op::kAdd, b.GetSlot(Type::kI32, p.rn_disp), b.Const32(p.delta));
+        ArmIrExceptionReturnWriteback(c, pc, d.rn, rn_value);
+    } else if (exc_return) {
         ArmIrExceptionReturn(c, pc);
     } else {
         ArmIrLoadWritePc(c, pc);

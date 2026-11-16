@@ -139,9 +139,9 @@ uint8_t* A64SoftTlb::EmitWatchWrite(uint8_t* c, uint32_t) const {
 }
 
 uint8_t* A64SoftTlb::EmitDirect(uint8_t* c, uint32_t privilege, TlbAccess access,
-                                size_t* call_offset) const {
+                                size_t* miss_offset, uint32_t* miss_count) const {
     uint8_t* const start = c;
-    uint8_t*       miss[3];
+    uint8_t*       miss[SoftTlbMissSites::kMax];
     int            nmiss = 0;
 
     c = EmitFold(c);
@@ -155,12 +155,9 @@ uint8_t* A64SoftTlb::EmitDirect(uint8_t* c, uint32_t privilege, TlbAccess access
 
     EmitLdrX(c, kTmpB, kEntry, model_.entry_addend);
     EmitAddUxtw(c, kHost, kTmpB, kFolded);
-    uint8_t* hit_done = EmitBLabel(c);
 
-    for (int i = 0; i < nmiss; ++i) FixupLabel(miss[i], c);
-    *call_offset = static_cast<size_t>(c - start);
-    Emit32(c, 0x94000000u);
-    FixupLabel(hit_done, c);
+    for (int i = 0; i < nmiss; ++i) miss_offset[i] = static_cast<size_t>(miss[i] - start);
+    *miss_count = static_cast<uint32_t>(nmiss);
     return c;
 }
 
@@ -182,6 +179,8 @@ uint8_t* A64SoftTlb::EmitMiss(uint8_t* c, uint32_t privilege, TlbAccess access) 
         EmitRet(c);
         for (int i = 0; i < n_io_miss; ++i) FixupLabel(io_miss[i], c);
     }
+    const bool keep_pc = KeepsPc();
+    if (keep_pc) c = EmitSavePc(c);
     EmitStpPre(c, kVa, kLr, kSp, -16);
     for (uint32_t i = 0; i < saved_count_; i += 2u) {
         EmitStpPre(c, saved_[i], i + 1u < saved_count_ ? saved_[i + 1u] : kIp1, kSp, -16);
@@ -192,7 +191,21 @@ uint8_t* A64SoftTlb::EmitMiss(uint8_t* c, uint32_t privilege, TlbAccess access) 
         EmitLdpPost(c, saved_[i], i + 1u < saved_count_ ? saved_[i + 1u] : kIp1, kSp, 16);
     }
     EmitLdpPost(c, kVa, kLr, kSp, 16);
+    if (keep_pc) c = EmitRestorePc(c);
     EmitRet(c);
+    return c;
+}
+
+uint8_t* A64SoftTlb::EmitSavePc(uint8_t* c) const {
+    EmitLdrW(c, kSavedPcReg, kStateReg, model_.pc_slot);
+    EmitStrW(c, kPcReg, kStateReg, model_.pc_slot);
+    EmitStpPre(c, kSavedPcReg, kPcReg, kSp, -16);
+    return c;
+}
+
+uint8_t* A64SoftTlb::EmitRestorePc(uint8_t* c) const {
+    EmitLdpPost(c, kSavedPcReg, kPcReg, kSp, 16);
+    EmitStrW(c, kSavedPcReg, kStateReg, model_.pc_slot);
     return c;
 }
 
@@ -203,22 +216,28 @@ uint8_t* A64SoftTlb::EmitHelperCall(uint8_t* c, const void* helper) const {
     return c;
 }
 
-uint8_t* A64SoftTlb::EmitInlineHelperCall(uint8_t* c, const void* helper) const {
+uint8_t* A64SoftTlb::EmitInlineHelperCall(uint8_t* c, const void* helper, uint32_t guest_pc) const {
+    const bool keep_pc = KeepsPc();
+    if (keep_pc) {
+        EmitMovImm32(c, kPcReg, guest_pc);
+        c = EmitSavePc(c);
+    }
     EmitStpPre(c, kVa, kVa, kSp, -16);
     c = EmitHelperCall(c, helper);
     EmitLdpPost(c, kVa, kFolded, kSp, 16);
+    if (keep_pc) c = EmitRestorePc(c);
     return c;
 }
 
-uint8_t* A64SoftTlb::EmitUserLookup(uint8_t* cursor, TlbAccess access) const {
+uint8_t* A64SoftTlb::EmitUserLookup(uint8_t* cursor, TlbAccess access, uint32_t guest_pc) const {
     if (access == TlbAccess::kReadWrite) {
         throw EmitFault("CerfIR A64 soft TLB: no unprivileged read-write lookup exists");
     }
-    return EmitInlineHelperCall(cursor, model_.user_helper[access == TlbAccess::kRead ? 0u : 1u]);
+    return EmitInlineHelperCall(cursor, model_.user_helper[access == TlbAccess::kRead ? 0u : 1u], guest_pc);
 }
 
-uint8_t* A64SoftTlb::EmitMissCall(uint8_t* cursor, TlbAccess access) const {
-    return EmitInlineHelperCall(cursor, model_.miss_helper[static_cast<size_t>(access)]);
+uint8_t* A64SoftTlb::EmitMissCall(uint8_t* cursor, TlbAccess access, uint32_t guest_pc) const {
+    return EmitInlineHelperCall(cursor, model_.miss_helper[static_cast<size_t>(access)], guest_pc);
 }
 
 void A64SoftTlb::Build(const GuestModel& guest, uint8_t* region) {
@@ -255,14 +274,13 @@ void A64SoftTlb::Build(const GuestModel& guest, uint8_t* region) {
         for (uint32_t i = 0; i < kTlbAccessKinds; ++i) {
             uint8_t        scratch[4096];
             Stamp&         s   = stamps_[p][i];
-            const uint8_t* end = EmitDirect(scratch, p, static_cast<TlbAccess>(i), &s.call_offset);
+            const uint8_t* end = EmitDirect(scratch, p, static_cast<TlbAccess>(i), s.miss_offset, &s.miss_count);
             const size_t   length = static_cast<size_t>(end - scratch);
             if (length > kStampMaxBytes) {
                 throw EmitFault("CerfIR A64 soft TLB: a lookup exceeds its stamp");
             }
             std::memcpy(s.bytes, scratch, length);
             s.length = length;
-            s.target = miss_[p][i];
         }
     }
     platform::FlushInstructionCache(region, RegionBytes(model.privileges));

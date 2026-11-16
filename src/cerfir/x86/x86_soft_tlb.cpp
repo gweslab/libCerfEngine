@@ -51,14 +51,14 @@ uint8_t* X86SoftTlb::EmitFold(uint8_t* cursor) const {
 }
 
 uint8_t* X86SoftTlb::EmitDirect(uint8_t* cursor, uint32_t privilege, TlbAccess access,
-                                size_t* call_rel) const {
+                                size_t* miss_rel, uint32_t* miss_count) const {
     using namespace x86;
     uint8_t* const   start    = cursor;
     const bool       is_write = access != TlbAccess::kRead;
     const EntryDisps e        = DispsFor(model_, privilege);
 
-    uint8_t* miss[3];
-    int      nmiss = 0;
+    uint8_t* miss[SoftTlbMissSites::kMax];
+    uint32_t nmiss = 0;
 
     cursor = EmitFold(cursor);
 
@@ -111,12 +111,9 @@ uint8_t* X86SoftTlb::EmitDirect(uint8_t* cursor, uint32_t privilege, TlbAccess a
 
     cursor = EmitFold(cursor);
     EmitAddPtrRegBaseDisp32(cursor, kEax, kEdx, e.addend);
-    uint8_t* hit_done = EmitJmpLabel(cursor);
 
-    for (int i = 0; i < nmiss; ++i) FixupLabel32(miss[i], cursor);
-    *call_rel = static_cast<size_t>(cursor - start) + 1u;
-    EmitOpcodeRel32(cursor, 0xE8, miss_[privilege][static_cast<size_t>(access)]);
-    FixupLabel(hit_done, cursor);
+    for (uint32_t i = 0; i < nmiss; ++i) miss_rel[i] = static_cast<size_t>(miss[i] - start);
+    *miss_count = nmiss;
     return cursor;
 }
 
@@ -124,6 +121,8 @@ uint8_t* X86SoftTlb::EmitMiss(uint8_t* cursor, uint32_t privilege, TlbAccess acc
     using namespace x86;
     const bool       is_write = access != TlbAccess::kRead;
     const EntryDisps e        = DispsFor(model_, privilege);
+    const bool       keep_pc  = KeepsPc();
+    if (keep_pc) EmitPushReg(cursor, kEax);
 
     if (model_.io_tag_bit != 0u) {
         uint8_t* io_miss[3];
@@ -154,14 +153,41 @@ uint8_t* X86SoftTlb::EmitMiss(uint8_t* cursor, uint32_t privilege, TlbAccess acc
         EmitMovDwordPtrReg  (cursor, model_.io_pending_address, kEax);
         EmitMovDwordPtrImm32(cursor, model_.io_pending_valid, 1u);
         EmitXorRegReg       (cursor, kEax, kEax);
+        if (keep_pc) EmitPopReg(cursor, kEdx);
         EmitRet             (cursor);
 
         for (int i = 0; i < n_io_miss; ++i) FixupLabel32(io_miss[i], cursor);
     }
+    if (keep_pc) {
+        EmitPopReg(cursor, kEax);
+        cursor = EmitPushOldPc(cursor);
+        EmitMovBaseDisp32Reg(cursor, kStateReg, model_.pc_slot, kEax);
+    }
     EmitPushReg(cursor, kEcx);
+    if constexpr (kX64) {
+        if (keep_pc) EmitSubPtrRegImm32(cursor, kEsp, 8u);
+    }
     cursor = EmitHelperCall(cursor, model_.miss_helper[static_cast<size_t>(access)]);
+    if constexpr (kX64) {
+        if (keep_pc) EmitAddPtrRegImm32(cursor, kEsp, 8u);
+    }
     EmitPopReg(cursor, kEcx);
+    if (keep_pc) cursor = EmitPopOldPc(cursor);
     EmitRet(cursor);
+    return cursor;
+}
+
+uint8_t* X86SoftTlb::EmitPushOldPc(uint8_t* cursor) const {
+    using namespace x86;
+    EmitMovRegBaseDisp32(cursor, kEdx, kStateReg, model_.pc_slot);
+    EmitPushReg(cursor, kEdx);
+    return cursor;
+}
+
+uint8_t* X86SoftTlb::EmitPopOldPc(uint8_t* cursor) const {
+    using namespace x86;
+    EmitPopReg(cursor, kEdx);
+    EmitMovBaseDisp32Reg(cursor, kStateReg, model_.pc_slot, kEdx);
     return cursor;
 }
 
@@ -179,25 +205,36 @@ uint8_t* X86SoftTlb::EmitHelperCall(uint8_t* cursor, const void* helper) const {
     return cursor;
 }
 
-uint8_t* X86SoftTlb::EmitInlineHelperCall(uint8_t* cursor, const void* helper) const {
+uint8_t* X86SoftTlb::EmitInlineHelperCall(uint8_t* cursor, const void* helper,
+                                          uint32_t guest_pc) const {
     using namespace x86;
+    const bool keep_pc = KeepsPc();
+    if (keep_pc) {
+        cursor = EmitPushOldPc(cursor);
+        EmitMovBaseDisp32Imm32(cursor, kStateReg, model_.pc_slot, guest_pc);
+    }
     EmitPushReg(cursor, kEcx);
-    if constexpr (kX64) EmitSubPtrRegImm32(cursor, kEsp, 8u);
+    if constexpr (kX64) {
+        if (!keep_pc) EmitSubPtrRegImm32(cursor, kEsp, 8u);
+    }
     cursor = EmitHelperCall(cursor, helper);
-    if constexpr (kX64) EmitAddPtrRegImm32(cursor, kEsp, 8u);
+    if constexpr (kX64) {
+        if (!keep_pc) EmitAddPtrRegImm32(cursor, kEsp, 8u);
+    }
     EmitPopReg(cursor, kEcx);
+    if (keep_pc) cursor = EmitPopOldPc(cursor);
     return cursor;
 }
 
-uint8_t* X86SoftTlb::EmitUserLookup(uint8_t* cursor, TlbAccess access) const {
+uint8_t* X86SoftTlb::EmitUserLookup(uint8_t* cursor, TlbAccess access, uint32_t guest_pc) const {
     if (access == TlbAccess::kReadWrite) {
         throw EmitFault("CerfIR x86 soft TLB: no unprivileged read-write lookup exists");
     }
-    return EmitInlineHelperCall(cursor, model_.user_helper[access == TlbAccess::kRead ? 0u : 1u]);
+    return EmitInlineHelperCall(cursor, model_.user_helper[access == TlbAccess::kRead ? 0u : 1u], guest_pc);
 }
 
-uint8_t* X86SoftTlb::EmitMissCall(uint8_t* cursor, TlbAccess access) const {
-    return EmitInlineHelperCall(cursor, model_.miss_helper[static_cast<size_t>(access)]);
+uint8_t* X86SoftTlb::EmitMissCall(uint8_t* cursor, TlbAccess access, uint32_t guest_pc) const {
+    return EmitInlineHelperCall(cursor, model_.miss_helper[static_cast<size_t>(access)], guest_pc);
 }
 
 void X86SoftTlb::Build(const GuestModel& guest, uint8_t* region) {
@@ -223,14 +260,13 @@ void X86SoftTlb::Build(const GuestModel& guest, uint8_t* region) {
         for (uint32_t i = 0; i < kTlbAccessKinds; ++i) {
             uint8_t        scratch[4096];
             Stamp&         s   = stamps_[p][i];
-            const uint8_t* end = EmitDirect(scratch, p, static_cast<TlbAccess>(i), &s.call_rel);
+            const uint8_t* end = EmitDirect(scratch, p, static_cast<TlbAccess>(i), s.miss_rel, &s.miss_count);
             const size_t   length = static_cast<size_t>(end - scratch);
             if (length > kStampMaxBytes) {
                 throw EmitFault("CerfIR x86 soft TLB: a lookup exceeds its stamp");
             }
             std::memcpy(s.bytes, scratch, length);
             s.length = length;
-            s.target = miss_[p][i];
         }
     }
 }

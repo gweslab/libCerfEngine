@@ -57,6 +57,8 @@ enum class ShInsnKind : uint8_t {
     kDspTransfer,
     kDspParallel,
     kDspSingleTransfer,
+    kTrapa,
+    kDspRepeatControl,
     kCount,
 };
 

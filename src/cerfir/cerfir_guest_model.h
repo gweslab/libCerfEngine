@@ -69,6 +69,7 @@ struct SoftTlbModel {
     const void* miss_helper[kTlbAccessKinds]    = {};
     const void* user_helper[2]                  = {};
     const void* context                         = nullptr;
+    int32_t     pc_slot                         = kNoSlot;
 };
 
 struct HelperMemoryModel {

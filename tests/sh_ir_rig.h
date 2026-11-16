@@ -69,6 +69,11 @@ constexpr uint32_t kShRigExpevtAddressWrite        = 0x100u;
 constexpr uint32_t kShRigExpevtReservedInstruction = 0x180u;
 constexpr uint32_t kShRigExpevtIllegalSlot         = 0x1A0u;
 
+constexpr uint32_t kShRigResetPc            = 0xA0000000u;
+constexpr uint32_t kShRigResetSr            = 0x700000F0u;
+constexpr uint32_t kShRigPowerOnResetExpevt = 0x000u;
+constexpr uint32_t kShRigManualResetExpevt  = 0x020u;
+
 constexpr uint32_t kShRigSrBase =
     cerfengine::kShSrMd | cerfengine::kShSrRb | cerfengine::kShSrBl | cerfengine::kShSrImask;
 constexpr uint32_t kShRigSrPrivileged = cerfengine::kShSrMd | cerfengine::kShSrRb | cerfengine::kShSrImask;
@@ -116,19 +121,21 @@ inline void ShRigCheckState(const cerfengine::ShCpuState& got, const cerfengine:
 
 class ShIrRig {
 public:
-    ShIrRig(bool dsp, bool verify, bool writable_ram = false) : host_(kShRigRamPa, kShRigRamSize, kShRigMmioPa) {
-        setup_.isa       = cerfengine::Isa::kSh;
-        setup_.sh.dsp    = dsp;
-        setup_.verify_ir = verify;
+    ShIrRig(bool dsp, bool verify, bool writable_ram = false, cerfengine::ShOnChipCodeHost* on_chip_code = nullptr)
+        : host_(kShRigRamPa, kShRigRamSize, kShRigMmioPa) {
+        setup_.isa             = cerfengine::Isa::kSh;
+        setup_.sh.dsp          = dsp;
+        setup_.verify_ir       = verify;
+        setup_.sh_on_chip_code = on_chip_code;
         if (!writable_ram) host_.MakeRamReadOnly();
         host_.Attach(setup_);
         engine_ = std::make_unique<cerfengine::Engine>(setup_);
         std::string error;
         if (!engine_->Start(error)) TestFail("Start: %s", error.c_str());
         engine_->BindClock(host_);
-        cpu_ = &engine_->Get<cerfengine::ShCpu>();
+        cpu_ = &EngineService<cerfengine::ShCpu>();
         host_.ObserveCycles(&cpu_->State()->guest_cycle_counter);
-        guest_ = &engine_->Get<cerfengine::GuestEngine>();
+        guest_ = &EngineService<cerfengine::GuestEngine>();
         guest_->SetHostChainExit(true);
     }
 
@@ -204,10 +211,12 @@ public:
     TestHost&                     Host() { return host_; }
     cerfengine::ShCpu&            Cpu() { return *cpu_; }
     cerfengine::GuestEngine&      Guest() { return *guest_; }
-    cerfengine::ShMmu&            Mmu() { return engine_->Get<cerfengine::ShMmu>(); }
-    cerfengine::ShBusMasterCoherence& BusMasterCoherence() { return engine_->Get<cerfengine::ShBusMasterCoherence>(); }
-    cerfengine::ShInterruptChannel& Interrupts() { return engine_->Get<cerfengine::ShInterruptChannel>(); }
-    cerfengine::HostRequestChannel& HostRequests() { return engine_->Get<cerfengine::HostRequestChannel>(); }
+    template <class T>
+    T& EngineService() { return engine_->Get<T>(); }
+    cerfengine::ShMmu&                Mmu() { return EngineService<cerfengine::ShMmu>(); }
+    cerfengine::ShBusMasterCoherence& BusMasterCoherence() { return EngineService<cerfengine::ShBusMasterCoherence>(); }
+    cerfengine::ShInterruptChannel&   Interrupts() { return EngineService<cerfengine::ShInterruptChannel>(); }
+    cerfengine::HostRequestChannel&   HostRequests() { return EngineService<cerfengine::HostRequestChannel>(); }
     const cerfengine::ShCpuState& State() const { return *cpu_->State(); }
     uint32_t                      BlocksCompiled() const { return host_.BlocksCompiled(); }
 

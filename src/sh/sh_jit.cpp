@@ -9,6 +9,7 @@
 #include <cerfengine/sh/sh_interrupt_channel.h>
 #include <cerfengine/sh/sh_mmu.h>
 #include <cerfengine/unmapped_windows.h>
+#include <cerfengine/unwind_rollback.h>
 #include "sh_address_space.h"
 #include "sh_block_compiler.h"
 #include "sh_memory_access.h"
@@ -97,6 +98,7 @@ public:
     }
 
     void SetHostChainExit(bool requested) override { interrupts_->SetHostExit(requested); }
+    void SettleRestartPoint() override { cpu_->SettleRestartPoint(); }
 
     bool     DeepSleep()    const override { return cpu_state_->deep_sleep != 0u; }
     bool     ResetPending() const override { return interrupts_->ResetRequested(); }
@@ -159,8 +161,14 @@ public:
 private:
     void DeliverReset() {
         interrupts_->ClearResetRequest();
-        cpu_->ResetState(cpu_->TakePendingResetKind());
+        const ShResetKind kind = cpu_->TakePendingResetKind();
+        UnwindRollback    still_pending([this, kind] {
+            cpu_->SetPendingResetKind(kind);
+            interrupts_->RequestReset();
+        });
+        cpu_->ResetState(kind);
         host_->OnResetDelivered();
+        still_pending.Commit();
     }
 
     bool HostPa(uint32_t va, uint32_t* pa) {

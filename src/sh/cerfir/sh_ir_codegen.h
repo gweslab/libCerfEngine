@@ -38,7 +38,6 @@ private:
 
     void TranslateBlock(const ShDecodedInsn* insns, uint32_t count);
     void EmitPcHelperCall(cerfir::Builder& b, PcHelper helper, uint32_t guest_pc);
-    [[noreturn]] void RaiseIllegalInstruction(uint32_t expevt, uint32_t exception_pc);
 
     static void CERFENGINE_CDECL TraceDispatchPcHelper(ShIrCodegen* codegen, uint32_t guest_pc);
 

@@ -101,6 +101,10 @@ namespace MipsSpecial {
     constexpr uint32_t kOR      = 0x25;
     constexpr uint32_t kXOR     = 0x26;
     constexpr uint32_t kNOR     = 0x27;
+    constexpr uint32_t kMACC    = 0x28;
+    constexpr uint32_t kDMACC   = 0x29;
+    constexpr uint32_t kMADD16  = 0x28;
+    constexpr uint32_t kDMADD16 = 0x29;
     constexpr uint32_t kSLT     = 0x2A;
     constexpr uint32_t kSLTU    = 0x2B;
     constexpr uint32_t kDSUBU   = 0x2F;

@@ -38,7 +38,7 @@ void WriteControl(ShIrContext& c, Ref value) {
     cerfir::Builder& b     = *c.b;
     const uint32_t   which = c.d->control_register;
     if (which == static_cast<uint32_t>(ShControlRegister::kSr)) {
-        b.Call(ShIrHostCall(c, reinterpret_cast<const void*>(&ShCpu::WriteSrHelper), 2u), Type::kVoid,
+        b.Call(ShIrHostCall(reinterpret_cast<const void*>(&ShCpu::WriteSrHelper), 2u), Type::kVoid,
                b.ConstPtr(c.cpu), value, kNoRef);
     } else if (which == static_cast<uint32_t>(ShControlRegister::kSsr)) {
         b.SetSlot(ControlDisp(which), b.Op2(Op::kAnd, value, b.Const32(c.cpu->SrWritable())));

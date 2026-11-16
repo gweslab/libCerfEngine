@@ -2,18 +2,22 @@
 
 namespace cerfengine {
 
-cerfir::CallDesc ShIrHostCall(const ShIrContext& c, const void* fn, uint8_t num_args) {
-    cerfir::CallDesc call{fn, cerfir::CallConv::kCdecl, num_args};
-    call.store_pc = true;
-    call.pc       = c.d->guest_address;
-    return call;
+namespace {
+
+constexpr uint32_t kDelaySlotOffset = 2u;
+
 }
 
-cerfir::CallSpec ShIrHostCallConst(const void* fn, uint32_t guest_pc) {
-    cerfir::CallSpec spec{fn, cerfir::CallConv::kCdecl, cerfir::Type::kVoid};
-    spec.store_pc = true;
-    spec.pc       = guest_pc;
-    return spec;
+uint32_t ShIrRestartPc(const ShIrContext& c) {
+    return c.in_delay_slot ? c.d->guest_address - kDelaySlotOffset : c.d->guest_address;
+}
+
+cerfir::CallDesc ShIrHostCall(const void* fn, uint8_t num_args) {
+    return cerfir::CallDesc{fn, cerfir::CallConv::kCdecl, num_args};
+}
+
+cerfir::CallSpec ShIrHostCallConst(const void* fn) {
+    return cerfir::CallSpec{fn, cerfir::CallConv::kCdecl, cerfir::Type::kVoid};
 }
 
 }

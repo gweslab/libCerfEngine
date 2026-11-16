@@ -10,10 +10,19 @@
 #include "../cerfir_guest_model.h"
 #include "../cerfir_types.h"
 #include "x86_operand.h"
+#include "x86_soft_tlb.h"
 
 namespace cerfengine::cerfir {
 
 class X86Lowering;
+
+struct X86MissStub {
+    SoftTlbMissSites misses;
+    const void*  target;
+    uint8_t*     resume;
+    uint32_t     pc;
+    bool         keep_pc;
+};
 
 struct X86MemoryTail {
     MemorySlowDesc desc;
@@ -39,7 +48,10 @@ CERFENGINE_FORCEINLINE uint8_t* X86NextChainedSite(const uint8_t* site) {
 
 class X86MemoryTails {
 public:
-    void BeginBlock() { count_ = 0; }
+    void BeginBlock() {
+        count_      = 0;
+        stub_count_ = 0;
+    }
 
     CERFENGINE_FORCEINLINE X86MemoryTail& New() {
         if (count_ == capacity_) Grow();
@@ -51,15 +63,24 @@ public:
         return t;
     }
 
+    CERFENGINE_FORCEINLINE void AddMissStub(const SoftTlbMissSites& misses, const void* target,
+                                            uint8_t* resume, uint32_t pc, bool keep_pc) {
+        if (stub_count_ == stubs_.size()) stubs_.resize(stubs_.empty() ? 16u : stubs_.size() * 2u);
+        stubs_[stub_count_++] = X86MissStub{misses, target, resume, pc, keep_pc};
+    }
+
     bool Emit(X86Lowering& lowering);
 
 private:
     void Grow();
     void EmitOne(X86Lowering& lowering, const X86MemoryTail& tail);
+    void EmitMissStub(X86Lowering& lowering, const X86MissStub& stub);
 
     std::vector<X86MemoryTail> tails_;
     size_t                     count_    = 0;
     size_t                     capacity_ = 0;
+    std::vector<X86MissStub>   stubs_;
+    size_t                     stub_count_ = 0;
 };
 
 }

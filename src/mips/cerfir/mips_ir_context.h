@@ -33,7 +33,6 @@ struct MipsIrContext {
     MipsBlockContext*      block;
     MipsIrCodegen*         codegen;
     const MipsDecodedInsn* d;
-    bool                   pc_stored;
     MipsIrBranch           branch;
     bool                   wide_gprs;
     bool                   lean_branch;
@@ -133,39 +132,28 @@ CERFENGINE_FORCEINLINE void MipsIrWriteHiLo(MipsIrContext& c, uint32_t disp, cer
     c.b->SetSlotSext(disp, lo);
 }
 
-CERFENGINE_FORCEINLINE cerfir::CallSpec MipsIrCallSpec(MipsIrContext& c, const void* fn,
-                                                       cerfir::CallConv conv, cerfir::Type result) {
-    cerfir::CallSpec spec{fn, conv, result};
-    if (!c.pc_stored) {
-        spec.store_pc = true;
-        spec.pc       = c.d->guest_address;
-        c.pc_stored   = true;
-    }
-    return spec;
-}
-
 CERFENGINE_FORCEINLINE cerfir::Ref MipsIrFastcall(MipsIrContext& c, const void* fn,
                                                   cerfir::Type result, cerfir::Ref arg0,
                                                   cerfir::Ref arg1) {
-    return c.b->Call(MipsIrCallSpec(c, fn, cerfir::CallConv::kFastcall, result), arg0, arg1,
+    return c.b->Call(cerfir::CallSpec{fn, cerfir::CallConv::kFastcall, result}, arg0, arg1,
                      cerfir::kNoRef);
 }
 
 CERFENGINE_FORCEINLINE cerfir::Ref MipsIrFastcall(MipsIrContext& c, const void* fn,
                                                   cerfir::Type result, cerfir::Ref arg0,
                                                   cerfir::Ref arg1, cerfir::Ref arg2) {
-    return c.b->Call(MipsIrCallSpec(c, fn, cerfir::CallConv::kFastcall, result), arg0, arg1, arg2);
+    return c.b->Call(cerfir::CallSpec{fn, cerfir::CallConv::kFastcall, result}, arg0, arg1, arg2);
 }
 
 CERFENGINE_FORCEINLINE void MipsIrCdecl(MipsIrContext& c, const void* fn, cerfir::Ref a,
                                         cerfir::Ref b, cerfir::Ref c3) {
-    c.b->Call(MipsIrCallSpec(c, fn, cerfir::CallConv::kCdecl, cerfir::Type::kVoid), a, b, c3);
+    c.b->Call(cerfir::CallSpec{fn, cerfir::CallConv::kCdecl, cerfir::Type::kVoid}, a, b, c3);
 }
 
 CERFENGINE_FORCEINLINE void MipsIrCdeclConst(MipsIrContext& c, const void* fn, uint32_t num_args,
                                              cerfir::CallArg a0, cerfir::CallArg a1,
                                              cerfir::CallArg a2) {
-    c.b->CallConst(MipsIrCallSpec(c, fn, cerfir::CallConv::kCdecl, cerfir::Type::kVoid), num_args,
+    c.b->CallConst(cerfir::CallSpec{fn, cerfir::CallConv::kCdecl, cerfir::Type::kVoid}, num_args,
                    a0, a1, a2, 0u);
 }
 
@@ -173,7 +161,7 @@ CERFENGINE_FORCEINLINE void MipsIrFastcallConst(MipsIrContext& c, const void* fn
                                                 uint32_t num_args, cerfir::CallArg arg0,
                                                 cerfir::CallArg arg1, cerfir::CallArg arg2 = 0u,
                                                 cerfir::CallArg arg3 = 0u) {
-    c.b->CallConst(MipsIrCallSpec(c, fn, cerfir::CallConv::kFastcall, cerfir::Type::kVoid),
+    c.b->CallConst(cerfir::CallSpec{fn, cerfir::CallConv::kFastcall, cerfir::Type::kVoid},
                    num_args, arg0, arg1, arg2, arg3);
 }
 

@@ -102,6 +102,7 @@ void ArmIrCodegen::BuildGuestModel() {
     t.user_helper[0] = reinterpret_cast<const void*>(&ArmMmu::TranslateUserReadHelper);
     t.user_helper[1] = reinterpret_cast<const void*>(&ArmMmu::TranslateUserWriteHelper);
     t.context        = &mmu;
+    t.pc_slot        = ArmGprDisp(ArmGpr::kR15);
 
     model_.slow = slow_->SlowModel();
 }
@@ -223,6 +224,7 @@ CERFENGINE_FORCEINLINE void ArmIrCodegen::TranslateInsns(const ArmIrBlockInput& 
     for (uint32_t i = 0; i < n; ++i) {
         const DecodedInsn& d = insns[i];
         c.d                  = &d;
+        b.SetCallPc(d.guest_address);
         if (d.itstate_valid != 0u) ArmIrStoreItState(c, d.itstate);
         if constexpr (kTraced) {
             if (host_->HasPcTrace(d.guest_address)) EmitPcTrace(b, in, d.guest_address);
@@ -248,7 +250,6 @@ CERFENGINE_FORCEINLINE void ArmIrCodegen::TranslateInsns(const ArmIrBlockInput& 
 }
 
 void ArmIrCodegen::EmitPcTrace(cerfir::Builder& b, const ArmIrBlockInput& in, uint32_t address) {
-    b.SetSlot(static_cast<uint32_t>(ArmGprDisp(ArmGpr::kR15)), b.Const32(address));
     const cerfir::CallDesc trace{
         reinterpret_cast<const void*>(&ArmBlockCompiler::TraceDispatchPcHelper),
         cerfir::CallConv::kCdecl, 2u};

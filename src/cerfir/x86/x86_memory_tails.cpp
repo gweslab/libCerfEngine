@@ -24,7 +24,21 @@ bool X86MemoryTails::Emit(X86Lowering& l) {
         if (!l.HasRoom()) return false;
         EmitOne(l, tails_[i]);
     }
+    for (size_t i = 0; i < stub_count_; ++i) {
+        if (!l.HasRoom()) return false;
+        EmitMissStub(l, stubs_[i]);
+    }
     return true;
+}
+
+void X86MemoryTails::EmitMissStub(X86Lowering& l, const X86MissStub& s) {
+    using namespace x86;
+    uint8_t* c = l.Cursor();
+    for (uint32_t i = 0; i < s.misses.count; ++i) FixupLabel32(s.misses.site[i], c);
+    if (s.keep_pc) EmitMovRegImm32(c, kEax, s.pc);
+    EmitOpcodeRel32(c, 0xE8, s.target);
+    FixupLabel32(EmitJmpLabel32(c), s.resume);
+    l.Cursor() = c;
 }
 
 void X86MemoryTails::EmitOne(X86Lowering& l, const X86MemoryTail& t) {

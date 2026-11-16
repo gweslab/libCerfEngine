@@ -12,6 +12,7 @@
 #include "mips_memory_access.h"
 #include <cerfengine/mips/mips_mmu.h>
 #include <cerfengine/physical_map.h>
+#include <cerfengine/unwind_rollback.h>
 #include "mips_translation_cache.h"
 
 namespace cerfengine {
@@ -141,11 +142,13 @@ dispatch:
 }
 
 void MipsJit::DeliverReset() {
+    UnwindRollback still_pending([this] { channel_->SetResetRequest(true); });
     host_->OnResetDelivered();
     channel_->OnCpuReset();
     cpu_->ResetState();
     cache_->ContextSwitchFlush();
     mmu_->ArmErlMap();
+    still_pending.Commit();
 }
 
 void MipsJit::SetExternalInterruptLevel(uint32_t ip_mask) {

@@ -232,7 +232,7 @@ Mips16DecodeKind Mips16Decoder::DecodeI64(uint32_t funct, uint32_t ry_field,
             d->rt     = static_cast<uint8_t>(ry);
             d->target = (base_pc & ~3u) +
                         (extended ? Sext(ext_imm16, 16) : off5 << 2);
-            d->kind     = MipsInsnKind::kMips16Addiupc;
+            d->kind     = MipsInsnKind::kMips16Daddiupc;
             return Mips16DecodeKind::kDirect;
         case 7:
             *synth = I(MipsOp::kDADDIU, 29, ry,
