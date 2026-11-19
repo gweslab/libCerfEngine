@@ -172,6 +172,10 @@ public:
     bool Symbolize(const void*, char*, size_t) override { return false; }
 
     void MakeRamReadOnly() { ram_read_only_ = true; }
+    void AddRom(uint32_t pa, std::vector<uint8_t> bytes) {
+        rom_base_ = pa;
+        rom_      = std::move(bytes);
+    }
     void MirrorRamAt(uint32_t pa) {
         mirror_base_ = pa;
         mirrored_    = true;
@@ -179,6 +183,7 @@ public:
 
     static uint8_t* PhysicalTranslate(void* context, uint32_t pa, bool write, cerfengine::PhysicalPage& page) {
         TestHost*      self    = static_cast<TestHost*>(context);
+        if (uint8_t* rom = self->RomBacking(pa)) return write ? nullptr : rom;
         const uint32_t page_pa = pa & ~0xFFFu;
         if (uint8_t* first = self->Backing(page_pa);
             first != nullptr && self->Backing(page_pa + 0xFFFu)) {
@@ -301,6 +306,11 @@ private:
         if (raise_irq_) raise_irq_();
     }
 
+    uint8_t* RomBacking(uint32_t pa) {
+        if (pa < rom_base_ || pa - rom_base_ >= rom_.size()) return nullptr;
+        return rom_.data() + (pa - rom_base_);
+    }
+
     uint8_t* Backing(uint32_t pa) {
         if (pa >= ram_base_ && pa - ram_base_ < ram_.size()) return data_ + (pa - ram_base_);
         if (mirrored_ && pa >= mirror_base_ && pa - mirror_base_ < ram_.size()) return data_ + (pa - mirror_base_);
@@ -313,6 +323,8 @@ private:
     uint32_t              mmio_pa_;
     uint32_t              mirror_base_   = 0;
     bool                  mirrored_      = false;
+    uint32_t              rom_base_      = 0;
+    std::vector<uint8_t>  rom_;
     bool                  ram_read_only_ = false;
     std::atomic<uint32_t> generation_{0};
     bool                  mmio_written_    = false;

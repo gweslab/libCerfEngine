@@ -8,7 +8,6 @@
 #include "mips/mips_system_host.h"
 #include "mmio_bus_host.h"
 #include "physical_memory_host.h"
-#include "sh/sh_on_chip_code_host.h"
 
 namespace cerfengine {
 
@@ -88,7 +87,6 @@ struct Setup {
     MipsTlbHooks          mips_tlb;
     MipsExceptionHooks    mips_exception;
     MipsSystemHost*       mips_system     = nullptr;
-    ShOnChipCodeHost*     sh_on_chip_code = nullptr;
 };
 
 }

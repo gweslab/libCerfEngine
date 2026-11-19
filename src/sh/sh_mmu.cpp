@@ -252,7 +252,7 @@ bool ShMmu::Probe(uint32_t va, ShAccess access, ShTranslation* out) {
 
 bool ShMmu::ProbeFetch(uint32_t va, ShTranslation* out) {
     if (UnmappedWindows::Contains(va) || !Translates(va)) {
-        out->pa     = UnmappedWindows::Pa(va);
+        out->pa     = ShAddressSpace::Pa(va);
         out->global = true;
         return true;
     }

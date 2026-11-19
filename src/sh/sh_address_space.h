@@ -21,13 +21,13 @@ constexpr uint32_t kUxyBase              = 0xA5000000u;
 constexpr uint32_t kUxyMask              = 0xFF000000u;
 constexpr uint32_t kXyBusYHalf           = 0x00010000u;
 
+constexpr bool OnChipCode(uint32_t va) { return va >= kP4Base && va < kCacheAddressArray; }
+
 constexpr bool DirectlyMapped(uint32_t va) {
-    return UnmappedWindows::Contains(va) || va >= kP4OnChipIoBase;
+    return UnmappedWindows::Contains(va) || OnChipCode(va) || va >= kP4OnChipIoBase;
 }
 
 constexpr bool Paged(uint32_t va) { return va < kP1Base || (va >= kP3Base && va < kP4Base); }
-
-constexpr bool OnChipCode(uint32_t va) { return va >= kP4Base && va < kCacheAddressArray; }
 
 constexpr bool PrivilegedOnly(uint32_t va) { return va >= kP1Base; }
 
@@ -41,6 +41,6 @@ constexpr bool ReservedArea7(uint32_t va) {
     return UnmappedWindows::Contains(va) && UnmappedWindows::Pa(va) >= kArea7PaBase;
 }
 
-constexpr uint32_t Pa(uint32_t va) { return UnmappedWindows::Pa(va); }
+constexpr uint32_t Pa(uint32_t va) { return OnChipCode(va) ? va : UnmappedWindows::Pa(va); }
 
 }

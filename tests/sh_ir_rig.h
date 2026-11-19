@@ -21,6 +21,7 @@
 constexpr uint32_t kShRigRamPa   = 0x00000000u;
 constexpr uint32_t kShRigRamSize = 0x00020000u;
 constexpr uint32_t kShRigMmioPa  = 0x10000000u;
+constexpr uint32_t kShRigOnChipCodePa = 0xE00001DEu;
 constexpr uint32_t kShRigVaBase  = 0xA0000000u;
 constexpr uint32_t kShRigPageSize = 0x400u;
 constexpr uint32_t kShRigPageMask = kShRigPageSize - 1u;
@@ -121,13 +122,13 @@ inline void ShRigCheckState(const cerfengine::ShCpuState& got, const cerfengine:
 
 class ShIrRig {
 public:
-    ShIrRig(bool dsp, bool verify, bool writable_ram = false, cerfengine::ShOnChipCodeHost* on_chip_code = nullptr)
+    ShIrRig(bool dsp, bool verify, bool writable_ram = false, std::vector<uint8_t> on_chip_code = {})
         : host_(kShRigRamPa, kShRigRamSize, kShRigMmioPa) {
-        setup_.isa             = cerfengine::Isa::kSh;
-        setup_.sh.dsp          = dsp;
-        setup_.verify_ir       = verify;
-        setup_.sh_on_chip_code = on_chip_code;
+        setup_.isa       = cerfengine::Isa::kSh;
+        setup_.sh.dsp    = dsp;
+        setup_.verify_ir = verify;
         if (!writable_ram) host_.MakeRamReadOnly();
+        if (!on_chip_code.empty()) host_.AddRom(kShRigOnChipCodePa, std::move(on_chip_code));
         host_.Attach(setup_);
         engine_ = std::make_unique<cerfengine::Engine>(setup_);
         std::string error;

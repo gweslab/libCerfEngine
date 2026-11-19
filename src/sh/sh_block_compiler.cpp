@@ -23,7 +23,6 @@ CERFENGINE_REGISTER(ShBlockCompiler);
 
 void ShBlockCompiler::OnReady() {
     cpu_state_       = engine_.Get<ShCpu>().State();
-    on_chip_code_    = engine_.GetSetup().sh_on_chip_code;
     map_             = &engine_.Get<PhysicalMap>();
     cache_           = &engine_.Get<ShTranslationCache>();
     mmu_             = &engine_.Get<ShMmu>();
@@ -49,14 +48,15 @@ bool ShBlockCompiler::TranslateFetch(uint32_t va, bool deliver, uint32_t excepti
         if (deliver) mmu_->RaiseAddressError(va, ShAccess::kFetch, exception_pc);
         return false;
     }
-    if (!UnmappedWindows::Contains(va) && !ShAddressSpace::Paged(va)) {
+    const bool on_chip_code = ShAddressSpace::OnChipCode(va);
+    if (!UnmappedWindows::Contains(va) && !ShAddressSpace::Paged(va) && !on_chip_code) {
         engine_.Halt(HaltReason::kUnimplemented, "ShBlockCompiler: instruction fetch at PC 0x%08X in P4 is not modeled",
                      va);
     }
     const bool mapped = deliver && mmu_->Translates(va) ? mmu_->Translate(va, ShAccess::kFetch, exception_pc, out)
                                                         : mmu_->ProbeFetch(va, out);
     if (!mapped) return false;
-    if (out->pa >= ShAddressSpace::kArea7PaBase) {
+    if (!on_chip_code && out->pa >= ShAddressSpace::kArea7PaBase) {
         engine_.Halt(HaltReason::kUnimplemented,
                      "ShBlockCompiler: instruction fetch at PC 0x%08X reaches the reserved area 7 PA 0x%08X", va,
                      out->pa);
@@ -164,11 +164,6 @@ void* ShBlockCompiler::FindBlockNativeStart(uint32_t pc) {
 }
 
 void* ShBlockCompiler::Compile(uint32_t pc) {
-    if (on_chip_code_ != nullptr && ShAddressSpace::OnChipCode(pc) && (pc & 1u) == 0u &&
-        ProcessorMode() == kBlockPrivileged) {
-        on_chip_code_->Call(pc, *cpu_state_);
-        return nullptr;
-    }
     ShTranslation start{};
     if (!TranslateFetch(pc, true, pc, &start)) return nullptr;
     const uint32_t phys_start = start.pa;
