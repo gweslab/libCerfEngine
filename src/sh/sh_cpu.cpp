@@ -14,14 +14,12 @@ namespace {
 
 constexpr uint32_t kResetSr              = 0x700000F0u;
 constexpr uint32_t kResetPc              = 0xA0000000u;
-constexpr uint32_t kPowerOnResetExpevt   = 0x000u;
-constexpr uint32_t kManualResetExpevt    = 0x020u;
 constexpr uint32_t kTrapExpevt           = 0x160u;
 
 constexpr bool Bank1Active(uint32_t sr) { return (sr & kShSrMd) != 0u && (sr & kShSrRb) != 0u; }
 
 constexpr uint32_t ResetExpevt(ShResetKind kind) {
-    return kind == ShResetKind::kManual ? kManualResetExpevt : kPowerOnResetExpevt;
+    return kind == ShResetKind::kManual ? kShManualResetExpevt : kShPowerOnResetExpevt;
 }
 
 }
@@ -87,7 +85,7 @@ void ShCpu::RaiseException(uint32_t expevt, uint32_t vector_offset, uint32_t exc
                      expevt, exception_pc);
     }
     if (BlocksExceptions()) {
-        ResetCpuRegisters(kManualResetExpevt);
+        ResetCpuRegisters(kShManualResetExpevt);
         engine_.Host().OnCpuReset();
         return;
     }
