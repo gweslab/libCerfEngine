@@ -48,7 +48,6 @@ public:
             if (!Matches(e, a)) continue;
             ArmCoprocDecision d = e.decision;
             if (e.reg_index != kNoRegister) d.reg = &regs[e.reg_index];
-            if (e.decision.action == ArmCoprocAction::kRegister40) d.reg = &acc40[0];
             d.context = this;
             return d;
         }
@@ -57,14 +56,12 @@ public:
 
     void Reset(uint32_t seed) {
         for (uint32_t i = 0; i < kRegisters; ++i) regs[i] = seed * 0x9E3779B1u + i * 0x85EBCA6Bu;
-        acc40[0] = seed ^ 0xA5A5A5A5u;
-        acc40[1] = seed >> 3;
         value_   = seed;
         log.clear();
     }
 
     bool SameAs(const Coprocessor& o) const {
-        return regs == o.regs && acc40[0] == o.acc40[0] && acc40[1] == o.acc40[1] && log == o.log;
+        return regs == o.regs && log == o.log;
     }
 
     static uint32_t CERFENGINE_FASTCALL Read(void* self) {
@@ -82,9 +79,11 @@ public:
     static void CERFENGINE_FASTCALL Hook(void* self) {
         static_cast<Coprocessor*>(self)->Note(5u, 0u, 0u);
     }
+    static uint32_t CERFENGINE_FASTCALL WriteAbort(void* self, uint32_t value) {
+        return static_cast<Coprocessor*>(self)->Note(6u, 0u, value) & 1u;
+    }
 
     std::array<uint32_t, kRegisters> regs{};
-    uint32_t                         acc40[2] = {};
     std::vector<LogEntry>            log;
 
 private:
@@ -135,6 +134,7 @@ void FillDecision(Entry& e, std::mt19937& rng, uint32_t index) {
     case ArmCoprocAction::kRegisterFlushTlbs:
         e.reg_index = index % kRegisters;
         break;
+    case ArmCoprocAction::kWriteCallbackAbort: d.write_abort = &Coprocessor::WriteAbort; break;
     case ArmCoprocAction::kReadCallback:      d.read = &Coprocessor::Read; break;
     case ArmCoprocAction::kReadCallbackKeyed:
         d.read_keyed = &Coprocessor::ReadKeyed;
@@ -146,13 +146,13 @@ void FillDecision(Entry& e, std::mt19937& rng, uint32_t index) {
         d.key         = static_cast<uint32_t>(rng());
         break;
     case ArmCoprocAction::kWriteValueSwitch:
-        d.hook       = &Coprocessor::Hook;
         d.case_count = 2u + RigPick(rng, cerfengine::kArmCoprocMaxCases - 1u);
         for (uint32_t i = 0; i < d.case_count; ++i) {
             d.cases[i].value = kSwitchValues[(index + i) % 5u];
             d.cases[i].kind  = i == 0u ? ArmCoprocCase::kHook
                              : i == 1u ? ArmCoprocCase::kWaitForInterrupt
                                        : static_cast<ArmCoprocCase>(RigPick(rng, 3u));
+            d.cases[i].hook  = &Coprocessor::Hook;
         }
         break;
     case ArmCoprocAction::kInvalidateTlbAll:
@@ -180,7 +180,8 @@ std::vector<Entry> BuildEntries(std::mt19937& rng) {
         ArmCoprocAction::kWaitForInterrupt, ArmCoprocAction::kSystemControl,
         ArmCoprocAction::kCoprocessorAccess, ArmCoprocAction::kContextId,
         ArmCoprocAction::kFcsePid, ArmCoprocAction::kInvalidateTlbAll,
-        ArmCoprocAction::kInvalidateTlbByMva, ArmCoprocAction::kInvalidateCode};
+        ArmCoprocAction::kInvalidateTlbByMva, ArmCoprocAction::kInvalidateCode,
+        ArmCoprocAction::kWriteCallbackAbort};
     static constexpr uint32_t kCps[] = {15u, 15u, 14u, 0u, 1u, 6u, 8u, 13u};
 
     std::vector<Entry> entries;
@@ -191,6 +192,7 @@ std::vector<Entry> BuildEntries(std::mt19937& rng) {
         if (kind == ArmCoprocKind::kRegisterTransferDouble || kind == ArmCoprocKind::kDataOperation) {
             e.opc1 = RigPick(rng, 16u);
         }
+        if (kind == ArmCoprocKind::kRegisterTransfer && cp <= 1u) e.opc1 = RigPick(rng, 2u);
         e.decision.action = action;
         FillDecision(e, rng, index);
         entries.push_back(e);
@@ -204,7 +206,6 @@ std::vector<Entry> BuildEntries(std::mt19937& rng) {
                 kCps[RigPick(rng, 8u)]);
         }
         for (bool read : {true, false}) {
-            add(ArmCoprocKind::kRegisterTransferDouble, ArmCoprocAction::kRegister40, read, kCps[3 + RigPick(rng, 5u)]);
             add(ArmCoprocKind::kRegisterTransferDouble, ArmCoprocAction::kUndefined, read, kCps[3 + RigPick(rng, 5u)]);
         }
         for (ArmCoprocAction a : {ArmCoprocAction::kUndefined, ArmCoprocAction::kUnimplemented}) {
@@ -337,6 +338,8 @@ void TestCoprocessors(const char* name, const cerfengine::ArmFeatures& features,
         program.push_back(kRigBranchSelf);
         cerfengine::ArmCpuState initial{};
         for (uint32_t i = 0; i < 15u; ++i) initial.gprs[i] = static_cast<uint32_t>(rng());
+        for (uint64_t& v : initial.xscale_cp0) v = (static_cast<uint64_t>(rng()) << 32) | rng();
+        for (uint32_t& v : initial.xscale_cp1) v = static_cast<uint32_t>(rng());
         initial.nf = static_cast<uint8_t>(RigPick(rng, 2u));
         initial.zf = static_cast<uint8_t>(RigPick(rng, 2u));
         initial.cf = static_cast<uint8_t>(RigPick(rng, 2u));
@@ -410,6 +413,13 @@ int main() {
     v5.dsp                       = true;
     v5.armv5_unconditional_space = true;
     TestCoprocessors("v5", v5, 0x43503531u);
+    cerfengine::ArmFeatures xscale = v5;
+    xscale.xscale_accumulator    = true;
+    TestCoprocessors("xscale", xscale, 0x43505831u);
+    cerfengine::ArmFeatures iwmmxt = xscale;
+    iwmmxt.iwmmxt                = true;
+    iwmmxt.wcid                  = 0x69051000u;
+    TestCoprocessors("iwmmxt", iwmmxt, 0x43504931u);
     cerfengine::ArmFeatures v6 = v5;
     v6.arch_v6                   = true;
     TestCoprocessors("v6", v6, 0x43503631u);

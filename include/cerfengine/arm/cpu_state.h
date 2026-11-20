@@ -83,6 +83,9 @@ struct ArmCpuState {
     uint32_t    fpscr;
     uint32_t    fpexc;
 
+    uint64_t    xscale_cp0[16];
+    uint32_t    xscale_cp1[16];
+
     uint32_t    ldrex_monitor_addr;
     uint32_t    ldrex_monitor_armed;
 

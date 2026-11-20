@@ -12,7 +12,7 @@ namespace {
 bool ValueSwitchShapeValid(const ArmCoprocDecision& dec) {
     if (dec.case_count == 0u || dec.case_count > kArmCoprocMaxCases) return false;
     for (uint32_t i = 0; i < dec.case_count; ++i) {
-        if (dec.cases[i].kind == ArmCoprocCase::kHook && dec.hook == nullptr) return false;
+        if (dec.cases[i].kind == ArmCoprocCase::kHook && dec.cases[i].hook == nullptr) return false;
     }
     return true;
 }
@@ -77,8 +77,8 @@ const char* ArmCoprocTransferShapeError(const ArmCoprocDecision& dec, bool read)
         return read ? "kInvalidateTlbByMva on a read" : nullptr;
     case ArmCoprocAction::kInvalidateCode:
         return read ? "kInvalidateCode on a read" : nullptr;
-    case ArmCoprocAction::kRegister40:
-        return "is a two-word transfer";
+    case ArmCoprocAction::kWriteCallbackAbort:
+        return !read && dec.write_abort != nullptr ? nullptr : "kWriteCallbackAbort shape";
     }
     return kArmCoprocUnknownAction;
 }

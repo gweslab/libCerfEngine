@@ -25,6 +25,8 @@ struct ArmFeatures {
     bool dsp                          = false;
     bool neon                         = false;
     bool vfp                          = false;
+    bool xscale_accumulator           = false;
+    bool iwmmxt                       = false;
     bool integer_divide               = false;
     bool bit_field                    = false;
     bool rev                          = false;
@@ -47,6 +49,7 @@ struct ArmFeatures {
     uint32_t fpsid                    = 0;
     uint32_t mvfr0                    = 0;
     uint32_t mvfr1                    = 0;
+    uint32_t wcid                     = 0;
 };
 
 enum class MipsIsaLevel : uint32_t { kMips1, kMips3, kMips4 };

@@ -101,7 +101,7 @@ void ValueSwitch(ArmIrContext& c, const ArmCoprocDecision& dec) {
         if (dec.cases[i].kind == ArmCoprocCase::kWaitForInterrupt) {
             ArmIrWfi(c);
         } else {
-            FastCall(c, reinterpret_cast<const void*>(dec.hook), Type::kVoid,
+            FastCall(c, reinterpret_cast<const void*>(dec.cases[i].hook), Type::kVoid,
                      b.ConstPtr(dec.context));
         }
         if (i != last_body) b.Branch(b.Const1(true), done, true);
@@ -132,6 +132,15 @@ void Action(ArmIrContext& c, const ArmCoprocDecision& dec) {
             b.HostStore(dec.reg, Rt(c), 4u);
         }
         return;
+    case ArmCoprocAction::kWriteCallbackAbort: {
+        const Ref      fault   = FastCall(c, reinterpret_cast<const void*>(dec.write_abort),
+                                          Type::kI32, b.ConstPtr(dec.context), Rt(c));
+        const uint32_t proceed = b.NewLabel();
+        b.Branch(b.Op2(Op::kCmpEq, fault, b.Const32(0u)), proceed, true);
+        ArmIrRaisePreciseDataAbort(c);
+        BindLabel(c, proceed);
+        return;
+    }
     case ArmCoprocAction::kRegisterContextSwitch:
         if (read) {
             ReadResult(c, b.HostLoad(dec.reg, 4u, false));
@@ -210,8 +219,6 @@ void Action(ArmIrContext& c, const ArmCoprocDecision& dec) {
                  reinterpret_cast<const void*>(&ArmTranslationCache::InvalidateDirtyCodePagesHelper),
                  Type::kVoid, TranslationCache(c));
         return;
-    case ArmCoprocAction::kRegister40:
-        break;
     }
     ArmCoprocTransferShapePanic(c.block, c.d, kArmCoprocUnknownAction);
 }
@@ -224,6 +231,7 @@ void ArmIrCoprocRegisterTransfer(ArmIrContext& c) {
         ArmIrVfpRegisterTransfer(c);
         return;
     }
+    if (d.cp_num <= 1u && ArmIrXscaleRegisterTransfer(c)) return;
     const ArmCoprocDecision dec = QueryCoprocDecision(&d, c.block, ArmCoprocKind::kRegisterTransfer);
     if (ArmIrCoprocessorPermissionCheck(c, dec.user_allowed)) return;
     ArmIrCoprocGate(c, dec.gate_mask);

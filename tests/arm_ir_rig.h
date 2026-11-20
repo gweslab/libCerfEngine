@@ -51,6 +51,8 @@ public:
         cerfengine::ArmCpuState& s = *cpu_->State();
         std::memcpy(s.gprs, initial.gprs, sizeof(s.gprs));
         std::memcpy(s.vfp_d, initial.vfp_d, sizeof(s.vfp_d));
+        std::memcpy(s.xscale_cp0, initial.xscale_cp0, sizeof(s.xscale_cp0));
+        std::memcpy(s.xscale_cp1, initial.xscale_cp1, sizeof(s.xscale_cp1));
         s.fpscr               = initial.fpscr;
         s.fpexc               = initial.fpexc;
         s.nf                  = initial.nf;
@@ -112,7 +114,9 @@ inline bool RigSameState(const cerfengine::ArmCpuState& a, const cerfengine::Arm
            std::memcmp(a.sp_bank, b.sp_bank, sizeof(a.sp_bank)) == 0 &&
            std::memcmp(a.lr_bank, b.lr_bank, sizeof(a.lr_bank)) == 0 &&
            std::memcmp(a.spsr_bank, b.spsr_bank, sizeof(a.spsr_bank)) == 0 &&
-           std::memcmp(a.r8_r12_fiq, b.r8_r12_fiq, sizeof(a.r8_r12_fiq)) == 0;
+           std::memcmp(a.r8_r12_fiq, b.r8_r12_fiq, sizeof(a.r8_r12_fiq)) == 0 &&
+           std::memcmp(a.xscale_cp0, b.xscale_cp0, sizeof(a.xscale_cp0)) == 0 &&
+           std::memcmp(a.xscale_cp1, b.xscale_cp1, sizeof(a.xscale_cp1)) == 0;
 }
 
 inline bool RigSameRun(ArmIrRig& a, cerfengine::GuestEngine::RunStatus status_a, ArmIrRig& b,
@@ -135,6 +139,8 @@ inline void RigDigestRun(StateDigest& d, const ArmIrRig& rig,
     for (const cerfengine::ArmPsrFull& v : s.spsr_bank) d.Add32(v.word);
     for (uint32_t v : s.r8_r12_fiq) d.Add32(v);
     for (uint64_t v : s.vfp_d) d.Add64(v);
+    for (uint64_t v : s.xscale_cp0) d.Add64(v);
+    for (uint32_t v : s.xscale_cp1) d.Add32(v);
     d.Add32(s.fpscr);
     d.Add32(s.fpexc);
     d.Add32(s.ldrex_monitor_addr);

@@ -213,6 +213,9 @@ void ArmCpu::RaiseResetException(uint32_t initial_pc, bool initial_thumb) {
        FPEXC.EN = '0'". */
     state_.fpexc = 0u;
 
+    for (uint64_t& reg : state_.xscale_cp0) reg = 0u;
+    for (uint32_t& reg : state_.xscale_cp1) reg = 0u;
+
     state_.cpsr.bits.irq_disable         = 1u;
     state_.cpsr.bits.fiq_disable         = 1u;
     state_.cpsr.bits.async_abort_disable = 1u;
@@ -267,6 +270,10 @@ void ArmCpu::SetPendingResumeVector(uint32_t pc) {
 
 void CERFENGINE_CDECL ArmCpu::RaiseUndefinedExceptionHelper(ArmCpu* cpu, uint32_t guest_pc) {
     cpu->RaiseUndefinedException(guest_pc);
+}
+
+void CERFENGINE_CDECL ArmCpu::RaiseAbortDataExceptionHelper(ArmCpu* cpu, uint32_t guest_pc) {
+    cpu->RaiseAbortDataException(guest_pc);
 }
 
 void CERFENGINE_CDECL ArmCpu::RaiseSwiExceptionHelper(ArmCpu* cpu, uint32_t guest_pc) {

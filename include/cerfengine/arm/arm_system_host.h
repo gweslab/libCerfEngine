@@ -33,7 +33,6 @@ enum class ArmCoprocAction : uint8_t {
     kNoOp,
     kConstant,
     kRegister,
-    kRegister40,
     kRegisterContextSwitch,
     kRegisterFlushTlbs,
     kReadCallback,
@@ -49,18 +48,12 @@ enum class ArmCoprocAction : uint8_t {
     kInvalidateTlbAll,
     kInvalidateTlbByMva,
     kInvalidateCode,
+    kWriteCallbackAbort,
 };
 
 enum class ArmTlbTarget : uint8_t { kInstruction, kData, kUnified };
 
 enum class ArmCoprocCase : uint8_t { kContinue, kWaitForInterrupt, kHook };
-
-struct ArmCoprocValueCase {
-    uint32_t      value = 0;
-    ArmCoprocCase kind  = ArmCoprocCase::kContinue;
-};
-
-inline constexpr uint32_t kArmCoprocMaxCases = 4;
 
 using ArmCoprocRead       = uint32_t (CERFENGINE_FASTCALL*)(void* context);
 using ArmCoprocReadKeyed  = uint32_t (CERFENGINE_FASTCALL*)(void* context, uint32_t key);
@@ -68,6 +61,15 @@ using ArmCoprocWrite      = void (CERFENGINE_FASTCALL*)(void* context, uint32_t 
 using ArmCoprocWriteKeyed = void (CERFENGINE_FASTCALL*)(void* context, uint32_t key,
                                                         uint32_t value);
 using ArmCoprocHook       = void (CERFENGINE_FASTCALL*)(void* context);
+using ArmCoprocWriteAbort = uint32_t (CERFENGINE_FASTCALL*)(void* context, uint32_t value);
+
+struct ArmCoprocValueCase {
+    uint32_t      value = 0;
+    ArmCoprocCase kind  = ArmCoprocCase::kContinue;
+    ArmCoprocHook hook  = nullptr;
+};
+
+inline constexpr uint32_t kArmCoprocMaxCases = 4;
 
 struct ArmCoprocDecision {
     ArmCoprocAction     action       = ArmCoprocAction::kUndefined;
@@ -82,7 +84,7 @@ struct ArmCoprocDecision {
     ArmCoprocReadKeyed  read_keyed   = nullptr;
     ArmCoprocWrite      write        = nullptr;
     ArmCoprocWriteKeyed write_keyed  = nullptr;
-    ArmCoprocHook       hook         = nullptr;
+    ArmCoprocWriteAbort write_abort  = nullptr;
     uint32_t            case_count   = 0;
     ArmCoprocValueCase  cases[kArmCoprocMaxCases] = {};
 };

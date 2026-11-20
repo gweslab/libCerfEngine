@@ -41,6 +41,7 @@ public:
     void RaiseResetException();
 
     static void CERFENGINE_CDECL RaiseUndefinedExceptionHelper(ArmCpu* cpu, uint32_t guest_pc);
+    static void CERFENGINE_CDECL RaiseAbortDataExceptionHelper(ArmCpu* cpu, uint32_t guest_pc);
     static void CERFENGINE_CDECL RaiseSwiExceptionHelper(ArmCpu* cpu, uint32_t guest_pc);
     static void CERFENGINE_CDECL UpdateNzcvOnlyHelper(ArmCpu* cpu, uint32_t nzcv_source);
 

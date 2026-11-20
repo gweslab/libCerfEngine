@@ -4,6 +4,7 @@
 #include <cstddef>
 
 #include <cerfengine/arm/arm_insn_kind.h>
+#include <cerfengine/arm/arm_system_host.h>
 
 #include "../arm_call_plan.h"
 #include "arm_ir_context.h"
@@ -27,6 +28,7 @@ void ArmIrPlanned(ArmIrContext& c) {
 }
 void ArmIrRaiseUndefined(ArmIrContext& c);
 void ArmIrRaiseDataAbort(ArmIrContext& c);
+void ArmIrRaisePreciseDataAbort(ArmIrContext& c);
 void ArmIrBxWritePc(ArmIrContext& c, cerfir::Ref address);
 void ArmIrFinishPcWrite(ArmIrContext& c);
 void ArmIrLoadWritePc(ArmIrContext& c, cerfir::Ref address);
@@ -63,6 +65,8 @@ void ArmIrArmUnimplemented(ArmIrContext& c);
 void ArmIrUnimplementedHalt(ArmIrContext& c, const void* helper, uint32_t info);
 bool ArmIrCoprocessorPermissionCheck(ArmIrContext& c, bool user_allowed);
 void ArmIrCoprocGate(ArmIrContext& c, uint32_t gate_mask);
+bool ArmIrXscaleRegisterTransfer(ArmIrContext& c);
+bool ArmIrXscaleRegisterTransferDouble(ArmIrContext& c);
 void ArmIrUndefinedInUser(ArmIrContext& c);
 void ArmIrSetNzcvFromWord(ArmIrContext& c, cerfir::Ref value);
 void ArmIrVfpRegisterTransfer(ArmIrContext& c);
