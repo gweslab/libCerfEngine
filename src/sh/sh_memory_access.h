@@ -58,7 +58,7 @@ private:
     static const char* AccessName(ShAccess access);
 
     void     RequireAligned(uint32_t va, uint32_t bytes, ShAccess access);
-    uint32_t TranslateLoad(uint32_t va, uint32_t bytes);
+    bool     TranslateLoad(uint32_t va, uint32_t bytes, uint32_t* pa);
     bool     TranslateStore(uint32_t va, uint32_t bytes, uint32_t value, uint32_t* pa);
     uint32_t TranslateMapped(uint32_t va, uint32_t bytes, ShAccess access);
     void     WriteCacheAddressArray(uint32_t va, uint32_t value);

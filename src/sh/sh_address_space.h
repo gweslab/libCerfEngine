@@ -16,6 +16,7 @@ constexpr uint32_t kP4OnChipIoBase       = 0xFC000000u;
 constexpr uint32_t kArea7PaBase          = 0x1C000000u;
 constexpr uint32_t kCacheEntryValidDirty = 0x00000003u;
 constexpr uint32_t kCacheTagShadow       = 0xE0000000u;
+constexpr uint32_t kCacheTagLru          = 0x1FFFFFF0u;
 constexpr uint32_t kCacheAssociative     = 0x00000008u;
 constexpr uint32_t kUxyBase              = 0xA5000000u;
 constexpr uint32_t kUxyMask              = 0xFF000000u;

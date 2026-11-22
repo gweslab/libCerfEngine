@@ -66,10 +66,15 @@ void ShMemoryAccess::RequireAccessible(uint32_t va, ShAccess access) {
     }
 }
 
-uint32_t ShMemoryAccess::TranslateLoad(uint32_t va, uint32_t bytes) {
+bool ShMemoryAccess::TranslateLoad(uint32_t va, uint32_t bytes, uint32_t* pa) {
     RequireAligned(va, bytes, ShAccess::kRead);
-    if (ShAddressSpace::DirectlyMapped(va)) return ShAddressSpace::Pa(va);
-    return TranslateMapped(va, bytes, ShAccess::kRead);
+    if (ShAddressSpace::DirectlyMapped(va)) {
+        *pa = ShAddressSpace::Pa(va);
+        return true;
+    }
+    if (bytes == 4u && ShAddressSpace::CacheAddressArray(va)) return false;
+    *pa = TranslateMapped(va, bytes, ShAccess::kRead);
+    return true;
 }
 
 bool ShMemoryAccess::TranslateStore(uint32_t va, uint32_t bytes, uint32_t value, uint32_t* pa) {
@@ -117,6 +122,11 @@ void ShMemoryAccess::WriteCacheAddressArray(uint32_t va, uint32_t value) {
                      "PC 0x%08X",
                      value, va, cpu_state_->pc);
     }
+    if ((va & ShAddressSpace::kCacheAssociative) == 0u && (value & ShAddressSpace::kCacheTagLru) != 0u) {
+        engine_.Halt(HaltReason::kUnimplemented,
+                     "ShMemoryAccess: cache address array write of 0x%08X to VA 0x%08X sets tag or LRU bits, PC 0x%08X",
+                     value, va, cpu_state_->pc);
+    }
     if ((va & ShAddressSpace::kCacheAssociative) != 0u && mmu_->AddressTranslation()) {
         engine_.Halt(HaltReason::kUnimplemented,
                      "ShMemoryAccess: associative cache address array write of 0x%08X to VA 0x%08X with MMUCR.AT set, "
@@ -137,7 +147,8 @@ void ShMemoryAccess::EnterMmio(uint32_t va, uint32_t bytes, const char* access) 
 template <uint32_t kBytes, MmioWidth kWidth, ShMemoryMode kMode>
 uint32_t CERFENGINE_FASTCALL ShMemoryAccess::LoadHelper(uint32_t va, ShMemoryAccess* mem) {
     mem->RequireAccessible<kMode>(va, ShAccess::kRead);
-    const uint32_t pa = mem->TranslateLoad(va, kBytes);
+    uint32_t pa = 0u;
+    if (!mem->TranslateLoad(va, kBytes, &pa)) return 0u;
     if (const uint8_t* host = mem->map_->Read(pa)) {
         if constexpr (kBytes == 4u) return le::U32(host);
         if constexpr (kBytes == 2u) return le::U16(host);
