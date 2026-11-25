@@ -52,6 +52,7 @@ public:
     bool     ResolveGuestVaToPa(uint32_t va, uint32_t* pa) override;
 
     void FlushTranslationCache() override;
+    void PendTranslationFlush();
     void SetResetPending(bool is_resume) override;
     void SetHostChainExit(bool requested) override;
     void EnterDeepSleep() override;

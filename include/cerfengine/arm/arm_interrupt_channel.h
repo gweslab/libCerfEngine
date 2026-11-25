@@ -11,6 +11,7 @@ namespace cerfengine {
 
 struct ArmIrContext;
 
+class ArmSystemHost;
 class GuestIdleWait;
 class HostRequestChannel;
 
@@ -85,6 +86,7 @@ private:
     ArmCpuState*        cpu_state_     = nullptr;
     HostRequestChannel* host_requests_ = nullptr;
     GuestIdleWait*      idle_          = nullptr;
+    ArmSystemHost*      system_        = nullptr;
 };
 
 }

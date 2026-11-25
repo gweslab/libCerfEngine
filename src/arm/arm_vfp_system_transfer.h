@@ -14,6 +14,7 @@ enum class ArmVfpSystemAction : uint8_t {
     kReadStateToFlags,
     kWriteState,
     kIgnore,
+    kSubarchitecture,
 };
 
 struct ArmVfpSystemTransfer {

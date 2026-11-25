@@ -121,6 +121,7 @@ public:
 
     virtual ArmCoprocDecision ArmCoprocessor(const ArmCoprocAccess& access) = 0;
     virtual ArmResetResult    ArmReset()                                    = 0;
+    virtual bool              ArmResumeAfterWfi()                           = 0;
 };
 
 }

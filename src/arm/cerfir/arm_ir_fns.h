@@ -72,6 +72,7 @@ void ArmIrSetNzcvFromWord(ArmIrContext& c, cerfir::Ref value);
 void ArmIrVfpRegisterTransfer(ArmIrContext& c);
 void ArmIrVfpTwoRegisterTransfer(ArmIrContext& c);
 void ArmIrCoprocRegisterTransfer(ArmIrContext& c);
+void ArmIrCoprocHostTransfer(ArmIrContext& c);
 void ArmIrCoprocExtension(ArmIrContext& c);
 void ArmIrCoprocDataTransfer(ArmIrContext& c);
 void ArmIrCoprocDataOperation(ArmIrContext& c);

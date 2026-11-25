@@ -8,7 +8,9 @@
 #include <cerfengine/engine.h>
 #include <cerfengine/host_request_channel.h>
 #include <cerfengine/arm/arm_cpu.h>
+#include <cerfengine/arm/arm_system_host.h>
 #include <cerfengine/arm/cpu_state.h>
+#include <cerfengine/engine_setup.h>
 
 namespace cerfengine {
 
@@ -18,6 +20,7 @@ void ArmInterruptChannel::OnReady() {
     cpu_state_     = engine_.Get<ArmCpu>().State();
     host_requests_ = &engine_.Get<HostRequestChannel>();
     idle_          = &engine_.Get<GuestIdleWait>();
+    system_        = engine_.GetSetup().arm_system;
 }
 
 void ArmInterruptChannel::SetInterruptPending() {
@@ -80,6 +83,7 @@ void ArmInterruptChannel::ResumeIdle() {
     cpu_state_->idle_wait = 0u;
     std::atomic_ref<uint32_t>(cpu_state_->chain_exit_request)
         .fetch_and(~kChainExitIdle, std::memory_order_acq_rel);
+    system_->ArmResumeAfterWfi();
 }
 
 /* ARM DDI 0406C.c A2.5.2 (p. A2-52): "When an instruction in an IT block
@@ -92,7 +96,7 @@ void ArmInterruptChannel::StopAfterInsn(uint32_t next_pc) {
 
 uint32_t CERFENGINE_FASTCALL ArmInterruptChannel::WfiHelper(ArmInterruptChannel* channel,
                                                     uint32_t next_pc) {
-    if (channel->WaitForInterrupt()) return 0u;
+    if (channel->WaitForInterrupt()) return channel->system_->ArmResumeAfterWfi() ? 1u : 0u;
     channel->EnterIdle();
     channel->StopAfterInsn(next_pc);
     return 1u;

@@ -223,6 +223,18 @@ void Action(ArmIrContext& c, const ArmCoprocDecision& dec) {
     ArmCoprocTransferShapePanic(c.block, c.d, kArmCoprocUnknownAction);
 }
 
+void DecidedTransfer(ArmIrContext& c, const ArmCoprocDecision& dec) {
+    ArmIrCoprocGate(c, dec.gate_mask);
+    if (const char* what = ArmCoprocTransferShapeError(dec, c.d->l != 0u)) {
+        ArmCoprocTransferShapePanic(c.block, c.d, what);
+    }
+    Action(c, dec);
+}
+
+}
+
+void ArmIrCoprocHostTransfer(ArmIrContext& c) {
+    DecidedTransfer(c, QueryCoprocDecision(c.d, c.block, ArmCoprocKind::kRegisterTransfer));
 }
 
 void ArmIrCoprocRegisterTransfer(ArmIrContext& c) {
@@ -234,11 +246,7 @@ void ArmIrCoprocRegisterTransfer(ArmIrContext& c) {
     if (d.cp_num <= 1u && ArmIrXscaleRegisterTransfer(c)) return;
     const ArmCoprocDecision dec = QueryCoprocDecision(&d, c.block, ArmCoprocKind::kRegisterTransfer);
     if (ArmIrCoprocessorPermissionCheck(c, dec.user_allowed)) return;
-    ArmIrCoprocGate(c, dec.gate_mask);
-    if (const char* what = ArmCoprocTransferShapeError(dec, d.l != 0u)) {
-        ArmCoprocTransferShapePanic(c.block, &d, what);
-    }
-    Action(c, dec);
+    DecidedTransfer(c, dec);
 }
 
 }

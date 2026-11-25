@@ -17,6 +17,8 @@ constexpr uint32_t kMvfr1  = 6;
 constexpr uint32_t kMvfr0  = 7;
 constexpr uint32_t kFpexc  = 8;
 
+constexpr uint32_t kFirstSubarchitectureRegister = 9;
+
 constexpr int32_t kFpscrDisp = static_cast<int32_t>(offsetof(ArmCpuState, fpscr));
 constexpr int32_t kFpexcDisp = static_cast<int32_t>(offsetof(ArmCpuState, fpexc));
 
@@ -37,6 +39,11 @@ ArmVfpSystemTransfer ArmVfpSystemTransferOf(const DecodedInsn& d, const ArmFeatu
                               (fpsp < 2u && (d.crn == kFpsid || d.crn == kMvfr0 || d.crn == kMvfr1));
     t.undefined_in_user = !any_mode;
     const bool to_pc = d.rd == 15u;
+
+    if (d.crn >= kFirstSubarchitectureRegister) {
+        return Action(t, to_pc ? ArmVfpSystemAction::kUndefined
+                               : ArmVfpSystemAction::kSubarchitecture);
+    }
 
     if (d.l) {
         switch (d.crn) {

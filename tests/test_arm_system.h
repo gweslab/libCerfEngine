@@ -28,6 +28,7 @@ public:
         return coprocessor_->Decide(a);
     }
     cerfengine::ArmResetResult ArmReset() override { return {}; }
+    bool ArmResumeAfterWfi() override { return false; }
 
     void AllowAlignmentFaults() { allow_alignment_faults_ = true; }
     void RecordAlignmentFault(uint32_t va, bool write) {

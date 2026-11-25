@@ -231,6 +231,8 @@ void ArmJit::PrintFatalDump() {
 
 void ArmJit::FlushTranslationCache() { cache_->Flush(); }
 
+void ArmJit::PendTranslationFlush() { cache_->PendFlush(); }
+
 void ArmJit::SetDmaRegion(uint32_t, uint32_t) {}
 
 std::optional<uint8_t*> ArmJit::PeekGuestVa(uint32_t va) {

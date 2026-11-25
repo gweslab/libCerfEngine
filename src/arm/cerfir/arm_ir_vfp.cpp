@@ -63,6 +63,9 @@ void SystemRegister(ArmIrContext& c) {
     }
     case ArmVfpSystemAction::kIgnore:
         return;
+    case ArmVfpSystemAction::kSubarchitecture:
+        ArmIrCoprocHostTransfer(c);
+        return;
     case ArmVfpSystemAction::kUndefined:
         break;
     }
