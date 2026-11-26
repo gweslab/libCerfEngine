@@ -1,5 +1,7 @@
 #pragma once
 
+#include "arm_cpu_state_service.h"
+
 #include <cerfengine/calling_convention.h>
 #include <cstdint>
 
@@ -7,9 +9,9 @@
 
 namespace cerfengine {
 
-class ArmNeonVtbl : public cerfengine::EngineService {
+class ArmNeonVtbl : public ArmCpuStateService {
 public:
-    using cerfengine::EngineService::EngineService;
+    using ArmCpuStateService::ArmCpuStateService;
 
     static constexpr uint32_t kTbl = 0u;
     static constexpr uint32_t kTbx = 1u;

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "arm_cpu_state_service.h"
+
 #include <cerfengine/calling_convention.h>
 #include <cstdint>
 
@@ -9,9 +11,9 @@ namespace cerfengine {
 
 /* 3-registers-same-length integer / logical / per-element NEON ops
    (A7.4.1). */
-class ArmNeonSimd3Same : public cerfengine::EngineService {
+class ArmNeonSimd3Same : public ArmCpuStateService {
 public:
-    using cerfengine::EngineService::EngineService;
+    using ArmCpuStateService::ArmCpuStateService;
 
     static constexpr uint32_t kS3Add = 0u;
     static constexpr uint32_t kS3Sub = 1u;

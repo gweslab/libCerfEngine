@@ -16,7 +16,6 @@ CERFENGINE_REGISTER(ArmNeon3DiffLen);
 void ArmNeon3DiffLen::HandleAddSubLW(uint32_t op, uint32_t d_idx,
                                      uint32_t n_idx, uint32_t m_idx,
                                      uint32_t esize, uint32_t u) {
-    auto* state = engine_.Get<ArmCpu>().State();
     const uint32_t in_ebytes  = esize / 8u;
     const uint32_t out_ebytes = 2u * in_ebytes;
     const uint32_t elements   = 8u / in_ebytes;
@@ -28,12 +27,12 @@ void ArmNeon3DiffLen::HandleAddSubLW(uint32_t op, uint32_t d_idx,
 
     uint8_t src1[16] = {0};
     if (is_wide) {
-        std::memcpy(src1,     &state->vfp_d[n_idx],     8);
-        std::memcpy(src1 + 8, &state->vfp_d[n_idx + 1], 8);
+        std::memcpy(src1,     &state_->vfp_d[n_idx],     8);
+        std::memcpy(src1 + 8, &state_->vfp_d[n_idx + 1], 8);
     } else {
-        std::memcpy(src1, &state->vfp_d[n_idx], 8);
+        std::memcpy(src1, &state_->vfp_d[n_idx], 8);
     }
-    const uint8_t* dm = reinterpret_cast<const uint8_t*>(&state->vfp_d[m_idx]);
+    const uint8_t* dm = reinterpret_cast<const uint8_t*>(&state_->vfp_d[m_idx]);
 
     uint8_t res[16];
     for (uint32_t e = 0; e < elements; ++e) {
@@ -60,8 +59,8 @@ void ArmNeon3DiffLen::HandleAddSubLW(uint32_t op, uint32_t d_idx,
         }
         std::memcpy(res + e * out_ebytes, &s, out_ebytes);
     }
-    std::memcpy(&state->vfp_d[d_idx],     res,     8);
-    std::memcpy(&state->vfp_d[d_idx + 1], res + 8, 8);
+    std::memcpy(&state_->vfp_d[d_idx],     res,     8);
+    std::memcpy(&state_->vfp_d[d_idx + 1], res + 8, 8);
 }
 
 void CERFENGINE_CDECL ArmNeon3DiffLen::HandleAddSubLWHelper(ArmNeon3DiffLen* svc, uint32_t op,
@@ -74,7 +73,6 @@ void CERFENGINE_CDECL ArmNeon3DiffLen::HandleAddSubLWHelper(ArmNeon3DiffLen* svc
 void ArmNeon3DiffLen::HandleAddSubHN(uint32_t op, uint32_t d_idx,
                                      uint32_t n_idx, uint32_t m_idx,
                                      uint32_t esize) {
-    auto* state = engine_.Get<ArmCpu>().State();
     const uint32_t in_ebytes  = 2u * (esize / 8u);
     const uint32_t out_ebytes = esize / 8u;
     const uint32_t elements   = 8u / out_ebytes;
@@ -83,10 +81,10 @@ void ArmNeon3DiffLen::HandleAddSubHN(uint32_t op, uint32_t d_idx,
 
     uint8_t src_n[16];
     uint8_t src_m[16];
-    std::memcpy(src_n,     &state->vfp_d[n_idx],     8);
-    std::memcpy(src_n + 8, &state->vfp_d[n_idx + 1], 8);
-    std::memcpy(src_m,     &state->vfp_d[m_idx],     8);
-    std::memcpy(src_m + 8, &state->vfp_d[m_idx + 1], 8);
+    std::memcpy(src_n,     &state_->vfp_d[n_idx],     8);
+    std::memcpy(src_n + 8, &state_->vfp_d[n_idx + 1], 8);
+    std::memcpy(src_m,     &state_->vfp_d[m_idx],     8);
+    std::memcpy(src_m + 8, &state_->vfp_d[m_idx + 1], 8);
 
     uint8_t res[8];
     for (uint32_t e = 0; e < elements; ++e) {
@@ -102,7 +100,7 @@ void ArmNeon3DiffLen::HandleAddSubHN(uint32_t op, uint32_t d_idx,
         const uint64_t high_half = result >> esize;
         std::memcpy(res + e * out_ebytes, &high_half, out_ebytes);
     }
-    std::memcpy(&state->vfp_d[d_idx], res, 8);
+    std::memcpy(&state_->vfp_d[d_idx], res, 8);
 }
 
 void CERFENGINE_CDECL ArmNeon3DiffLen::HandleAddSubHNHelper(ArmNeon3DiffLen* svc, uint32_t op,
@@ -114,7 +112,6 @@ void CERFENGINE_CDECL ArmNeon3DiffLen::HandleAddSubHNHelper(ArmNeon3DiffLen* svc
 void ArmNeon3DiffLen::HandleAbsDiffLong(uint32_t op, uint32_t d_idx,
                                         uint32_t n_idx, uint32_t m_idx,
                                         uint32_t esize) {
-    auto* state = engine_.Get<ArmCpu>().State();
     const uint32_t in_ebytes  = esize / 8u;
     const uint32_t out_ebytes = 2u * in_ebytes;
     const uint32_t elements   = 8u / in_ebytes;
@@ -122,13 +119,13 @@ void ArmNeon3DiffLen::HandleAbsDiffLong(uint32_t op, uint32_t d_idx,
     const bool is_accum    = (op == kDlAbalS) || (op == kDlAbalU);
     const bool is_unsigned = (op == kDlAbdlU) || (op == kDlAbalU);
 
-    const uint8_t* dn = reinterpret_cast<const uint8_t*>(&state->vfp_d[n_idx]);
-    const uint8_t* dm = reinterpret_cast<const uint8_t*>(&state->vfp_d[m_idx]);
+    const uint8_t* dn = reinterpret_cast<const uint8_t*>(&state_->vfp_d[n_idx]);
+    const uint8_t* dm = reinterpret_cast<const uint8_t*>(&state_->vfp_d[m_idx]);
 
     uint8_t dd[16] = {0};
     if (is_accum) {
-        std::memcpy(dd,     &state->vfp_d[d_idx],     8);
-        std::memcpy(dd + 8, &state->vfp_d[d_idx + 1], 8);
+        std::memcpy(dd,     &state_->vfp_d[d_idx],     8);
+        std::memcpy(dd + 8, &state_->vfp_d[d_idx + 1], 8);
     }
 
     uint8_t res[16];
@@ -157,8 +154,8 @@ void ArmNeon3DiffLen::HandleAbsDiffLong(uint32_t op, uint32_t d_idx,
         }
         std::memcpy(res + e * out_ebytes, &s, out_ebytes);
     }
-    std::memcpy(&state->vfp_d[d_idx],     res,     8);
-    std::memcpy(&state->vfp_d[d_idx + 1], res + 8, 8);
+    std::memcpy(&state_->vfp_d[d_idx],     res,     8);
+    std::memcpy(&state_->vfp_d[d_idx + 1], res + 8, 8);
 }
 
 void CERFENGINE_CDECL ArmNeon3DiffLen::HandleAbsDiffLongHelper(ArmNeon3DiffLen* svc, uint32_t op,
@@ -170,7 +167,6 @@ void CERFENGINE_CDECL ArmNeon3DiffLen::HandleAbsDiffLongHelper(ArmNeon3DiffLen* 
 void ArmNeon3DiffLen::HandleMulLong(uint32_t op, uint32_t d_idx,
                                     uint32_t n_idx, uint32_t m_idx,
                                     uint32_t esize) {
-    auto* state = engine_.Get<ArmCpu>().State();
     const uint32_t in_ebytes  = esize / 8u;
     const uint32_t out_ebytes = 2u * in_ebytes;
     const uint32_t elements   = 8u / in_ebytes;
@@ -182,13 +178,13 @@ void ArmNeon3DiffLen::HandleMulLong(uint32_t op, uint32_t d_idx,
                              (op == kDlMlslS) || (op == kDlMlslU);
     const bool is_poly     = (op == kDlMullPoly);
 
-    const uint8_t* dn = reinterpret_cast<const uint8_t*>(&state->vfp_d[n_idx]);
-    const uint8_t* dm = reinterpret_cast<const uint8_t*>(&state->vfp_d[m_idx]);
+    const uint8_t* dn = reinterpret_cast<const uint8_t*>(&state_->vfp_d[n_idx]);
+    const uint8_t* dm = reinterpret_cast<const uint8_t*>(&state_->vfp_d[m_idx]);
 
     uint8_t dd[16] = {0};
     if (is_accum) {
-        std::memcpy(dd,     &state->vfp_d[d_idx],     8);
-        std::memcpy(dd + 8, &state->vfp_d[d_idx + 1], 8);
+        std::memcpy(dd,     &state_->vfp_d[d_idx],     8);
+        std::memcpy(dd + 8, &state_->vfp_d[d_idx + 1], 8);
     }
 
     uint8_t res[16];
@@ -224,8 +220,8 @@ void ArmNeon3DiffLen::HandleMulLong(uint32_t op, uint32_t d_idx,
         }
         std::memcpy(res + e * out_ebytes, &s, out_ebytes);
     }
-    std::memcpy(&state->vfp_d[d_idx],     res,     8);
-    std::memcpy(&state->vfp_d[d_idx + 1], res + 8, 8);
+    std::memcpy(&state_->vfp_d[d_idx],     res,     8);
+    std::memcpy(&state_->vfp_d[d_idx + 1], res + 8, 8);
 }
 
 void CERFENGINE_CDECL ArmNeon3DiffLen::HandleMulLongHelper(ArmNeon3DiffLen* svc, uint32_t op,
@@ -237,7 +233,6 @@ void CERFENGINE_CDECL ArmNeon3DiffLen::HandleMulLongHelper(ArmNeon3DiffLen* svc,
 void ArmNeon3DiffLen::HandleMulLongSat(uint32_t op, uint32_t d_idx,
                                        uint32_t n_idx, uint32_t m_idx,
                                        uint32_t esize) {
-    auto* state = engine_.Get<ArmCpu>().State();
     const uint32_t in_ebytes  = esize / 8u;
     const uint32_t out_ebytes = 2u * in_ebytes;
     const uint32_t elements   = 8u / in_ebytes;
@@ -254,13 +249,13 @@ void ArmNeon3DiffLen::HandleMulLongSat(uint32_t op, uint32_t d_idx,
                                    : (-(static_cast<int64_t>(1) << (out_bits - 1u)));
     const uint64_t sign_bit  = static_cast<uint64_t>(1) << (out_bits - 1u);
 
-    const uint8_t* dn = reinterpret_cast<const uint8_t*>(&state->vfp_d[n_idx]);
-    const uint8_t* dm = reinterpret_cast<const uint8_t*>(&state->vfp_d[m_idx]);
+    const uint8_t* dn = reinterpret_cast<const uint8_t*>(&state_->vfp_d[n_idx]);
+    const uint8_t* dm = reinterpret_cast<const uint8_t*>(&state_->vfp_d[m_idx]);
 
     uint8_t dd[16] = {0};
     if (is_accum) {
-        std::memcpy(dd,     &state->vfp_d[d_idx],     8);
-        std::memcpy(dd + 8, &state->vfp_d[d_idx + 1], 8);
+        std::memcpy(dd,     &state_->vfp_d[d_idx],     8);
+        std::memcpy(dd + 8, &state_->vfp_d[d_idx + 1], 8);
     }
 
     uint8_t res[16];
@@ -320,10 +315,10 @@ void ArmNeon3DiffLen::HandleMulLongSat(uint32_t op, uint32_t d_idx,
     if (qc_any) {
         /* FPSCR.QC is sticky (A2.8.2): set on saturation, cleared only by
            explicit MSR write to FPSCR. */
-        state->fpscr |= ArmVfp::kFpscrQcMask;
+        state_->fpscr |= ArmVfp::kFpscrQcMask;
     }
-    std::memcpy(&state->vfp_d[d_idx],     res,     8);
-    std::memcpy(&state->vfp_d[d_idx + 1], res + 8, 8);
+    std::memcpy(&state_->vfp_d[d_idx],     res,     8);
+    std::memcpy(&state_->vfp_d[d_idx + 1], res + 8, 8);
 }
 
 void CERFENGINE_CDECL ArmNeon3DiffLen::HandleMulLongSatHelper(ArmNeon3DiffLen* svc, uint32_t op,

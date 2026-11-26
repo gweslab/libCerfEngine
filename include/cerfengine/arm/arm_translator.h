@@ -11,6 +11,7 @@
 
 namespace cerfengine {
 
+class ArmIdleSkip;
 class ArmMmu;
 class PhysicalMap;
 
@@ -31,6 +32,9 @@ public:
     uint8_t* TranslateUserRead (uint32_t va);
     uint8_t* TranslateUserWrite(uint32_t va);
 
+    uint8_t* TranslateWriteSpan    (uint32_t va, uint32_t bytes);
+    uint8_t* TranslateUserWriteSpan(uint32_t va, uint32_t bytes);
+
     uint32_t LastExecPa() const { return last_exec_pa_; }
     bool     LastExecTracked() const { return last_exec_tracked_; }
     bool     LastExecGlobal() const { return last_exec_global_; }
@@ -40,8 +44,13 @@ public:
     bool     PeekVaToPa(uint32_t va, uint32_t* pa);
 
 private:
-    template <ArmMmuAccess kAccess, bool kForceUser = false>
-    uint8_t* MapGuestVirtualToHost(uint32_t p);
+    template <ArmMmuAccess kAccess, bool kForceUser = false, bool kSpan = false>
+    uint8_t* MapGuestVirtualToHost(uint32_t p, uint32_t span_bytes = 0u);
+
+    template <ArmMmuAccess kAccess, bool kSpan>
+    void NoteCodeAccess(ArmMmuState& st, uint32_t pa, uint32_t span_bytes);
+    template <bool kSpan>
+    void NoteStore(uint8_t* host, uint32_t va, uint32_t span_bytes);
 
     const ArmTlbEntry* MatchDataTlb(uint32_t va, uint32_t* folded) const;
 
@@ -51,6 +60,7 @@ private:
     PhysicalMap*        map_       = nullptr;
     void*               memory_    = nullptr;
     void*               walker_    = nullptr;
+    ArmIdleSkip*        idle_skip_ = nullptr;
 
     uint32_t last_exec_pa_      = 0;
     bool     last_exec_tracked_ = false;

@@ -54,6 +54,12 @@ public:
     static uint32_t CERFENGINE_CDECL BackOutForIrqHelper(ArmInterruptChannel* channel,
                                                          uint32_t guest_pc);
 
+    void KickIfDeliverable() {
+        if (!EvaluateGate().raise) return;
+        std::atomic_ref<uint32_t>(cpu_state_->chain_exit_request)
+            .fetch_or(kChainExitIrq, std::memory_order_acq_rel);
+    }
+
     void Wake();
     void SetHostExit(bool requested);
 

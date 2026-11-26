@@ -1,5 +1,7 @@
 #pragma once
 
+#include "arm_cpu_state_service.h"
+
 #include <cerfengine/calling_convention.h>
 #include <cstdint>
 
@@ -8,9 +10,9 @@
 namespace cerfengine {
 
 /* VCVT half↔single Advanced SIMD (A8.8.310). */
-class ArmNeon2RegCvtHalfSingle : public cerfengine::EngineService {
+class ArmNeon2RegCvtHalfSingle : public ArmCpuStateService {
 public:
-    using cerfengine::EngineService::EngineService;
+    using ArmCpuStateService::ArmCpuStateService;
 
     static constexpr uint32_t kSingleToHalf = 0u;
     static constexpr uint32_t kHalfToSingle = 1u;

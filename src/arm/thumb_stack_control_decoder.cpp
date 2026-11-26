@@ -87,9 +87,7 @@ bool ThumbStackControlDecoder::DecodeChangeProcessorState(DecodedInsn* insn,
     insn->op1          = aif_mask;
     insn->immediate    = disable != 0u ? aif_mask : 0u;
     insn->und_in_it    = 1u;
-    /* QEMU ARM translate.c trans_CPS -> gen_set_psr_im ->
-       gen_lookup_tb (DISAS_EXIT). */
-    insn->context_sync = true;
+    insn->cpsr_write   = true;
     insn->kind         = ArmInsnKind::kCps;
     return true;
 }

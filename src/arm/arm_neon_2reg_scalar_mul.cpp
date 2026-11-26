@@ -26,12 +26,11 @@ void ArmNeon2RegScalarMul::HandleScalarMul(uint32_t op_sel, uint32_t F,
                                            uint32_t esize, uint32_t d_idx,
                                            uint32_t n_idx, uint32_t m_idx,
                                            uint32_t index, uint32_t regs) {
-    auto* state = engine_.Get<ArmCpu>().State();
     const uint32_t ebytes   = esize / 8u;
     const uint32_t elements = 8u / ebytes;
 
     const uint8_t* scalar_src =
-        reinterpret_cast<const uint8_t*>(&state->vfp_d[m_idx]);
+        reinterpret_cast<const uint8_t*>(&state_->vfp_d[m_idx]);
     uint32_t scalar_u = 0;
     float    scalar_f = 0.0f;
     if (F != 0u) {
@@ -43,9 +42,9 @@ void ArmNeon2RegScalarMul::HandleScalarMul(uint32_t op_sel, uint32_t F,
 
     for (uint32_t r = 0; r < regs; ++r) {
         const uint8_t* n_src =
-            reinterpret_cast<const uint8_t*>(&state->vfp_d[n_idx + r]);
+            reinterpret_cast<const uint8_t*>(&state_->vfp_d[n_idx + r]);
         const uint8_t* d_src =
-            reinterpret_cast<const uint8_t*>(&state->vfp_d[d_idx + r]);
+            reinterpret_cast<const uint8_t*>(&state_->vfp_d[d_idx + r]);
         uint8_t res[8];
         for (uint32_t e = 0; e < elements; ++e) {
             if (F != 0u) {
@@ -75,7 +74,7 @@ void ArmNeon2RegScalarMul::HandleScalarMul(uint32_t op_sel, uint32_t F,
                 std::memcpy(res + e * ebytes, &result, ebytes);
             }
         }
-        std::memcpy(&state->vfp_d[d_idx + r], res, 8);
+        std::memcpy(&state_->vfp_d[d_idx + r], res, 8);
     }
 }
 

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "arm_cpu_state_service.h"
+
 #include <cerfengine/calling_convention.h>
 #include <cstdint>
 
@@ -8,9 +10,9 @@
 namespace cerfengine {
 
 /* VMLA / VMLS / VMUL by scalar (A8.8.338 / A8.8.352, T1/A1). */
-class ArmNeon2RegScalarMul : public cerfengine::EngineService {
+class ArmNeon2RegScalarMul : public ArmCpuStateService {
 public:
-    using cerfengine::EngineService::EngineService;
+    using ArmCpuStateService::ArmCpuStateService;
 
     static constexpr uint32_t kMla = 0u;
     static constexpr uint32_t kMls = 1u;

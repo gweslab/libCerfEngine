@@ -4,8 +4,10 @@
 #include <atomic>
 
 #include <cerfengine/engine.h>
+#include <cerfengine/arm/arm_interrupt_channel.h>
 #include <cerfengine/arm/arm_mmu.h>
 #include <cerfengine/arm/arm_system_host.h>
+#include "arm_idle_skip.h"
 
 namespace cerfengine {
 
@@ -53,6 +55,10 @@ ArmSpsrBank ArmCpu::SelectSpsrBank(uint32_t mode) {
 
 bool ArmCpu::ShouldRegister() {
     return engine_.GetSetup().isa == cerfengine::Isa::kArm;
+}
+
+void ArmCpu::OnReady() {
+    mmu_ = &engine_.Get<ArmMmu>();
 }
 
 /* ARM ARM DDI 0406C.c B1.3.2, p. B1-1143: the application-level registers are
@@ -127,7 +133,7 @@ void ArmCpu::EnterException(uint32_t target_mode,
                             bool     set_async_abort_mask) {
     /* ARM DDI 0406C.c B3.15.5 (p. B3-1461): "the explicit synchronization
        occurs as the first step of any Context synchronization operation". */
-    engine_.Get<ArmMmu>().SynchronizeSctlr();
+    mmu_->SynchronizeSctlr();
 
     ArmPsrFull old_cpsr;
     old_cpsr.word = ArmPackCpsr(state_);
@@ -181,7 +187,7 @@ uint32_t ArmCpu::ReturnAddress(uint32_t guest_pc, int32_t thumb_sub, int32_t arm
 /* ARM ARM DDI 0406C.c B1.8.1 ExcVectorBase(): SCTLR.V=1 -> 0xFFFF0000
    (Hivecs); else HaveSecurityExt() -> VBAR, else 0. */
 uint32_t ArmCpu::ExcVectorBase() {
-    return engine_.Get<ArmMmu>().State()->effective_control_register.bits.v ? 0xFFFF0000u
+    return mmu_->State()->effective_control_register.bits.v ? 0xFFFF0000u
                                                                              : 0u;
 }
 
@@ -189,7 +195,7 @@ uint32_t ArmCpu::ExcVectorBase() {
    and "CPSR.E = SCTLR.EE". TE exists on ARMv6T2/ARMv7 only, EE from ARMv6
    (D12.7.4); ARMv4/v5 SCTLR bits[31:16] are Reserved UNK/SBZP (D15.7). */
 void ArmCpu::ApplySctlrExecutionState() {
-    const ArmSctlr sctlr = engine_.Get<ArmMmu>().State()->effective_control_register;
+    const ArmSctlr sctlr = mmu_->State()->effective_control_register;
     const cerfengine::ArmFeatures& config = engine_.GetSetup().arm;
     state_.cpsr.bits.thumb_mode = config.arch_v7 ? sctlr.bits.te : 0u;
     state_.cpsr.bits.endian     = config.arch_v6 ? sctlr.bits.ee : 0u;
@@ -223,7 +229,7 @@ void ArmCpu::RaiseResetException(uint32_t initial_pc, bool initial_thumb) {
     state_.cpsr.bits.it_high             = 0u;
     state_.cpsr.bits.jazelle             = 0u;
 
-    ArmMmu& mmu = engine_.Get<ArmMmu>();
+    ArmMmu& mmu = *mmu_;
     mmu.ResetControlRegisters();
     mmu.State()->coprocessor_access = reset_coprocessor_access_;
     const cerfengine::ArmResetResult reset = engine_.GetSetup().arm_system->ArmReset();
@@ -260,7 +266,7 @@ void ArmCpu::SetInitialStackPointer(uint32_t sp) {
 
 void ArmCpu::SetResetCoprocessorAccess(uint32_t value) {
     reset_coprocessor_access_ = value;
-    engine_.Get<ArmMmu>().State()->coprocessor_access = value;
+    mmu_->State()->coprocessor_access = value;
 }
 
 void ArmCpu::SetPendingResumeVector(uint32_t pc) {
@@ -315,7 +321,13 @@ void CERFENGINE_CDECL ArmCpu::WriteCpsrByInstrHelper(ArmCpu* cpu, uint32_t value
                           "ArmCpu: MSR sets CPSR.E; big-endian data accesses are "
                           "not modelled");
     }
+    const bool was_user = cpu->state_.cpsr.bits.mode == ArmMode::kUser;
     cpu->UpdateCpsrWithFlags(merged);
+    if ((cpu->state_.cpsr.bits.mode == ArmMode::kUser) != was_user) {
+        std::atomic_ref<uint32_t>(cpu->state_.chain_exit_request)
+            .fetch_or(kChainExitPrivilege, std::memory_order_acq_rel);
+    }
+    cpu->channel_->KickIfDeliverable();
 }
 
 /* ARM DDI 0100I A4.1.39 (p. A4-77); ARM DDI 0406C.c SPSRWriteByInstr
@@ -376,7 +388,7 @@ ArmPsrFull ArmCpu::PrepareExceptionReturn(uint32_t new_cpsr_word) {
     /* ARM DDI 0406C.c B3.15.5 (p. B3-1461) + Glossary "Context
        synchronization operation": returning from an exception synchronizes
        as its first step. */
-    engine_.Get<ArmMmu>().SynchronizeSctlr();
+    mmu_->SynchronizeSctlr();
 
     ArmPsrFull source;
     source.word = new_cpsr_word;
@@ -386,7 +398,7 @@ ArmPsrFull ArmCpu::PrepareExceptionReturn(uint32_t new_cpsr_word) {
        A4.1.22 (p. A4-41). */
     if (engine_.GetSetup().arm.arch_v7) {
         uint32_t mask = 0xFF0FFFFFu;
-        if (engine_.Get<ArmMmu>().State()->effective_control_register.bits.nmfi &&
+        if (mmu_->State()->effective_control_register.bits.nmfi &&
             source.bits.fiq_disable) {
             mask &= ~(1u << 6);
         }
@@ -429,6 +441,7 @@ void ArmCpu::OnStateRestored() {
         .store((state_.reset_pending != 0u ? kChainExitReset : 0u) |
                    (state_.idle_wait != 0u ? kChainExitIdle : 0u),
                std::memory_order_release);
+    idle_skip_->Reset();
 }
 
 }

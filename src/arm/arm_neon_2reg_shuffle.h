@@ -1,5 +1,7 @@
 #pragma once
 
+#include "arm_cpu_state_service.h"
+
 #include <cerfengine/calling_convention.h>
 #include <cstdint>
 
@@ -8,9 +10,9 @@
 namespace cerfengine {
 
 /* VTRN / VUZP / VZIP (A8.8.420 / A8.8.422 / A8.8.423). */
-class ArmNeon2RegShuffle : public cerfengine::EngineService {
+class ArmNeon2RegShuffle : public ArmCpuStateService {
 public:
-    using cerfengine::EngineService::EngineService;
+    using ArmCpuStateService::ArmCpuStateService;
 
     static constexpr uint32_t kTrn = 0u;
     static constexpr uint32_t kUzp = 1u;

@@ -225,6 +225,7 @@ void X86EmitFusedAlu(X86Lowering& lowering, Op op, Ref a, Ref b, uint32_t mask, 
 void X86EmitLoad(X86Lowering& lowering, Ref ref, Ref address, Ref writeback, uint32_t attr);
 void X86EmitStore(X86Lowering& lowering, Ref address, Ref value, Ref writeback, uint32_t attr);
 void X86EmitTransferWords(X86Lowering& lowering, uint32_t attr, uint32_t list);
+bool X86EmitColdWordTransfer(X86Lowering& lowering, const X86ColdTransfer& cold);
 
 CERFENGINE_FORCEINLINE void X86EmitAluOperand(uint8_t*& c, Op op, uint8_t dst,
                                               const X86RegAlloc::Operand& o) {

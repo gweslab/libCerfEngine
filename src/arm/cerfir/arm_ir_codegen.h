@@ -17,6 +17,7 @@ namespace cerfengine {
 
 class ArmBlockCompiler;
 class ArmIrMemorySlowPath;
+class JitCodeArena;
 struct ArmIrContext;
 
 struct ArmIrBlockInput {
@@ -39,8 +40,15 @@ public:
     size_t Generate(const ArmIrBlockInput& in, uint8_t* code, uint8_t* code_end);
 
     const void* EntryStub() const { return target_.entry_stub; }
+    const void* ProbeRoutine(bool thumb, uint32_t privilege) const {
+        return probe_routines_[thumb ? 1u : 0u][privilege];
+    }
 
 private:
+    static constexpr uint32_t kProbePrivileges = 2u;
+
+    void BuildProbeRoutines(JitCodeArena& arena);
+
     void TranslateBlock(const ArmIrBlockInput& in);
     template <bool kUniform, bool kTraced>
     void TranslateInsns(const ArmIrBlockInput& in, cerfir::Builder& b, ArmIrContext& c);
@@ -57,6 +65,7 @@ private:
     cerfir::GuestModel      model_;
     cerfir::HostSoftTlb     tlb_;
     cerfir::HostGuestTarget target_;
+    const void*             probe_routines_[2][kProbePrivileges] = {};
     ArmIrMemorySlowPath*    slow_   = nullptr;
     EngineHost*             host_   = nullptr;
     bool                    verify_ = false;

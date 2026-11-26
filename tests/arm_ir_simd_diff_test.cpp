@@ -12,6 +12,13 @@ constexpr uint16_t kThumbBranchSelf   = 0xE7FEu;
 bool     g_trace        = false;
 uint32_t g_dump_program = 0xFFFFFFFFu;
 
+class UndefinedCoprocessor : public TestCoprocessor {
+public:
+    cerfengine::ArmCoprocDecision Decide(const cerfengine::ArmCoprocAccess&) override {
+        return cerfengine::ArmCoprocDecision{};
+    }
+};
+
 struct Config {
     const char*             name;
     cerfengine::ArmFeatures features;
@@ -110,9 +117,10 @@ std::vector<uint32_t> Program(std::mt19937& rng, bool thumb) {
     return words;
 }
 
-void Prepare(ArmIrRig& rig) {
+void Prepare(ArmIrRig& rig, UndefinedCoprocessor& coprocessor) {
     rig.Host().EnableMmioLog();
     rig.System().AllowAlignmentFaults();
+    rig.System().SetCoprocessor(&coprocessor);
     rig.Cpu().SetResetCoprocessorAccess(kCpacrFullCp10Cp11);
     rig.Engine().Get<cerfengine::ArmJit>().SetIdleWake(true);
 }
@@ -127,7 +135,8 @@ void TestSimd(const Config& config) {
         std::make_unique<ArmIrRig>(true, config.features),
         std::make_unique<ArmIrRig>(false, config.features),
     };
-    for (auto& rig : rigs) Prepare(*rig);
+    UndefinedCoprocessor coprocessor;
+    for (auto& rig : rigs) Prepare(*rig, coprocessor);
     std::mt19937       rng(config.seed);
     constexpr uint32_t kPrograms = 20000u;
     uint32_t           und_exits = 0;
@@ -209,7 +218,7 @@ void TestSimd(const Config& config) {
             ++halts;
             for (auto& rig : rigs) {
                 rig->Restart();
-                Prepare(*rig);
+                Prepare(*rig, coprocessor);
             }
             continue;
         }

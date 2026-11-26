@@ -133,6 +133,7 @@ bool ArmVfp::ShouldRegister() {
 }
 
 void ArmVfp::OnReady() {
+    cpu_ = &engine_.Get<ArmCpu>();
     const uint32_t mvfr0 = engine_.GetSetup().arm.mvfr0;
     dp32_     = (mvfr0 & 0xFu) == 0x2u;
     sp_vfpv3_ = ((mvfr0 >> 4) & 0xFu) >= 0x2u;
@@ -140,8 +141,8 @@ void ArmVfp::OnReady() {
 }
 
 uint32_t ArmVfp::ExecuteCdp(uint32_t pc, uint32_t packed) {
-    auto& cpu = engine_.Get<ArmCpu>();
-    auto* state = cpu.State();
+    ArmCpu&      cpu   = *cpu_;
+    ArmCpuState* state = cpu.State();
 
     const uint32_t crm    =  packed        & 0xFu;
     const uint32_t cp_bits= (packed >> 4)  & 0x7u;

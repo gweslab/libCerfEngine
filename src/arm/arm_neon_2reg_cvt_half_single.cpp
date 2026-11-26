@@ -114,33 +114,32 @@ uint16_t SingleToHalf(uint32_t f, bool ahp, uint32_t* fpscr) {
 void ArmNeon2RegCvtHalfSingle::HandleCvtHalfSingle(uint32_t op_sel,
                                                    uint32_t d_idx,
                                                    uint32_t m_idx) {
-    auto* state = engine_.Get<ArmCpu>().State();
-    const bool ahp = (state->fpscr & ArmVfp::kFpscrAhpMask) != 0u;
+    const bool ahp = (state_->fpscr & ArmVfp::kFpscrAhpMask) != 0u;
 
     if (op_sel == kHalfToSingle) {
         const uint8_t* src =
-            reinterpret_cast<const uint8_t*>(&state->vfp_d[m_idx]);
+            reinterpret_cast<const uint8_t*>(&state_->vfp_d[m_idx]);
         uint8_t res[16];
         for (uint32_t e = 0; e < 4u; ++e) {
             uint16_t h;
             std::memcpy(&h, src + e * 2u, 2);
-            const uint32_t v = HalfToSingle(h, ahp, &state->fpscr);
+            const uint32_t v = HalfToSingle(h, ahp, &state_->fpscr);
             std::memcpy(res + e * 4u, &v, 4);
         }
-        std::memcpy(&state->vfp_d[d_idx],     res,     8);
-        std::memcpy(&state->vfp_d[d_idx + 1], res + 8, 8);
+        std::memcpy(&state_->vfp_d[d_idx],     res,     8);
+        std::memcpy(&state_->vfp_d[d_idx + 1], res + 8, 8);
     } else {
         uint8_t src_q[16];
-        std::memcpy(src_q,     &state->vfp_d[m_idx],     8);
-        std::memcpy(src_q + 8, &state->vfp_d[m_idx + 1], 8);
+        std::memcpy(src_q,     &state_->vfp_d[m_idx],     8);
+        std::memcpy(src_q + 8, &state_->vfp_d[m_idx + 1], 8);
         uint8_t res[8];
         for (uint32_t e = 0; e < 4u; ++e) {
             uint32_t v;
             std::memcpy(&v, src_q + e * 4u, 4);
-            const uint16_t h = SingleToHalf(v, ahp, &state->fpscr);
+            const uint16_t h = SingleToHalf(v, ahp, &state_->fpscr);
             std::memcpy(res + e * 2u, &h, 2);
         }
-        std::memcpy(&state->vfp_d[d_idx], res, 8);
+        std::memcpy(&state_->vfp_d[d_idx], res, 8);
     }
 }
 

@@ -14,7 +14,6 @@ CERFENGINE_REGISTER(ArmNeon2RegNarrow);
 
 void ArmNeon2RegNarrow::HandleNarrow(uint32_t op_sel, uint32_t esize_out,
                                      uint32_t d_idx, uint32_t m_idx) {
-    auto* state = engine_.Get<ArmCpu>().State();
     const uint32_t ebytes_out = esize_out / 8u;
     const uint32_t ebytes_in  = 2u * ebytes_out;
     const uint32_t esize_in   = 2u * esize_out;
@@ -25,7 +24,7 @@ void ArmNeon2RegNarrow::HandleNarrow(uint32_t op_sel, uint32_t esize_out,
     const int64_t  out_smin = -(int64_t{1} << (esize_out - 1u));
 
     bool saturated = false;
-    const uint8_t* src = reinterpret_cast<const uint8_t*>(&state->vfp_d[m_idx]);
+    const uint8_t* src = reinterpret_cast<const uint8_t*>(&state_->vfp_d[m_idx]);
     uint8_t res[8];
 
     for (uint32_t e = 0; e < elements; ++e) {
@@ -57,9 +56,9 @@ void ArmNeon2RegNarrow::HandleNarrow(uint32_t op_sel, uint32_t esize_out,
         }
         std::memcpy(res + e * ebytes_out, &result_bits, ebytes_out);
     }
-    std::memcpy(&state->vfp_d[d_idx], res, 8);
+    std::memcpy(&state_->vfp_d[d_idx], res, 8);
     if (saturated) {
-        state->fpscr |= ArmVfp::kFpscrQcMask;
+        state_->fpscr |= ArmVfp::kFpscrQcMask;
     }
 }
 

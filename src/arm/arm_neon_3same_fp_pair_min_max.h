@@ -1,5 +1,7 @@
 #pragma once
 
+#include "arm_cpu_state_service.h"
+
 #include <cerfengine/calling_convention.h>
 #include <cstdint>
 
@@ -8,9 +10,9 @@
 namespace cerfengine {
 
 /* VPMAX / VPMIN (floating-point) - A8.8.366, opc=1111 C=0 U=1. */
-class ArmNeon3SameFpPairMinMax : public cerfengine::EngineService {
+class ArmNeon3SameFpPairMinMax : public ArmCpuStateService {
 public:
-    using cerfengine::EngineService::EngineService;
+    using ArmCpuStateService::ArmCpuStateService;
 
     static constexpr uint32_t kMax = 0u;
     static constexpr uint32_t kMin = 1u;

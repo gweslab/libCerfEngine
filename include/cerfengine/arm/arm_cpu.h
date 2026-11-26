@@ -8,13 +8,21 @@
 
 namespace cerfengine {
 
+class ArmIdleSkip;
+class ArmInterruptChannel;
+class ArmMmu;
+
 class ArmCpu : public cerfengine::EngineService {
 public:
     using cerfengine::EngineService::EngineService;
 
     bool ShouldRegister() override;
+    void OnReady() override;
 
     ArmCpuState* State() { return &state_; }
+
+    void BindInterruptChannel(ArmInterruptChannel* channel) { channel_ = channel; }
+    void BindIdleSkip(ArmIdleSkip* idle_skip) { idle_skip_ = idle_skip; }
 
     void OnStateRestored();
 
@@ -74,6 +82,10 @@ private:
     void     ApplySctlrExecutionState();
 
     ArmCpuState state_{};
+
+    ArmMmu*              mmu_       = nullptr;
+    ArmInterruptChannel* channel_   = nullptr;
+    ArmIdleSkip*         idle_skip_ = nullptr;
 
     uint32_t pending_resume_pc_        = 0;
     bool     pending_resume_pc_set_    = false;

@@ -36,8 +36,11 @@ public:
     }
 
 private:
-    static constexpr size_t kRegionSize = 32u * 1024u * 1024u;
+    static constexpr size_t kRegionSize = 128u * 1024u * 1024u;
     static constexpr size_t kAlignment  = alignof(void*);
+
+    static_assert(kRegionSize <= (size_t{1} << 27),
+                  "an AArch64 B or BL inside the arena reaches 128 MB");
 
     cerfengine::Engine* engine_ = nullptr;
 

@@ -10,9 +10,8 @@ CERFENGINE_REGISTER(ArmNeon2RegBitwiseNot);
 
 void ArmNeon2RegBitwiseNot::HandleMvn(uint32_t d_idx, uint32_t m_idx,
                                       uint32_t regs) {
-    auto* state = engine_.Get<ArmCpu>().State();
     for (uint32_t r = 0; r < regs; ++r) {
-        state->vfp_d[d_idx + r] = ~state->vfp_d[m_idx + r];
+        state_->vfp_d[d_idx + r] = ~state_->vfp_d[m_idx + r];
     }
 }
 

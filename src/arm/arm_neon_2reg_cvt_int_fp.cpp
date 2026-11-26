@@ -32,10 +32,9 @@ inline uint32_t FpToU32(float f, uint32_t frac_bits, uint32_t* fpscr) {
 void ArmNeon2RegCvtIntFp::HandleCvtIntFp(uint32_t op_sel, uint32_t d_idx,
                                          uint32_t m_idx, uint32_t regs,
                                          uint32_t frac_bits) {
-    auto* state = engine_.Get<ArmCpu>().State();
     for (uint32_t r = 0; r < regs; ++r) {
         const uint8_t* src =
-            reinterpret_cast<const uint8_t*>(&state->vfp_d[m_idx + r]);
+            reinterpret_cast<const uint8_t*>(&state_->vfp_d[m_idx + r]);
         uint8_t res[8];
         for (uint32_t e = 0; e < 2u; ++e) {
             uint32_t in;
@@ -45,27 +44,27 @@ void ArmNeon2RegCvtIntFp::HandleCvtIntFp(uint32_t op_sel, uint32_t d_idx,
                 const bool     neg = static_cast<int32_t>(in) < 0;
                 const uint32_t mag = neg ? (~in + 1u) : in;
                 const float f =
-                    std::ldexp(ArmVfp::FixedToFP32(mag, neg, 0u, &state->fpscr),
+                    std::ldexp(ArmVfp::FixedToFP32(mag, neg, 0u, &state_->fpscr),
                                -static_cast<int>(frac_bits));
                 std::memcpy(&out, &f, 4);
             } else if (op_sel == kIntUToFp) {
                 const float f =
-                    std::ldexp(ArmVfp::FixedToFP32(in, false, 0u, &state->fpscr),
+                    std::ldexp(ArmVfp::FixedToFP32(in, false, 0u, &state_->fpscr),
                                -static_cast<int>(frac_bits));
                 std::memcpy(&out, &f, 4);
             } else {
                 float f;
                 std::memcpy(&f, &in, 4);
                 if (op_sel == kFpToIntS) {
-                    const int32_t i = FpToS32(f, frac_bits, &state->fpscr);
+                    const int32_t i = FpToS32(f, frac_bits, &state_->fpscr);
                     std::memcpy(&out, &i, 4);
                 } else {
-                    out = FpToU32(f, frac_bits, &state->fpscr);
+                    out = FpToU32(f, frac_bits, &state_->fpscr);
                 }
             }
             std::memcpy(res + e * 4u, &out, 4);
         }
-        std::memcpy(&state->vfp_d[d_idx + r], res, 8);
+        std::memcpy(&state_->vfp_d[d_idx + r], res, 8);
     }
 }
 

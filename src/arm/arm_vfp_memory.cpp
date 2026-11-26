@@ -11,12 +11,19 @@ namespace cerfengine {
 
 CERFENGINE_REGISTER(ArmVfpMemory);
 
+void ArmVfpMemory::OnReady() {
+    ArmCpuStateService::OnReady();
+    mmu_     = &engine_.Get<ArmMmu>();
+    channel_ = &engine_.Get<ArmInterruptChannel>();
+    routed_  = &engine_.Get<ArmRoutedAccess>();
+}
+
 uint32_t ArmVfpMemory::HandleBlockTransfer(uint32_t pc, uint32_t pc_read,
                                            uint32_t rn_idx, uint32_t vd,
                                            uint32_t imm8, uint32_t flags) {
-    auto& cpu = engine_.Get<ArmCpu>();
-    auto& mmu = engine_.Get<ArmMmu>();
-    auto* state = cpu.State();
+    ArmCpu&      cpu   = *cpu_;
+    ArmMmu&      mmu   = *mmu_;
+    ArmCpuState* state = state_;
 
     const bool is_load       = (flags & kFlagL)  != 0;
     const bool writeback     = (flags & kFlagW)  != 0;
@@ -55,12 +62,12 @@ uint32_t ArmVfpMemory::HandleBlockTransfer(uint32_t pc, uint32_t pc_read,
         if (!mmu.AccessPaged(addr, vfp_base + off, bytes_per, is_load,
                              false, &done)) {
             if (mmu.io_pending() && i == 0u && done == 0u &&
-                engine_.Get<ArmInterruptChannel>().BackOutForIrq(pc)) {
+                channel_->BackOutForIrq(pc)) {
                 mmu.ClearIoPending();
                 return 1;
             }
             if (!mmu.io_pending() ||
-                !engine_.Get<ArmRoutedAccess>().WideAccess(
+                !routed_->WideAccess(
                     pc, addr + done, bytes_per - done,
                     vfp_base + off + done, is_load)) {
                 cpu.RaiseAbortDataException(pc);
@@ -77,7 +84,7 @@ uint32_t ArmVfpMemory::HandleBlockTransfer(uint32_t pc, uint32_t pc_read,
         state->gprs[rn_idx] =
             pre_decrement ? (rn_value - imm32) : (rn_value + imm32);
     }
-    return (routed && engine_.Get<ArmInterruptChannel>().LeaveAfterAccess(pc + 4u)) ? 1u : 0u;
+    return (routed && channel_->LeaveAfterAccess(pc + 4u)) ? 1u : 0u;
 }
 
 uint32_t CERFENGINE_CDECL ArmVfpMemory::HandleBlockTransferHelper(ArmVfpMemory* vfp,
@@ -94,9 +101,9 @@ uint32_t ArmVfpMemory::HandleSingleTransfer(uint32_t pc, uint32_t pc_read,
                                             uint32_t rn_idx, uint32_t vd,
                                             int32_t signed_off,
                                             uint32_t flags) {
-    auto& cpu = engine_.Get<ArmCpu>();
-    auto& mmu = engine_.Get<ArmMmu>();
-    auto* state = cpu.State();
+    ArmCpu&      cpu   = *cpu_;
+    ArmMmu&      mmu   = *mmu_;
+    ArmCpuState* state = state_;
 
     const bool is_load = (flags & kFlagL)  != 0;
     const bool is_dp   = (flags & kFlagDp) != 0;
@@ -118,18 +125,18 @@ uint32_t ArmVfpMemory::HandleSingleTransfer(uint32_t pc, uint32_t pc_read,
     if (!mmu.AccessPaged(addr, vfp_base + off, bytes, is_load,
                          false, &done)) {
         if (mmu.io_pending() && done == 0u &&
-            engine_.Get<ArmInterruptChannel>().BackOutForIrq(pc)) {
+            channel_->BackOutForIrq(pc)) {
             mmu.ClearIoPending();
             return 1;
         }
         if (!mmu.io_pending() ||
-            !engine_.Get<ArmRoutedAccess>().WideAccess(
+            !routed_->WideAccess(
                 pc, addr + done, bytes - done,
                 vfp_base + off + done, is_load)) {
             cpu.RaiseAbortDataException(pc);
             return 1;
         }
-        return engine_.Get<ArmInterruptChannel>().LeaveAfterAccess(pc + 4u) ? 1u : 0u;
+        return channel_->LeaveAfterAccess(pc + 4u) ? 1u : 0u;
     }
     return 0;
 }

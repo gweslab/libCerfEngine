@@ -17,7 +17,9 @@ namespace cerfengine {
 CERFENGINE_REGISTER(ArmInterruptChannel);
 
 void ArmInterruptChannel::OnReady() {
-    cpu_state_     = engine_.Get<ArmCpu>().State();
+    ArmCpu& cpu    = engine_.Get<ArmCpu>();
+    cpu_state_     = cpu.State();
+    cpu.BindInterruptChannel(this);
     host_requests_ = &engine_.Get<HostRequestChannel>();
     idle_          = &engine_.Get<GuestIdleWait>();
     system_        = engine_.GetSetup().arm_system;
@@ -106,7 +108,8 @@ bool ArmInterruptChannel::ExitPending() {
     if (cpu_state_->reset_pending || cpu_state_->deep_sleep) return true;
     const uint32_t exits = std::atomic_ref<uint32_t>(cpu_state_->chain_exit_request)
                                .load(std::memory_order_acquire);
-    if ((exits & ~(kChainExitIrq | kChainExitFlush | kChainExitClock | kChainExitIdle)) != 0u) {
+    if ((exits & ~(kChainExitIrq | kChainExitPrivilege | kChainExitFlush | kChainExitClock |
+                   kChainExitIdle | kChainExitScan)) != 0u) {
         return true;
     }
     host_requests_->ServicePending();

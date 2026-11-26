@@ -74,6 +74,7 @@ struct DecodedInsn {
     bool       r15_modified;
     bool       is_exception_return;
     bool       context_sync;
+    bool       cpsr_write;
 
     uint32_t   itstate;
     uint32_t   itstate_valid;

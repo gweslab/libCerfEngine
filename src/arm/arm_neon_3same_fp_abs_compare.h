@@ -1,5 +1,7 @@
 #pragma once
 
+#include "arm_cpu_state_service.h"
+
 #include <cerfengine/calling_convention.h>
 #include <cstdint>
 
@@ -7,9 +9,9 @@
 
 namespace cerfengine {
 
-class ArmNeon3SameFpAbsCompare : public cerfengine::EngineService {
+class ArmNeon3SameFpAbsCompare : public ArmCpuStateService {
 public:
-    using cerfengine::EngineService::EngineService;
+    using ArmCpuStateService::ArmCpuStateService;
 
     static constexpr uint32_t kAcge = 0u;
     static constexpr uint32_t kAcgt = 1u;

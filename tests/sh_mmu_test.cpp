@@ -271,7 +271,7 @@ void RemapSplitTail(ShIrRig& rig, const char* mode) {
 void CacheArrayInvalidate(ShIrRig& rig, const char* mode) {
     const char* what = "cache address array invalidation";
     ShCpuState  init = Initial(kShRigSrPrivileged, kCacheVa);
-    init.gpr[2]      = 0x12345670u;
+    init.gpr[2]      = 0u;
     init.gpr[3]      = 0u;
     init.gpr[4]      = kCacheVa + 0x18u;
     rig.Run({kStoreR2R1, kStoreR3R4}, init, what, [&](ShCpuState& s) { s.vbr = kShRigVbr; });

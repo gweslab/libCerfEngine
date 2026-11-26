@@ -38,6 +38,8 @@ struct BlockLink {
     uint32_t       fold_value          = 0;
     bool           mode_set            = false;
     const void*    jump_cache          = nullptr;
+    const void*    other_mode_jump_cache = nullptr;
+    const void*    probe_routine       = nullptr;
     int32_t        jump_cache_key_disp = 0;
     uint32_t       privilege           = 0;
     bool           translation_off     = false;

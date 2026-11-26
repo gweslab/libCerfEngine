@@ -176,6 +176,7 @@ public:
         rom_base_ = pa;
         rom_      = std::move(bytes);
     }
+    const std::vector<uint8_t>& Rom() const { return rom_; }
     void MirrorRamAt(uint32_t pa) {
         mirror_base_ = pa;
         mirrored_    = true;

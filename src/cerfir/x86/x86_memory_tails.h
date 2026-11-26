@@ -24,6 +24,18 @@ struct X86MissStub {
     bool         keep_pc;
 };
 
+struct X86ColdTransfer {
+    uint32_t         attr;
+    uint32_t         list;
+    uint8_t*         entry;
+    uint8_t*         align;
+    uint8_t*         join;
+    SoftTlbMissSites misses;
+    const void*      miss_target;
+    uint32_t         pc;
+    bool             keep_pc;
+};
+
 struct X86MemoryTail {
     MemorySlowDesc desc;
     SlowEntries    entries;
@@ -51,6 +63,12 @@ public:
     void BeginBlock() {
         count_      = 0;
         stub_count_ = 0;
+        cold_count_ = 0;
+    }
+
+    void AddColdTransfer(const X86ColdTransfer& cold) {
+        if (cold_count_ == colds_.size()) colds_.resize(colds_.empty() ? 8u : colds_.size() * 2u);
+        colds_[cold_count_++] = cold;
     }
 
     CERFENGINE_FORCEINLINE X86MemoryTail& New() {
@@ -81,6 +99,8 @@ private:
     size_t                     capacity_ = 0;
     std::vector<X86MissStub>   stubs_;
     size_t                     stub_count_ = 0;
+    std::vector<X86ColdTransfer> colds_;
+    size_t                       cold_count_ = 0;
 };
 
 }

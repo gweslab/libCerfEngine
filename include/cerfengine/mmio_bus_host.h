@@ -51,6 +51,7 @@ void CERFENGINE_FASTCALL     MmioWriteSlow(void* context, uint32_t pa, uint32_t 
                                            MmioWidth width, MmioRoute& route);
 uint64_t CERFENGINE_FASTCALL MmioReadDword(void* context, uint32_t pa);
 void CERFENGINE_FASTCALL     MmioWriteDword(void* context, uint32_t pa, uint64_t value);
+uint64_t CERFENGINE_FASTCALL MmioReadStableUntil(void* context, uint32_t pa, MmioWidth width);
 
 }
 

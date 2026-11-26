@@ -33,9 +33,12 @@ public:
         return miss_[privilege][static_cast<size_t>(access)];
     }
     bool KeepsPc() const { return model_.pc_slot != kNoSlot; }
+    uint32_t PageBytes() const { return 1u << model_.page_shift; }
 
     uint8_t* EmitUserLookup(uint8_t* cursor, TlbAccess access, uint32_t guest_pc) const;
     uint8_t* EmitMissCall(uint8_t* cursor, TlbAccess access, uint32_t guest_pc) const;
+    uint8_t* EmitWatchWords(uint8_t* cursor, uint32_t privilege, const int32_t* word_delta,
+                            uint32_t count) const;
 
 private:
     struct Stamp {

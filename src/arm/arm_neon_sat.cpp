@@ -14,15 +14,14 @@ CERFENGINE_REGISTER(ArmNeonSat);
 
 void ArmNeonSat::HandleSimd3SameSat(uint32_t op, uint32_t d_idx, uint32_t n_idx,
                                     uint32_t m_idx, uint32_t esize, uint32_t regs) {
-    auto* state = engine_.Get<ArmCpu>().State();
     const uint32_t ebytes   = esize / 8u;
     const uint32_t elements = 8u / ebytes;
     const uint32_t sh       = 64u - esize;
     bool saturated = false;
 
     for (uint32_t r = 0; r < regs; ++r) {
-        const uint8_t* dn = reinterpret_cast<const uint8_t*>(&state->vfp_d[n_idx + r]);
-        const uint8_t* dm = reinterpret_cast<const uint8_t*>(&state->vfp_d[m_idx + r]);
+        const uint8_t* dn = reinterpret_cast<const uint8_t*>(&state_->vfp_d[n_idx + r]);
+        const uint8_t* dm = reinterpret_cast<const uint8_t*>(&state_->vfp_d[m_idx + r]);
         uint8_t res[8];
         for (uint32_t e = 0; e < elements; ++e) {
             uint64_t a = 0, b = 0;
@@ -150,11 +149,11 @@ void ArmNeonSat::HandleSimd3SameSat(uint32_t op, uint32_t d_idx, uint32_t n_idx,
             }
             std::memcpy(res + e * ebytes, &s, ebytes);
         }
-        std::memcpy(&state->vfp_d[d_idx + r], res, 8);
+        std::memcpy(&state_->vfp_d[d_idx + r], res, 8);
     }
 
     if (saturated) {
-        state->fpscr |= ArmVfp::kFpscrQcMask;
+        state_->fpscr |= ArmVfp::kFpscrQcMask;
     }
 }
 
@@ -168,14 +167,13 @@ void CERFENGINE_CDECL ArmNeonSat::HandleSimd3SameSatHelper(ArmNeonSat* sat, uint
 void ArmNeonSat::HandleShiftImmSat(uint32_t op, uint32_t d_idx, uint32_t m_idx,
                                    uint32_t esize, uint32_t shift_amount,
                                    uint32_t regs) {
-    auto* state = engine_.Get<ArmCpu>().State();
     const uint32_t ebytes   = esize / 8u;
     const uint32_t elements = 8u / ebytes;
     const uint32_t sh       = 64u - esize;
     bool saturated = false;
 
     for (uint32_t r = 0; r < regs; ++r) {
-        const uint8_t* dm = reinterpret_cast<const uint8_t*>(&state->vfp_d[m_idx + r]);
+        const uint8_t* dm = reinterpret_cast<const uint8_t*>(&state_->vfp_d[m_idx + r]);
         uint8_t res[8];
         for (uint32_t e = 0; e < elements; ++e) {
             uint64_t a = 0;
@@ -209,11 +207,11 @@ void ArmNeonSat::HandleShiftImmSat(uint32_t op, uint32_t d_idx, uint32_t m_idx,
             }
             std::memcpy(res + e * ebytes, &s, ebytes);
         }
-        std::memcpy(&state->vfp_d[d_idx + r], res, 8);
+        std::memcpy(&state_->vfp_d[d_idx + r], res, 8);
     }
 
     if (saturated) {
-        state->fpscr |= ArmVfp::kFpscrQcMask;
+        state_->fpscr |= ArmVfp::kFpscrQcMask;
     }
 }
 
@@ -227,7 +225,6 @@ void CERFENGINE_CDECL ArmNeonSat::HandleShiftImmSatHelper(ArmNeonSat* sat, uint3
 void ArmNeonSat::HandleShiftImmNarrowSat(uint32_t op, uint32_t d_idx,
                                          uint32_t m_idx, uint32_t esize,
                                          uint32_t shift_amount) {
-    auto* state = engine_.Get<ArmCpu>().State();
     const uint32_t in_esize   = 2u * esize;
     const uint32_t out_ebytes = esize / 8u;
     const uint32_t in_ebytes  = 2u * out_ebytes;
@@ -241,8 +238,8 @@ void ArmNeonSat::HandleShiftImmNarrowSat(uint32_t op, uint32_t d_idx,
     bool saturated = false;
 
     uint8_t src[16];
-    std::memcpy(src,     &state->vfp_d[m_idx],     8);
-    std::memcpy(src + 8, &state->vfp_d[m_idx + 1], 8);
+    std::memcpy(src,     &state_->vfp_d[m_idx],     8);
+    std::memcpy(src + 8, &state_->vfp_d[m_idx + 1], 8);
 
     uint8_t res[8];
     for (uint32_t e = 0; e < elements; ++e) {
@@ -329,10 +326,10 @@ void ArmNeonSat::HandleShiftImmNarrowSat(uint32_t op, uint32_t d_idx,
         }
         std::memcpy(res + e * out_ebytes, &s, out_ebytes);
     }
-    std::memcpy(&state->vfp_d[d_idx], res, 8);
+    std::memcpy(&state_->vfp_d[d_idx], res, 8);
 
     if (saturated) {
-        state->fpscr |= ArmVfp::kFpscrQcMask;
+        state_->fpscr |= ArmVfp::kFpscrQcMask;
     }
 }
 

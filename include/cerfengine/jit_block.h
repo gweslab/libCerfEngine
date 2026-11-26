@@ -32,6 +32,8 @@ struct JitBlock {
     uint8_t   chain_src_next_slot[2] = {0, 0};
     JitBlock* chain_src_head         = nullptr;
     uint8_t   chain_src_head_slot    = 0;
+
+    uint8_t   idle_barrier = 0;
 };
 
 }

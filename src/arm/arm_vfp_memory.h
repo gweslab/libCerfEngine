@@ -1,5 +1,7 @@
 #pragma once
 
+#include "arm_cpu_state_service.h"
+
 #include <cerfengine/calling_convention.h>
 #include <cstdint>
 
@@ -7,9 +9,15 @@
 
 namespace cerfengine {
 
-class ArmVfpMemory : public cerfengine::EngineService {
+class ArmInterruptChannel;
+class ArmMmu;
+class ArmRoutedAccess;
+
+class ArmVfpMemory : public ArmCpuStateService {
 public:
-    using cerfengine::EngineService::EngineService;
+    using ArmCpuStateService::ArmCpuStateService;
+
+    void OnReady() override;
 
     static constexpr uint32_t kFlagL  = 1u << 0;
     static constexpr uint32_t kFlagW  = 1u << 1;
@@ -39,6 +47,11 @@ public:
                                                                 uint32_t vd,
                                                                 int32_t  signed_off,
                                                                 uint32_t flags);
+
+private:
+    ArmMmu*              mmu_     = nullptr;
+    ArmInterruptChannel* channel_ = nullptr;
+    ArmRoutedAccess*     routed_  = nullptr;
 };
 
 }

@@ -9,6 +9,7 @@
 #include "../../x86_emit_alu.h"
 #include "../../x86_emit_pointer.h"
 #include "x86_host_abi.h"
+#include "x86_lower_fns.h"
 #include "x86_lowering.h"
 #include "x86_memory_operands.h"
 
@@ -20,6 +21,9 @@ void X86MemoryTails::Grow() {
 }
 
 bool X86MemoryTails::Emit(X86Lowering& l) {
+    for (size_t i = 0; i < cold_count_; ++i) {
+        if (!X86EmitColdWordTransfer(l, colds_[i])) return false;
+    }
     for (size_t i = 0; i < count_; ++i) {
         if (!l.HasRoom()) return false;
         EmitOne(l, tails_[i]);

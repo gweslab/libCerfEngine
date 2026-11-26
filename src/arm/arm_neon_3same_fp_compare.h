@@ -1,5 +1,7 @@
 #pragma once
 
+#include "arm_cpu_state_service.h"
+
 #include <cerfengine/calling_convention.h>
 #include <cstdint>
 
@@ -9,9 +11,9 @@ namespace cerfengine {
 
 /* VCEQ.F32 / VCGE.F32 / VCGT.F32 (register form) - A7.4.1 opc=1110 C=0
    (A8.8.291 / A8.8.293 / A8.8.295). */
-class ArmNeon3SameFpCompare : public cerfengine::EngineService {
+class ArmNeon3SameFpCompare : public ArmCpuStateService {
 public:
-    using cerfengine::EngineService::EngineService;
+    using ArmCpuStateService::ArmCpuStateService;
 
     static constexpr uint32_t kEq = 0u;
     static constexpr uint32_t kGe = 1u;

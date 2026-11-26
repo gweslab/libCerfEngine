@@ -1,5 +1,7 @@
 #pragma once
 
+#include "arm_cpu_state_service.h"
+
 #include <cerfengine/calling_convention.h>
 #include <cstdint>
 
@@ -9,9 +11,9 @@ namespace cerfengine {
 
 /* Saturating 3-reg-same NEON ops (A8.8.370/382): clamp each element to the
    esize-bit signed/unsigned range and set FPSCR.QC on any saturation. */
-class ArmNeonSat : public cerfengine::EngineService {
+class ArmNeonSat : public ArmCpuStateService {
 public:
-    using cerfengine::EngineService::EngineService;
+    using ArmCpuStateService::ArmCpuStateService;
 
     static constexpr uint32_t kSatAddS  = 0u;
     static constexpr uint32_t kSatAddU  = 1u;

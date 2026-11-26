@@ -7,6 +7,7 @@
 #include <cerfengine/arm/arm_translator.h>
 #include <cerfengine/arm/cpu_state.h>
 #include "../mmio_bus.h"
+#include "arm_idle_skip.h"
 
 namespace cerfengine {
 
@@ -21,11 +22,14 @@ void ArmRoutedAccess::OnReady() {
     translator_ = &engine_.Get<ArmTranslator>();
     bus_        = &engine_.Get<MmioBus>();
     cpu_state_  = engine_.Get<ArmCpu>().State();
+    idle_skip_  = &engine_.Get<ArmIdleSkip>();
     engine_.AttachClock(clock_);
 }
 
 void ArmRoutedAccess::DeliverDueClockEvents() {
-    if (ArmCycleDeadlineReached(*cpu_state_)) host::ClockDispatch(clock_);
+    if (!ArmCycleDeadlineReached(*cpu_state_)) return;
+    idle_skip_->Restart();
+    host::ClockDispatch(clock_);
 }
 
 void ArmRoutedAccess::HaltUnalignedRouted(uint32_t guest_pc, uint32_t va,
@@ -48,12 +52,14 @@ void ArmRoutedAccess::PanicRoutedWidth(uint32_t guest_pc, uint32_t va,
 template <MmioWidth kWidth>
 uint32_t ArmRoutedAccess::ReadRouted(uint32_t pa) {
     DeliverDueClockEvents();
+    if (idle_skip_->Recording()) idle_skip_->NoteDeviceRead(pa, kWidth);
     return bus_->Read(pa, kWidth);
 }
 
 template <MmioWidth kWidth>
 void ArmRoutedAccess::WriteRouted(uint32_t pa, uint32_t value) {
     DeliverDueClockEvents();
+    if (idle_skip_->Recording()) idle_skip_->NoteDeviceWrite();
     bus_->Write(pa, value, kWidth);
 }
 

@@ -8,6 +8,7 @@
 #include "../../x86_emit_alu.h"
 #include "../../x86_emit_pointer.h"
 #include "../../x86_emit_shift.h"
+#include "../cerfir_block.h"
 #include "x86_host_abi.h"
 
 namespace cerfengine::cerfir {
@@ -114,6 +115,45 @@ uint8_t* X86SoftTlb::EmitDirect(uint8_t* cursor, uint32_t privilege, TlbAccess a
 
     for (uint32_t i = 0; i < nmiss; ++i) miss_rel[i] = static_cast<size_t>(miss[i] - start);
     *miss_count = nmiss;
+    return cursor;
+}
+
+uint8_t* X86SoftTlb::EmitWatchWords(uint8_t* cursor, uint32_t privilege, const int32_t* word_delta,
+                                    uint32_t count) const {
+    using namespace x86;
+    if (!model_.watch_writes || count == 0u) return cursor;
+    const EntryDisps e = DispsFor(model_, privilege);
+    EmitPushReg(cursor, kEax);
+    EmitPushReg(cursor, kEcx);
+    EmitMovRegReg      (cursor, kEax, kEcx);
+    EmitAndRegImm32    (cursor, kEax, OffsetMask(model_));
+    EmitOrRegBaseDisp32(cursor, kEax, kEdx, e.pa);
+
+    EmitCmpRegBaseDisp32(cursor, kEax, kMmuReg, model_.watch_base_aux);
+    uint8_t* below = EmitJbLabel32(cursor);
+    EmitCmpRegBaseDisp32(cursor, kEax, kMmuReg, model_.watch_top_aux);
+    uint8_t* above = EmitJaeLabel32(cursor);
+
+    EmitSubRegBaseDisp32   (cursor, kEax, kMmuReg, model_.watch_base_aux);
+    EmitShrReg32Imm        (cursor, kEax, 2);
+    EmitMovPtrRegBaseDisp32(cursor, kEcx, kMmuReg, model_.watch_words_aux);
+    uint8_t* hits[kMaxWords];
+    for (uint32_t k = 0; k < count; ++k) {
+        EmitMovRegReg  (cursor, kEdx, kEax);
+        EmitAddRegImm32(cursor, kEdx, static_cast<uint32_t>(word_delta[k]));
+        EmitBtMemReg   (cursor, kEcx, kEdx);
+        hits[k] = EmitJbLabel32(cursor);
+    }
+    uint8_t* done = EmitJmpLabel32(cursor);
+    for (uint32_t k = 0; k < count; ++k) FixupLabel32(hits[k], cursor);
+    EmitShrReg32Imm        (cursor, kEax, 10);
+    EmitMovPtrRegBaseDisp32(cursor, kEcx, kMmuReg, model_.watch_dirty_aux);
+    EmitBtsMemReg          (cursor, kEcx, kEax);
+    FixupLabel32(done, cursor);
+    FixupLabel32(below, cursor);
+    FixupLabel32(above, cursor);
+    EmitPopReg(cursor, kEcx);
+    EmitPopReg(cursor, kEax);
     return cursor;
 }
 

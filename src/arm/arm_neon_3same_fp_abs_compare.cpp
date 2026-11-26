@@ -17,12 +17,11 @@ void ArmNeon3SameFpAbsCompare::Handle3SameFpAbsCompare(uint32_t op_sel,
                                                       uint32_t n_idx,
                                                       uint32_t m_idx,
                                                       uint32_t regs) {
-    auto* state = engine_.Get<ArmCpu>().State();
     for (uint32_t r = 0; r < regs; ++r) {
         const uint8_t* n_src =
-            reinterpret_cast<const uint8_t*>(&state->vfp_d[n_idx + r]);
+            reinterpret_cast<const uint8_t*>(&state_->vfp_d[n_idx + r]);
         const uint8_t* m_src =
-            reinterpret_cast<const uint8_t*>(&state->vfp_d[m_idx + r]);
+            reinterpret_cast<const uint8_t*>(&state_->vfp_d[m_idx + r]);
         uint8_t res[8];
         for (uint32_t e = 0; e < 2u; ++e) {
             float fn, fm;
@@ -36,7 +35,7 @@ void ArmNeon3SameFpAbsCompare::Handle3SameFpAbsCompare(uint32_t op_sel,
             const uint32_t mask = passed ? 0xFFFFFFFFu : 0u;
             std::memcpy(res + e * 4u, &mask, 4);
         }
-        std::memcpy(&state->vfp_d[d_idx + r], res, 8);
+        std::memcpy(&state_->vfp_d[d_idx + r], res, 8);
     }
 }
 

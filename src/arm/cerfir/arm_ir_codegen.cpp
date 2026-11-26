@@ -42,6 +42,7 @@ void ArmIrCodegen::OnReady() {
     try {
         tlb_.Build(model_, region);
         target_.entry_stub = cerfir::HostLowering::BuildEntryStub(model_.pinned, stub_region);
+        BuildProbeRoutines(arena);
     } catch (const EmitFault& fault) {
         engine_.Panic("%s", fault.what());
     }
@@ -49,6 +50,27 @@ void ArmIrCodegen::OnReady() {
     target_.tlb   = &tlb_;
     block_.SetFlagSlots(ArmNfDisp(), ArmZfDisp(), ArmCfDisp(), ArmVfDisp());
     block_.SetPcSlot(ArmGprDisp(ArmGpr::kR15));
+}
+
+void ArmIrCodegen::BuildProbeRoutines(JitCodeArena& arena) {
+    static_assert(kBlockPrivileged < kProbePrivileges && kBlockUser < kProbePrivileges);
+    if constexpr (cerfir::HostLowering::kProbeRoutineBytes == 0u) return;
+    ArmTranslationCache& cache = engine_.Get<ArmTranslationCache>();
+    for (uint32_t t = 0; t < 2u; ++t) {
+        for (uint32_t p = 0; p < kProbePrivileges; ++p) {
+            uint8_t* const region = arena.AllocatePermanent(cerfir::HostLowering::kProbeRoutineBytes);
+            if (region == nullptr) {
+                engine_.Panic("ArmIrCodegen: the code arena has no room for the probe routines");
+            }
+            cerfir::BlockLink link;
+            link.mode_set              = t != 0u;
+            link.jump_cache            = cache.Space(t != 0u).jump_cache;
+            link.other_mode_jump_cache = cache.Space(t == 0u).jump_cache;
+            link.jump_cache_key_disp   = JumpCacheKeyDisp(p);
+            probe_routines_[t][p]      = cerfir::HostLowering::BuildProbeRoutine(
+                model_.exits, link, ArmGprDisp(ArmGpr::kR15), region);
+        }
+    }
 }
 
 void ArmIrCodegen::BuildGuestModel() {
@@ -267,7 +289,7 @@ void ArmIrCodegen::EmitBlockEnd(const ArmIrBlockInput& in, ArmIrContext& c) {
         b.SetSlotConst(static_cast<uint32_t>(ArmGprDisp(ArmGpr::kR15)), next);
         b.ExitDispatcher();
     } else {
-        b.ExitDirect(next, 1u, true);
+        b.ExitDirect(next, 1u, true, true);
     }
 }
 

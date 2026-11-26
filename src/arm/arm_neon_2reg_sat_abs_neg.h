@@ -1,5 +1,7 @@
 #pragma once
 
+#include "arm_cpu_state_service.h"
+
 #include <cerfengine/calling_convention.h>
 #include <cstdint>
 
@@ -8,9 +10,9 @@
 namespace cerfengine {
 
 /* VQABS / VQNEG (A8.8.369 / A8.8.375). */
-class ArmNeon2RegSatAbsNeg : public cerfengine::EngineService {
+class ArmNeon2RegSatAbsNeg : public ArmCpuStateService {
 public:
-    using cerfengine::EngineService::EngineService;
+    using ArmCpuStateService::ArmCpuStateService;
 
     static constexpr uint32_t kQabs = 0u;
     static constexpr uint32_t kQneg = 1u;

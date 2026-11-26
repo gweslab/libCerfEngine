@@ -1,5 +1,7 @@
 #pragma once
 
+#include "arm_cpu_state_service.h"
+
 #include <cerfengine/calling_convention.h>
 #include <cstdint>
 
@@ -9,9 +11,9 @@ namespace cerfengine {
 
 /* VRECPS / VRSQRTS - A8.8.385 / A8.8.392, opc=1111 C=1 U=0. bit[21]
    selects: 0=VRECPS (2 - op1*op2), 1=VRSQRTS ((3 - op1*op2) / 2). */
-class ArmNeon3SameFpRecipStep : public cerfengine::EngineService {
+class ArmNeon3SameFpRecipStep : public ArmCpuStateService {
 public:
-    using cerfengine::EngineService::EngineService;
+    using ArmCpuStateService::ArmCpuStateService;
 
     static constexpr uint32_t kRecps  = 0u;
     static constexpr uint32_t kRsqrts = 1u;

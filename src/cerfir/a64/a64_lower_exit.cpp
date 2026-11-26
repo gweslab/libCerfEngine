@@ -92,25 +92,34 @@ void EmitChain(A64Lowering& l, uint32_t target, uint32_t slot) {
     a64::FixupLabel(to_dispatcher[1], c);
 }
 
+constexpr uint32_t kProbeMissSites = 7u;
+
+void EmitCacheLookup(uint8_t*& c, const void* jump_cache, int32_t key_disp,
+                     uint8_t* (&miss)[kProbeMissSites], uint32_t& n) {
+    a64::EmitUbfx(c, kA64Tmp1, kA64Tmp0, 2u, kJumpCacheIndexBits);
+    a64::EmitMovPtr(c, kA64Tmp2, jump_cache);
+    a64::EmitAddReg(c, kA64Tmp2, kA64Tmp2, kA64Tmp1, a64::kLsl, kJumpCacheEntryShift, true);
+    a64::EmitLdrW(c, a64::kIp0, kA64Tmp2, key_disp);
+    a64::EmitCmpReg(c, a64::kIp0, kA64Tmp0);
+    miss[n++] = a64::EmitBCondLabel(c, a64::kNe);
+    a64::EmitLdrX(c, a64::kIp0, kA64Tmp2, static_cast<int32_t>(offsetof(JumpCacheEntry, native)));
+    miss[n++] = a64::EmitCbzLabel(c, a64::kIp0, false, true);
+    a64::EmitBr(c, a64::kIp0);
+}
+
 void EmitProbe(A64Lowering& l) {
     const ExitModel& e       = l.Target().model->exits;
     const BlockLink& link    = *l.Target().link;
     const int32_t    pc_slot = l.GetBlock().PcSlot();
     A64PinnedSlots&  p       = l.Pins();
     uint8_t*&        c       = l.Cursor();
-    uint8_t*         miss[5];
+    uint8_t*         miss[kProbeMissSites];
     uint32_t         n = 0;
 
     uint8_t* to_dispatcher[2];
     EmitPoll(p, c, e, to_dispatcher);
     miss[n++] = to_dispatcher[0];
     miss[n++] = to_dispatcher[1];
-
-    if (e.mode_mask != 0u) {
-        p.Load(c, kA64Tmp0, e.mode_slot);
-        EmitTestImm(c, kA64Tmp0, e.mode_mask);
-        miss[n++] = a64::EmitBCondLabel(c, link.mode_set ? a64::kEq : a64::kNe);
-    }
 
     p.Load(c, kA64Tmp0, pc_slot);
     if (e.fold_mask != 0u) {
@@ -121,15 +130,23 @@ void EmitProbe(A64Lowering& l) {
         a64::FixupLabel(no_fold, c);
     }
 
-    a64::EmitUbfx(c, kA64Tmp1, kA64Tmp0, 2u, kJumpCacheIndexBits);
-    a64::EmitMovPtr(c, kA64Tmp2, link.jump_cache);
-    a64::EmitAddReg(c, kA64Tmp2, kA64Tmp2, kA64Tmp1, a64::kLsl, kJumpCacheEntryShift, true);
-    a64::EmitLdrW(c, a64::kIp0, kA64Tmp2, link.jump_cache_key_disp);
-    a64::EmitCmpReg(c, a64::kIp0, kA64Tmp0);
-    miss[n++] = a64::EmitBCondLabel(c, a64::kNe);
-    a64::EmitLdrX(c, a64::kIp0, kA64Tmp2, static_cast<int32_t>(offsetof(JumpCacheEntry, native)));
-    miss[n++] = a64::EmitCbzLabel(c, a64::kIp0, false, true);
-    a64::EmitBr(c, a64::kIp0);
+    uint8_t* other_mode = nullptr;
+    if (e.mode_mask != 0u) {
+        p.Load(c, kA64Tmp1, e.mode_slot);
+        EmitTestImm(c, kA64Tmp1, e.mode_mask);
+        uint8_t* const mismatch = a64::EmitBCondLabel(c, link.mode_set ? a64::kEq : a64::kNe);
+        if (link.other_mode_jump_cache != nullptr) {
+            other_mode = mismatch;
+        } else {
+            miss[n++] = mismatch;
+        }
+    }
+
+    EmitCacheLookup(c, link.jump_cache, link.jump_cache_key_disp, miss, n);
+    if (other_mode != nullptr) {
+        a64::FixupLabel(other_mode, c);
+        EmitCacheLookup(c, link.other_mode_jump_cache, link.jump_cache_key_disp, miss, n);
+    }
 
     for (uint32_t i = 0; i < n; ++i) a64::FixupLabel(miss[i], c);
 }

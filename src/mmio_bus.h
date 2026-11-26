@@ -43,6 +43,10 @@ public:
         host::MmioWriteSlow(host_.context, pa, value, width, memo_);
     }
 
+    uint64_t ReadStableUntil(uint32_t pa, MmioWidth width) {
+        return host::MmioReadStableUntil(host_.context, pa, width);
+    }
+
 private:
     void Forget(uint32_t generation) {
         memo_.base       = 1u;

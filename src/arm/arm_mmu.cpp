@@ -230,21 +230,21 @@ bool ArmMmu::AccessPaged(uint32_t va, uint8_t* host_buf, uint32_t n, bool is_loa
                          bool force_user, uint32_t* completed) {
     for (uint32_t done = 0; done < n; ) {
         const uint32_t va_cur = va + done;
+        /* ARM DDI 0406C.c Table D15-10 (p. D15-2609): a Tiny page maps 1 KB. */
+        const uint32_t page_left = 0x400u - (va_cur & 0x3FFu);
+        const uint32_t chunk     = (n - done < page_left) ? (n - done) : page_left;
         uint8_t* host;
         if (force_user) {
             host = is_load ? translator_->TranslateUserRead (va_cur)
-                           : translator_->TranslateUserWrite(va_cur);
+                           : translator_->TranslateUserWriteSpan(va_cur, chunk);
         } else {
             host = is_load ? translator_->TranslateRead (va_cur)
-                           : translator_->TranslateWrite(va_cur);
+                           : translator_->TranslateWriteSpan(va_cur, chunk);
         }
         if (host == nullptr) {
             if (completed != nullptr) *completed = done;
             return false;
         }
-        /* ARM DDI 0406C.c Table D15-10 (p. D15-2609): a Tiny page maps 1 KB. */
-        const uint32_t page_left = 0x400u - (va_cur & 0x3FFu);
-        const uint32_t chunk = (n - done < page_left) ? (n - done) : page_left;
         if (is_load) std::memcpy(host_buf + done, host, chunk);
         else         std::memcpy(host, host_buf + done, chunk);
         done += chunk;

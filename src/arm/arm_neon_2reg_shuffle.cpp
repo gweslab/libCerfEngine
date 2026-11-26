@@ -68,23 +68,22 @@ inline void DoZip(uint8_t* dp, uint8_t* mp, uint32_t ebytes,
 
 void ArmNeon2RegShuffle::HandleShuffle(uint32_t op_sel, uint32_t esize, uint32_t Q,
                                        uint32_t d_idx, uint32_t m_idx) {
-    auto* state = engine_.Get<ArmCpu>().State();
     const uint32_t ebytes = esize / 8u;
 
     if (op_sel == kTrn) {
         const uint32_t regs = Q ? 2u : 1u;
         const uint32_t elements_per_dreg = 8u / ebytes;
         for (uint32_t r = 0; r < regs; ++r) {
-            uint8_t* dp = reinterpret_cast<uint8_t*>(&state->vfp_d[d_idx + r]);
-            uint8_t* mp = reinterpret_cast<uint8_t*>(&state->vfp_d[m_idx + r]);
+            uint8_t* dp = reinterpret_cast<uint8_t*>(&state_->vfp_d[d_idx + r]);
+            uint8_t* mp = reinterpret_cast<uint8_t*>(&state_->vfp_d[m_idx + r]);
             DoTrn(dp, mp, ebytes, elements_per_dreg);
         }
         return;
     }
 
     const uint32_t total_bytes = Q ? 32u : 16u;
-    uint8_t* dp = reinterpret_cast<uint8_t*>(&state->vfp_d[d_idx]);
-    uint8_t* mp = reinterpret_cast<uint8_t*>(&state->vfp_d[m_idx]);
+    uint8_t* dp = reinterpret_cast<uint8_t*>(&state_->vfp_d[d_idx]);
+    uint8_t* mp = reinterpret_cast<uint8_t*>(&state_->vfp_d[m_idx]);
     if (op_sel == kUzp) {
         DoUzp(dp, mp, ebytes, total_bytes);
     } else {

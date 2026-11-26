@@ -21,6 +21,11 @@ public:
         return (sizeof(JitBlock) + 15u) & ~static_cast<size_t>(15u);
     }
 
+    static const JitBlock& RecordOf(const void* native_start) {
+        return *reinterpret_cast<const JitBlock*>(static_cast<const uint8_t*>(native_start) -
+                                                  OuterEntrySize());
+    }
+
     JitBlock* PlaceOuterAt(uint8_t* slab, uint32_t guest_start, uint32_t guest_end,
                            uint32_t phys_start, uint32_t phys_split, uint8_t* native_start);
 

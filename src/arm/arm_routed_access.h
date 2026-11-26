@@ -11,6 +11,7 @@
 
 namespace cerfengine {
 
+class ArmIdleSkip;
 class ArmTranslator;
 class MmioBus;
 struct ArmCpuState;
@@ -80,6 +81,7 @@ private:
     MmioBus*       bus_        = nullptr;
     ArmCpuState*   cpu_state_  = nullptr;
     ClockHost*     clock_      = nullptr;
+    ArmIdleSkip*   idle_skip_  = nullptr;
 };
 
 }

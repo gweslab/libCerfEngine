@@ -7,9 +7,11 @@
 #include "../guarded_block_entry.h"
 #include "../host_platform.h"
 #include <cerfengine/host_request_channel.h>
+#include <cerfengine/jit_block_index.h>
 #include "../cerfir/cerfir_host_lowering.h"
 #include "../jit_code_arena.h"
 #include "arm_block_compiler.h"
+#include "arm_idle_skip.h"
 #include "cerfir/arm_ir_codegen.h"
 #include <cerfengine/arm/arm_cpu.h>
 #include <cerfengine/arm/arm_interrupt_channel.h>
@@ -90,6 +92,7 @@ void ArmJit::OnReady() {
     host_       = &engine_.Host();
     entry_stub_ = engine_.Get<ArmIrCodegen>().EntryStub();
     block_entry_ = &engine_.Get<GuardedBlockEntry>();
+    idle_skip_   = &engine_.Get<ArmIdleSkip>();
     engine_.AttachClock(clock_);
 }
 
@@ -102,10 +105,12 @@ GuestEngine::RunStatus ArmJit::Run() {
         host_->OnResetDelivered();
         cpu_->RaiseResetException();
         cache_->Flush();
+        idle_skip_->Reset();
         return RunStatus::kRunning;
     }
 
-    host_requests_->ServicePending();
+    if (host_requests_->ServicePending()) idle_skip_->Restart();
+    if (ArmCycleDeadlineReached(*cpu_state_)) idle_skip_->Restart();
     host::ClockDispatch(clock_);
 
     /* QEMU cpu_handle_interrupt (cpu-exec.c): "Clear the interrupt
@@ -119,13 +124,14 @@ GuestEngine::RunStatus ArmJit::Run() {
             else                                 channel_->ResumeIdle();
             return RunStatus::kRunning;
         }
-        if ((exits & kChainExitIrq) != 0u) {
-            word.fetch_and(~kChainExitIrq, std::memory_order_acq_rel);
+        if ((exits & (kChainExitIrq | kChainExitPrivilege)) != 0u) {
+            word.fetch_and(~(kChainExitIrq | kChainExitPrivilege), std::memory_order_acq_rel);
         }
     }
     const ArmInterruptChannel::IrqGate gate = channel_->EvaluateGate();
     cpu_state_->irq_interrupt_pending = gate.level;
     if (gate.raise) {
+        idle_skip_->Restart();
         cpu_->RaiseIrqException(cpu_state_->gprs[ArmGpr::kR15]);
     }
 
@@ -148,6 +154,9 @@ GuestEngine::RunStatus ArmJit::Run() {
         }
     }
     predecessor_va_ = folded;
+    if (idle_skip_->Watching(cpu_state_->guest_cycle_counter)) {
+        idle_skip_->BeforeBlock(JitBlockIndex::RecordOf(native));
+    }
 
 #if CERFENGINE_BACKEND_X86_WIN32
     __try {

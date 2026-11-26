@@ -194,9 +194,15 @@ inline void ArmNoteCodeTracking(ArmMmuState& st, uint32_t pa) {
     const uint32_t off = pa - st.code_word_base;
     if constexpr (kAccess == ArmMmuAccess::kExecute) {
         const uint32_t w0 = off >> 2;
-        const uint32_t w1 = (off + 3u) >> 2;
         st.code_xlat_bitmap[w0 >> 3] |= static_cast<uint8_t>(1u << (w0 & 7u));
-        st.code_xlat_bitmap[w1 >> 3] |= static_cast<uint8_t>(1u << (w1 & 7u));
+        if (w0 != 0u) {
+            const uint32_t before = w0 - 1u;
+            st.code_xlat_bitmap[before >> 3] |= static_cast<uint8_t>(1u << (before & 7u));
+        }
+        if (off + 3u < st.code_word_top - st.code_word_base) {
+            const uint32_t w1 = (off + 3u) >> 2;
+            st.code_xlat_bitmap[w1 >> 3] |= static_cast<uint8_t>(1u << (w1 & 7u));
+        }
     } else if constexpr (kAccess == ArmMmuAccess::kWrite ||
                          kAccess == ArmMmuAccess::kReadWrite) {
         const uint32_t w = off >> 2;
@@ -205,6 +211,14 @@ inline void ArmNoteCodeTracking(ArmMmuState& st, uint32_t pa) {
             st.code_page_dirty[page >> 3] |=
                 static_cast<uint8_t>(1u << (page & 7u));
         }
+    }
+}
+
+inline void ArmNoteCodeWriteSpan(ArmMmuState& st, uint32_t pa, uint32_t bytes) {
+    const uint32_t first = pa & ~3u;
+    const uint32_t words = ((pa & 3u) + bytes + 3u) >> 2;
+    for (uint32_t i = 0; i < words; ++i) {
+        ArmNoteCodeTracking<ArmMmuAccess::kWrite>(st, first + 4u * i);
     }
 }
 

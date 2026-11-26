@@ -1,5 +1,7 @@
 #pragma once
 
+#include "arm_cpu_state_service.h"
+
 #include <cerfengine/calling_convention.h>
 #include <cstdint>
 
@@ -7,11 +9,15 @@
 
 namespace cerfengine {
 
+class ArmInterruptChannel;
 class ArmMmu;
+class ArmRoutedAccess;
 
-class ArmNeon : public cerfengine::EngineService {
+class ArmNeon : public ArmCpuStateService {
 public:
-    using cerfengine::EngineService::EngineService;
+    using ArmCpuStateService::ArmCpuStateService;
+
+    void OnReady() override;
 
     uint32_t HandleVdup(uint32_t pc, uint32_t d_idx, uint32_t rt_idx,
                         uint32_t esize, uint32_t regs);
@@ -82,6 +88,10 @@ private:
        is Element size and faults only under SCTLR.A 1. */
     bool AlignmentFaults(ArmMmu& mmu, uint32_t base, uint32_t alignment,
                          uint32_t ebytes, bool is_load);
+
+    ArmMmu*              mmu_     = nullptr;
+    ArmInterruptChannel* channel_ = nullptr;
+    ArmRoutedAccess*     routed_  = nullptr;
 };
 
 }

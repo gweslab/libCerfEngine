@@ -1,5 +1,7 @@
 #pragma once
 
+#include "arm_cpu_state_service.h"
+
 #include <cerfengine/calling_convention.h>
 #include <cstdint>
 
@@ -9,9 +11,9 @@ namespace cerfengine {
 
 /* VMOVN / VQMOVUN / VQMOVN.S / VQMOVN.U (A8.8.347 / A8.8.374): op field
    at bits[7:6]. */
-class ArmNeon2RegNarrow : public cerfengine::EngineService {
+class ArmNeon2RegNarrow : public ArmCpuStateService {
 public:
-    using cerfengine::EngineService::EngineService;
+    using ArmCpuStateService::ArmCpuStateService;
 
     static constexpr uint32_t kMovn   = 0u;
     static constexpr uint32_t kQmovun = 1u;

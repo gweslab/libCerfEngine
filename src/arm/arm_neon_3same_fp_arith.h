@@ -1,5 +1,7 @@
 #pragma once
 
+#include "arm_cpu_state_service.h"
+
 #include <cerfengine/calling_convention.h>
 #include <cstdint>
 
@@ -9,9 +11,9 @@ namespace cerfengine {
 
 /* VADD.F32 / VSUB.F32 / VMUL.F32 / VABD.F32 - A7.4.1 opc=1101 family
    (A8.8.283 / A8.8.415 / A8.8.351 / A8.8.279). */
-class ArmNeon3SameFpArith : public cerfengine::EngineService {
+class ArmNeon3SameFpArith : public ArmCpuStateService {
 public:
-    using cerfengine::EngineService::EngineService;
+    using ArmCpuStateService::ArmCpuStateService;
 
     static constexpr uint32_t kAdd = 0u;
     static constexpr uint32_t kSub = 1u;

@@ -12,9 +12,8 @@ CERFENGINE_REGISTER(ArmNeonOneRegImm);
 
 void ArmNeonOneRegImm::HandleOneRegImm(uint32_t op_type, uint32_t d_idx,
                                        uint64_t imm64, uint32_t regs) {
-    auto* state = engine_.Get<ArmCpu>().State();
     for (uint32_t r = 0; r < regs; ++r) {
-        uint64_t& d = state->vfp_d[d_idx + r];
+        uint64_t& d = state_->vfp_d[d_idx + r];
         switch (op_type) {
             case kOpVmov: d = imm64;       break;
             case kOpVmvn: d = ~imm64;      break;

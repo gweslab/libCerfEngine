@@ -14,14 +14,13 @@ CERFENGINE_REGISTER(ArmNeonShiftImm);
 void ArmNeonShiftImm::HandleShiftImm(uint32_t op, uint32_t d_idx, uint32_t m_idx,
                                      uint32_t esize, uint32_t shift_amount,
                                      uint32_t regs) {
-    auto* state = engine_.Get<ArmCpu>().State();
     const uint32_t ebytes   = esize / 8u;
     const uint32_t elements = 8u / ebytes;
     const uint32_t sh       = 64u - esize;
 
     for (uint32_t r = 0; r < regs; ++r) {
-        const uint8_t* dm = reinterpret_cast<const uint8_t*>(&state->vfp_d[m_idx + r]);
-        const uint8_t* dd = reinterpret_cast<const uint8_t*>(&state->vfp_d[d_idx + r]);
+        const uint8_t* dm = reinterpret_cast<const uint8_t*>(&state_->vfp_d[m_idx + r]);
+        const uint8_t* dd = reinterpret_cast<const uint8_t*>(&state_->vfp_d[d_idx + r]);
         uint8_t res[8];
         for (uint32_t e = 0; e < elements; ++e) {
             uint64_t a = 0;
@@ -128,7 +127,7 @@ void ArmNeonShiftImm::HandleShiftImm(uint32_t op, uint32_t d_idx, uint32_t m_idx
             }
             std::memcpy(res + e * ebytes, &s, ebytes);
         }
-        std::memcpy(&state->vfp_d[d_idx + r], res, 8);
+        std::memcpy(&state_->vfp_d[d_idx + r], res, 8);
     }
 }
 
@@ -142,14 +141,13 @@ void CERFENGINE_CDECL ArmNeonShiftImm::HandleShiftImmHelper(ArmNeonShiftImm* svc
 void ArmNeonShiftImm::HandleShiftImmNarrow(uint32_t op, uint32_t d_idx,
                                            uint32_t m_idx, uint32_t esize,
                                            uint32_t shift_amount) {
-    auto* state = engine_.Get<ArmCpu>().State();
     const uint32_t out_ebytes = esize / 8u;
     const uint32_t in_ebytes  = 2u * out_ebytes;
     const uint32_t elements   = 8u / out_ebytes;
 
     uint8_t src[16];
-    std::memcpy(src,     &state->vfp_d[m_idx],     8);
-    std::memcpy(src + 8, &state->vfp_d[m_idx + 1], 8);
+    std::memcpy(src,     &state_->vfp_d[m_idx],     8);
+    std::memcpy(src + 8, &state_->vfp_d[m_idx + 1], 8);
 
     uint8_t res[8];
     for (uint32_t e = 0; e < elements; ++e) {
@@ -172,7 +170,7 @@ void ArmNeonShiftImm::HandleShiftImmNarrow(uint32_t op, uint32_t d_idx,
         }
         std::memcpy(res + e * out_ebytes, &s, out_ebytes);
     }
-    std::memcpy(&state->vfp_d[d_idx], res, 8);
+    std::memcpy(&state_->vfp_d[d_idx], res, 8);
 }
 
 void CERFENGINE_CDECL ArmNeonShiftImm::HandleShiftImmNarrowHelper(ArmNeonShiftImm* svc, uint32_t op,
@@ -184,13 +182,12 @@ void CERFENGINE_CDECL ArmNeonShiftImm::HandleShiftImmNarrowHelper(ArmNeonShiftIm
 void ArmNeonShiftImm::HandleShiftImmWiden(uint32_t op, uint32_t d_idx,
                                           uint32_t m_idx, uint32_t esize,
                                           uint32_t shift_amount) {
-    auto* state = engine_.Get<ArmCpu>().State();
     const uint32_t in_ebytes  = esize / 8u;
     const uint32_t out_ebytes = 2u * in_ebytes;
     const uint32_t elements   = 8u / in_ebytes;
     const uint32_t sh         = 64u - esize;
 
-    const uint8_t* dm = reinterpret_cast<const uint8_t*>(&state->vfp_d[m_idx]);
+    const uint8_t* dm = reinterpret_cast<const uint8_t*>(&state_->vfp_d[m_idx]);
 
     uint8_t res[16];
     for (uint32_t e = 0; e < elements; ++e) {
@@ -212,8 +209,8 @@ void ArmNeonShiftImm::HandleShiftImmWiden(uint32_t op, uint32_t d_idx,
         }
         std::memcpy(res + e * out_ebytes, &s, out_ebytes);
     }
-    std::memcpy(&state->vfp_d[d_idx],     res,     8);
-    std::memcpy(&state->vfp_d[d_idx + 1], res + 8, 8);
+    std::memcpy(&state_->vfp_d[d_idx],     res,     8);
+    std::memcpy(&state_->vfp_d[d_idx + 1], res + 8, 8);
 }
 
 void CERFENGINE_CDECL ArmNeonShiftImm::HandleShiftImmWidenHelper(ArmNeonShiftImm* svc, uint32_t op,

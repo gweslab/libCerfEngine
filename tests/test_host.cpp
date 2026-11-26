@@ -40,6 +40,10 @@ void CERFENGINE_FASTCALL MmioWriteDword(void* context, uint32_t pa, uint64_t val
     TestHost::MmioWriteDword(context, pa, value);
 }
 
+uint64_t CERFENGINE_FASTCALL MmioReadStableUntil(void*, uint32_t, MmioWidth) {
+    return 0;
+}
+
 void CERFENGINE_FASTCALL ClockDispatch(ClockHost* clock) {
     static_cast<TestHost*>(clock)->DispatchClock();
 }

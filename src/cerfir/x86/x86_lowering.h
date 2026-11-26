@@ -44,12 +44,13 @@ struct X86ArenaFull {};
 
 struct X86ProbeStamp {
     const ExitModel* model      = nullptr;
-    const void*      jump_cache = nullptr;
-    int32_t          key_disp   = 0;
-    int32_t          pc_slot    = 0;
-    bool             mode_set   = false;
-    uint32_t         length     = 0;
-    uint8_t          bytes[192] = {};
+    const void*      jump_cache            = nullptr;
+    const void*      other_mode_jump_cache = nullptr;
+    int32_t          key_disp              = 0;
+    int32_t          pc_slot               = 0;
+    bool             mode_set              = false;
+    uint32_t         length                = 0;
+    uint8_t          bytes[256]            = {};
 };
 
 class X86Lowering {
@@ -57,12 +58,15 @@ public:
     static constexpr ptrdiff_t kOpReserveBytes = 4096;
     static constexpr uint32_t  kCycleAddLimit  = 0x80u;
     static constexpr size_t    kEntryStubBytes = 0;
+    static constexpr size_t    kProbeRoutineBytes = 320;
 
     static CERFENGINE_FORCEINLINE void PatchCycleAdd(uint8_t* site, uint32_t total) {
         *site = static_cast<uint8_t>(total);
     }
 
     static const void* BuildEntryStub(const PinnedSlots&, uint8_t*) { return nullptr; }
+    static const void* BuildProbeRoutine(const ExitModel& e, const BlockLink& link, int32_t pc_slot,
+                                         uint8_t* region);
     static uint8_t     PinnedHostRegister(uint32_t) { return 0xFFu; }
 
     X86Lowering() : regs_(cursor_, spill_area_) {}

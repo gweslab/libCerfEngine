@@ -14,12 +14,19 @@ namespace cerfengine {
 
 CERFENGINE_REGISTER(ArmNeon);
 
+void ArmNeon::OnReady() {
+    ArmCpuStateService::OnReady();
+    mmu_     = &engine_.Get<ArmMmu>();
+    channel_ = &engine_.Get<ArmInterruptChannel>();
+    routed_  = &engine_.Get<ArmRoutedAccess>();
+}
+
 /* DDI 0406C.c A8.8.322/326/329/332: VLD1/2/3/4 to all lanes. */
 uint32_t CERFENGINE_CDECL ArmNeon::LoadAllLanesHelper(ArmNeon* neon, uint32_t pc,
                                             uint32_t w) {
-    auto& cpu = neon->engine_.Get<ArmCpu>();
-    auto& mmu = neon->engine_.Get<ArmMmu>();
-    auto* state = cpu.State();
+    ArmCpu&      cpu   = *neon->cpu_;
+    ArmMmu&      mmu   = *neon->mmu_;
+    ArmCpuState* state = neon->state_;
     const uint32_t size = (w >> 6) & 3u;
     const uint32_t aligned = (w >> 4) & 1u;
     const uint32_t count = ((w >> 8) & 3u) + 1u;
@@ -51,11 +58,11 @@ uint32_t CERFENGINE_CDECL ArmNeon::LoadAllLanesHelper(ArmNeon* neon, uint32_t pc
         if (!mmu.AccessPaged(base + offset, data + offset, bytes,
                              true, false, &done)) {
             if (mmu.io_pending() && offset == 0u && done == 0u &&
-                neon->engine_.Get<ArmInterruptChannel>().BackOutForIrq(pc)) {
+                neon->channel_->BackOutForIrq(pc)) {
                 mmu.ClearIoPending();
                 return 1;
             }
-            if (!mmu.io_pending() || !neon->engine_.Get<ArmRoutedAccess>().WideAccess(
+            if (!mmu.io_pending() || !neon->routed_->WideAccess(
                     pc, base + offset + done, bytes - done,
                     data + offset + done, true)) {
                 cpu.RaiseAbortDataException(pc);
@@ -70,7 +77,7 @@ uint32_t CERFENGINE_CDECL ArmNeon::LoadAllLanesHelper(ArmNeon* neon, uint32_t pc
             std::memcpy(dst + lane, data + (count == 1u ? 0u : r * bytes), bytes);
     }
     if (rm != 15u) state->gprs[rn] = base + (rm == 13u ? length : state->gprs[rm]);
-    return (routed && neon->engine_.Get<ArmInterruptChannel>().LeaveAfterAccess(pc + 4u)) ? 1u : 0u;
+    return (routed && neon->channel_->LeaveAfterAccess(pc + 4u)) ? 1u : 0u;
 }
 
 bool ArmNeon::AlignmentFaults(ArmMmu& mmu, uint32_t base, uint32_t alignment,
@@ -88,8 +95,8 @@ bool ArmNeon::AlignmentFaults(ArmMmu& mmu, uint32_t base, uint32_t alignment,
 
 uint32_t ArmNeon::HandleVdup(uint32_t pc, uint32_t d_idx, uint32_t rt_idx,
                              uint32_t esize, uint32_t regs) {
-    auto& cpu = engine_.Get<ArmCpu>();
-    auto* state = cpu.State();
+    ArmCpu&      cpu   = *cpu_;
+    ArmCpuState* state = state_;
 
     /* UNDEFINED/UNPREDICTABLE encodings (DDI0406C A8.8.314). */
     if (esize == 0u || (regs == 2u && (d_idx & 1u)) ||
@@ -120,9 +127,9 @@ uint32_t CERFENGINE_CDECL ArmNeon::HandleVdupHelper(ArmNeon* neon, uint32_t pc,
 
 uint32_t ArmNeon::HandleLoadStoreMultiple(uint32_t pc, uint32_t d_idx, uint32_t rn_idx,
                                           uint32_t rm_idx, uint32_t flags) {
-    auto& cpu = engine_.Get<ArmCpu>();
-    auto& mmu = engine_.Get<ArmMmu>();
-    auto* state = cpu.State();
+    ArmCpu&      cpu   = *cpu_;
+    ArmMmu&      mmu   = *mmu_;
+    ArmCpuState* state = state_;
 
     const bool     is_load    = (flags & kLsLoad) != 0;
     const uint32_t regs       = (flags >> 1) & 0x7u;
@@ -155,7 +162,7 @@ uint32_t ArmNeon::HandleLoadStoreMultiple(uint32_t pc, uint32_t d_idx, uint32_t 
             }
             routed = true;
             if (r == 0u && done == 0u &&
-                engine_.Get<ArmInterruptChannel>().BackOutForIrq(pc)) {
+                channel_->BackOutForIrq(pc)) {
                 mmu.ClearIoPending();
                 return 1;
             }
@@ -164,7 +171,7 @@ uint32_t ArmNeon::HandleLoadStoreMultiple(uint32_t pc, uint32_t d_idx, uint32_t 
                ebytes == 8 the element is MemU[address,4] and MemU[address+4,4]. */
             for (uint32_t g = done / granule; g < 8u / granule; ++g) {
                 const uint32_t off = g * granule;
-                if (!engine_.Get<ArmRoutedAccess>().WideAccess(
+                if (!routed_->WideAccess(
                         pc, addr + off, granule, dst + off, is_load)) {
                     cpu.RaiseAbortDataException(pc);
                     return 1;
@@ -180,7 +187,7 @@ uint32_t ArmNeon::HandleLoadStoreMultiple(uint32_t pc, uint32_t d_idx, uint32_t 
         state->gprs[rn_idx] =
             base + (rm_idx != 13u ? state->gprs[rm_idx] : 8u * regs);
     }
-    return (routed && engine_.Get<ArmInterruptChannel>().LeaveAfterAccess(pc + 4u)) ? 1u : 0u;
+    return (routed && channel_->LeaveAfterAccess(pc + 4u)) ? 1u : 0u;
 }
 
 uint32_t CERFENGINE_CDECL ArmNeon::HandleLoadStoreMultipleHelper(ArmNeon* neon, uint32_t pc,
@@ -191,9 +198,9 @@ uint32_t CERFENGINE_CDECL ArmNeon::HandleLoadStoreMultipleHelper(ArmNeon* neon, 
 
 uint32_t ArmNeon::HandleLoadStoreInterleaved(uint32_t pc, uint32_t d_idx, uint32_t rn_idx,
                                              uint32_t rm_idx, uint32_t flags) {
-    auto& cpu = engine_.Get<ArmCpu>();
-    auto& mmu = engine_.Get<ArmMmu>();
-    auto* state = cpu.State();
+    ArmCpu&      cpu   = *cpu_;
+    ArmMmu&      mmu   = *mmu_;
+    ArmCpuState* state = state_;
 
     const bool     is_load   = (flags & kLsLoad) != 0;
     const uint32_t nstreams  = ((flags >> 1) & 0x3u) + 2u;
@@ -226,12 +233,12 @@ uint32_t ArmNeon::HandleLoadStoreInterleaved(uint32_t pc, uint32_t d_idx, uint32
                                      false, &done)) {
                     if (mmu.io_pending() && r == 0u && e == 0u && k == 0u &&
                         done == 0u &&
-                        engine_.Get<ArmInterruptChannel>().BackOutForIrq(pc)) {
+                        channel_->BackOutForIrq(pc)) {
                         mmu.ClearIoPending();
                         return 1;
                     }
                     if (!mmu.io_pending() ||
-                        !engine_.Get<ArmRoutedAccess>().WideAccess(
+                        !routed_->WideAccess(
                             pc, addr + done, ebytes - done,
                             lane + done, is_load)) {
                         cpu.RaiseAbortDataException(pc);
@@ -248,7 +255,7 @@ uint32_t ArmNeon::HandleLoadStoreInterleaved(uint32_t pc, uint32_t d_idx, uint32
         state->gprs[rn_idx] =
             base + (rm_idx != 13u ? state->gprs[rm_idx] : nstreams * 8u * regs);
     }
-    return (routed && engine_.Get<ArmInterruptChannel>().LeaveAfterAccess(pc + 4u)) ? 1u : 0u;
+    return (routed && channel_->LeaveAfterAccess(pc + 4u)) ? 1u : 0u;
 }
 
 uint32_t CERFENGINE_CDECL ArmNeon::HandleLoadStoreInterleavedHelper(ArmNeon* neon, uint32_t pc,
@@ -259,9 +266,9 @@ uint32_t CERFENGINE_CDECL ArmNeon::HandleLoadStoreInterleavedHelper(ArmNeon* neo
 
 uint32_t ArmNeon::HandleLoadStoreSingleLane(uint32_t pc, uint32_t d_idx, uint32_t rn_idx,
                                             uint32_t rm_idx, uint32_t flags) {
-    auto& cpu = engine_.Get<ArmCpu>();
-    auto& mmu = engine_.Get<ArmMmu>();
-    auto* state = cpu.State();
+    ArmCpu&      cpu   = *cpu_;
+    ArmMmu&      mmu   = *mmu_;
+    ArmCpuState* state = state_;
 
     const bool     is_load   = (flags & kLsLoad) != 0;
     const uint32_t nstreams  = ((flags >> 1) & 0x3u) + 1u;
@@ -289,12 +296,12 @@ uint32_t ArmNeon::HandleLoadStoreSingleLane(uint32_t pc, uint32_t d_idx, uint32_
         uint32_t done = 0;
         if (!mmu.AccessPaged(addr, lane, ebytes, is_load, false, &done)) {
             if (mmu.io_pending() && k == 0u && done == 0u &&
-                engine_.Get<ArmInterruptChannel>().BackOutForIrq(pc)) {
+                channel_->BackOutForIrq(pc)) {
                 mmu.ClearIoPending();
                 return 1;
             }
             if (!mmu.io_pending() ||
-                !engine_.Get<ArmRoutedAccess>().WideAccess(
+                !routed_->WideAccess(
                     pc, addr + done, ebytes - done, lane + done,
                     is_load)) {
                 cpu.RaiseAbortDataException(pc);
@@ -309,7 +316,7 @@ uint32_t ArmNeon::HandleLoadStoreSingleLane(uint32_t pc, uint32_t d_idx, uint32_
         state->gprs[rn_idx] =
             base + (rm_idx != 13u ? state->gprs[rm_idx] : nstreams * ebytes);
     }
-    return (routed && engine_.Get<ArmInterruptChannel>().LeaveAfterAccess(pc + 4u)) ? 1u : 0u;
+    return (routed && channel_->LeaveAfterAccess(pc + 4u)) ? 1u : 0u;
 }
 
 uint32_t CERFENGINE_CDECL ArmNeon::HandleLoadStoreSingleLaneHelper(ArmNeon* neon, uint32_t pc,
@@ -320,7 +327,7 @@ uint32_t CERFENGINE_CDECL ArmNeon::HandleLoadStoreSingleLaneHelper(ArmNeon* neon
 
 void ArmNeon::HandleSimd3SameAcc(uint32_t op, uint32_t d_idx, uint32_t n_idx,
                                  uint32_t m_idx, uint32_t esize, uint32_t regs) {
-    auto* state = engine_.Get<ArmCpu>().State();
+    ArmCpuState* state = state_;
     const uint32_t ebytes   = esize / 8u;
     const uint32_t elements = 8u / ebytes;
     for (uint32_t r = 0; r < regs; ++r) {
@@ -366,7 +373,7 @@ void CERFENGINE_CDECL ArmNeon::HandleSimd3SameAccHelper(ArmNeon* neon, uint32_t 
 
 void ArmNeon::HandleSimd3SamePairwise(uint32_t op, uint32_t d_idx, uint32_t n_idx,
                                       uint32_t m_idx, uint32_t esize) {
-    auto* state = engine_.Get<ArmCpu>().State();
+    ArmCpuState* state = state_;
     const uint32_t ebytes   = esize / 8u;
     const uint32_t elements = 8u / ebytes;
     const uint32_t h        = elements / 2u;

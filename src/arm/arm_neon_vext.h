@@ -1,5 +1,7 @@
 #pragma once
 
+#include "arm_cpu_state_service.h"
+
 #include <cerfengine/calling_convention.h>
 #include <cstdint>
 
@@ -9,9 +11,9 @@ namespace cerfengine {
 
 /* VEXT - A8.8.316, byte-wise concat-and-select from (Dm:Dn) or
    (Qm:Qn). U=0, bit23=1, bits[21:20]=11, bit[4]=0. */
-class ArmNeonVext : public cerfengine::EngineService {
+class ArmNeonVext : public ArmCpuStateService {
 public:
-    using cerfengine::EngineService::EngineService;
+    using ArmCpuStateService::ArmCpuStateService;
 
     void HandleVext(uint32_t d_idx, uint32_t n_idx, uint32_t m_idx,
                     uint32_t imm4_bytes, uint32_t q);

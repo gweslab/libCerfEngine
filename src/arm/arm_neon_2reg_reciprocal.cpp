@@ -121,25 +121,24 @@ uint32_t FPRSqrtEstimate(uint32_t operand_bits, uint32_t* fpscr) {
 void ArmNeon2RegReciprocal::HandleReciprocal(uint32_t op_sel, uint32_t F,
                                              uint32_t d_idx, uint32_t m_idx,
                                              uint32_t regs) {
-    auto* state = engine_.Get<ArmCpu>().State();
     for (uint32_t r = 0; r < regs; ++r) {
         const uint8_t* src =
-            reinterpret_cast<const uint8_t*>(&state->vfp_d[m_idx + r]);
+            reinterpret_cast<const uint8_t*>(&state_->vfp_d[m_idx + r]);
         uint8_t res[8];
         for (uint32_t e = 0; e < 2u; ++e) {
             uint32_t in;
             std::memcpy(&in, src + e * 4u, 4);
             uint32_t out;
             if (op_sel == kRecpe) {
-                out = (F != 0u) ? FPRecipEstimate(in, &state->fpscr)
+                out = (F != 0u) ? FPRecipEstimate(in, &state_->fpscr)
                                 : UnsignedRecipEstimate(in);
             } else {
-                out = (F != 0u) ? FPRSqrtEstimate(in, &state->fpscr)
+                out = (F != 0u) ? FPRSqrtEstimate(in, &state_->fpscr)
                                 : UnsignedRSqrtEstimate(in);
             }
             std::memcpy(res + e * 4u, &out, 4);
         }
-        std::memcpy(&state->vfp_d[d_idx + r], res, 8);
+        std::memcpy(&state_->vfp_d[d_idx + r], res, 8);
     }
 }
 

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "arm_cpu_state_service.h"
+
 #include <cerfengine/calling_convention.h>
 #include <cstdint>
 
@@ -9,9 +11,9 @@ namespace cerfengine {
 
 /* VREV16/VREV32/VREV64 (A8.8.386). Per-element shuffle: dst[i] = src[i XOR
    (groupsize-1)] within each groupsize-wide window of elements. */
-class ArmNeon2RegReverse : public cerfengine::EngineService {
+class ArmNeon2RegReverse : public ArmCpuStateService {
 public:
-    using cerfengine::EngineService::EngineService;
+    using ArmCpuStateService::ArmCpuStateService;
 
     void HandleRev(uint32_t op, uint32_t d_idx, uint32_t m_idx,
                    uint32_t esize, uint32_t groupsize, uint32_t regs);

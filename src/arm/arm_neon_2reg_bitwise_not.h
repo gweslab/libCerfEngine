@@ -1,5 +1,7 @@
 #pragma once
 
+#include "arm_cpu_state_service.h"
+
 #include <cerfengine/calling_convention.h>
 #include <cstdint>
 
@@ -8,9 +10,9 @@
 namespace cerfengine {
 
 /* VMVN (register) - A8.8.354. Whole-D-register bitwise NOT. */
-class ArmNeon2RegBitwiseNot : public cerfengine::EngineService {
+class ArmNeon2RegBitwiseNot : public ArmCpuStateService {
 public:
-    using cerfengine::EngineService::EngineService;
+    using ArmCpuStateService::ArmCpuStateService;
 
     void HandleMvn(uint32_t d_idx, uint32_t m_idx, uint32_t regs);
 

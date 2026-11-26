@@ -1,5 +1,7 @@
 #pragma once
 
+#include "arm_cpu_state_service.h"
+
 #include <cerfengine/calling_convention.h>
 #include <cstdint>
 
@@ -9,9 +11,9 @@ namespace cerfengine {
 
 /* One register and a modified immediate value (A7.4.6):
    VMOV / VMVN / VBIC / VORR (immediate). */
-class ArmNeonOneRegImm : public cerfengine::EngineService {
+class ArmNeonOneRegImm : public ArmCpuStateService {
 public:
-    using cerfengine::EngineService::EngineService;
+    using ArmCpuStateService::ArmCpuStateService;
 
     static constexpr uint32_t kOpVmov = 0u;
     static constexpr uint32_t kOpVmvn = 1u;

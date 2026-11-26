@@ -196,7 +196,7 @@ void ArmBlockCompiler::Decode(uint32_t guest_pc, uint32_t folded_pc, uint8_t* en
         /* ARM DDI 0406C.c B3.15.5 (p. B3-1461): a Context synchronization
            operation is where a system-control-register write becomes
            guaranteed visible. */
-        if (insn.r15_modified || insn.context_sync) {
+        if (insn.r15_modified || insn.context_sync || insn.cpsr_write) {
             ++i;
             break;
         }
@@ -207,6 +207,22 @@ void ArmBlockCompiler::Decode(uint32_t guest_pc, uint32_t folded_pc, uint8_t* en
     block_ctx_.num_insns = i;
     tail_itstate_        = itstate;
     tail_itstate_valid_  = ArmItInBlock(itstate);
+}
+
+bool ArmBlockCompiler::IdleBarrier() const {
+    for (uint32_t i = 0; i < block_ctx_.num_insns; ++i) {
+        switch (block_ctx_.insns[i].kind) {
+        case ArmInsnKind::kCoprocDataOperation:
+        case ArmInsnKind::kCoprocDataTransfer:
+        case ArmInsnKind::kCoprocExtension:
+        case ArmInsnKind::kCoprocRegisterTransfer:
+        case ArmInsnKind::kWfi:
+            return true;
+        default:
+            break;
+        }
+    }
+    return false;
 }
 
 size_t ArmBlockCompiler::GenerateCode(uint8_t* code, uint8_t* code_end) {
@@ -308,12 +324,15 @@ void* ArmBlockCompiler::Compile(uint32_t guest_pc) {
             c.link_.fold_value                  = mmu_state->fcse_fold_id;
             c.link_.mode_set                    = thumb;
             c.link_.jump_cache                  = space->jump_cache;
+            c.link_.other_mode_jump_cache       = c.cache_->Space(!thumb).jump_cache;
+            c.link_.probe_routine               = c.ir_codegen_->ProbeRoutine(thumb, privilege);
             c.link_.jump_cache_key_disp         = c.jump_cache_key_disp_[privilege];
             c.link_.privilege                   = privilege;
             c.link_.translation_off             = mmu_state->effective_control_register.bits.m == 0u;
             c.block_ctx_.thumb                  = thumb;
             c.block_ctx_.alignment_checked      = mmu_state->effective_control_register.bits.a != 0u;
             c.block_ctx_.unaligned_faults       = c.mmu_->UnalignedAccessesFault();
+            stored->idle_barrier                = c.IdleBarrier() ? 1u : 0u;
             return c.GenerateCode(code, code_end);
         }
         void FlushCache() override { self->cache_->Flush(); }

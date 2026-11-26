@@ -4,6 +4,7 @@
 #include <cerfengine/arm/arm_mmu.h>
 #include <cerfengine/arm/arm_system_host.h>
 #include <cerfengine/physical_map.h>
+#include "arm_idle_skip.h"
 #include "arm_tlb_ops.h"
 
 namespace cerfengine {
@@ -17,11 +18,32 @@ void ArmTranslator::OnReady() {
     map_       = &engine_.Get<PhysicalMap>();
     memory_    = engine_.GetSetup().memory;
     walker_    = engine_.GetSetup().arm_translation;
+    idle_skip_ = &engine_.Get<ArmIdleSkip>();
     mmu_->BindTranslator(this);
 }
 
-template <ArmMmuAccess kAccess, bool kForceUser>
-uint8_t* ArmTranslator::MapGuestVirtualToHost(uint32_t p) {
+template <ArmMmuAccess kAccess, bool kSpan>
+void ArmTranslator::NoteCodeAccess(ArmMmuState& st, uint32_t pa,
+                                   [[maybe_unused]] uint32_t span_bytes) {
+    if constexpr (kSpan) {
+        ArmNoteCodeWriteSpan(st, pa, span_bytes);
+    } else {
+        ArmNoteCodeTracking<kAccess>(st, pa);
+    }
+}
+
+template <bool kSpan>
+void ArmTranslator::NoteStore(uint8_t* host, uint32_t va, [[maybe_unused]] uint32_t span_bytes) {
+    if constexpr (kSpan) {
+        idle_skip_->NoteStoreSpan(host, va, span_bytes);
+    } else {
+        idle_skip_->NoteStore(host, va);
+    }
+}
+
+template <ArmMmuAccess kAccess, bool kForceUser, bool kSpan>
+uint8_t* ArmTranslator::MapGuestVirtualToHost(uint32_t p, [[maybe_unused]] uint32_t span_bytes) {
+    static_assert(!kSpan || kAccess == ArmMmuAccess::kWrite);
     ArmMmuState& st = *state_;
     mmu_->ClearIoPending();
 
@@ -30,7 +52,9 @@ uint8_t* ArmTranslator::MapGuestVirtualToHost(uint32_t p) {
     p = ArmFcseFold(p, st.fcse_fold_id);
 
     if (!st.effective_control_register.bits.m) {
-        uint8_t* host = map_->Read(p);
+        constexpr bool kStores = kAccess == ArmMmuAccess::kWrite ||
+                                 kAccess == ArmMmuAccess::kReadWrite;
+        uint8_t* host = kStores ? map_->Write(p) : map_->Read(p);
         if (host) {
             if constexpr (kAccess == ArmMmuAccess::kExecute) {
                 last_exec_pa_      = p;
@@ -65,9 +89,13 @@ uint8_t* ArmTranslator::MapGuestVirtualToHost(uint32_t p) {
                 last_exec_tracked_ = true;
                 last_exec_global_  = fast.global != 0u;
             }
-            ArmNoteCodeTracking<kAccess>(st, pa);
-            return reinterpret_cast<uint8_t*>(
+            NoteCodeAccess<kAccess, kSpan>(st, pa, span_bytes);
+            uint8_t* const host = reinterpret_cast<uint8_t*>(
                 static_cast<uintptr_t>(p) + fast.va_addend);
+            if constexpr (kIsWrite) {
+                if (idle_skip_->Recording()) NoteStore<kSpan>(host, p, span_bytes);
+            }
+            return host;
         }
 
         if constexpr (kAccess != ArmMmuAccess::kExecute) {
@@ -92,6 +120,9 @@ uint8_t* ArmTranslator::MapGuestVirtualToHost(uint32_t p) {
             last_exec_tracked_ = false;
             last_exec_global_  = false;
         }
+        if constexpr (kAccess == ArmMmuAccess::kWrite || kAccess == ArmMmuAccess::kReadWrite) {
+            if (idle_skip_->Recording()) NoteStore<kSpan>(walk.host, p, span_bytes);
+        }
         return walk.host;
     }
 
@@ -107,12 +138,14 @@ uint8_t* ArmTranslator::MapGuestVirtualToHost(uint32_t p) {
     if constexpr (kAccess == ArmMmuAccess::kWrite) {
         uint8_t* host_ptr = map_->Write(effective_address);
         if (host_ptr) {
+            const bool recording = idle_skip_->Recording();
             if (uniform) {
                 FillFastTlb(tlb_unit, p, host_ptr, effective_address,
                             current_asid, walk.global,
-                            true, walk.span_bytes);
+                            !recording, walk.span_bytes);
             }
-            ArmNoteCodeTracking<kAccess>(st, effective_address);
+            NoteCodeAccess<kAccess, kSpan>(st, effective_address, span_bytes);
+            if (recording) NoteStore<kSpan>(host_ptr, p, span_bytes);
             return host_ptr;
         }
         if (walk.cacheable && !map_->Read(effective_address)) {
@@ -122,14 +155,17 @@ uint8_t* ArmTranslator::MapGuestVirtualToHost(uint32_t p) {
         mmu_->SetIoPending(effective_address);
         return nullptr;
     } else {
+        constexpr bool kReadWrite = kAccess == ArmMmuAccess::kReadWrite;
+        const bool     recording  = kReadWrite && idle_skip_->Recording();
         uint8_t* ram_host = map_->Write(effective_address);
         if (ram_host) {
             if (uniform) {
-                const bool writable = (kAccess == ArmMmuAccess::kReadWrite);
                 FillFastTlb(tlb_unit, p, ram_host, effective_address,
-                            current_asid, walk.global, writable, walk.span_bytes);
+                            current_asid, walk.global, kReadWrite && !recording,
+                            walk.span_bytes);
             }
             ArmNoteCodeTracking<kAccess>(st, effective_address);
+            if (recording) idle_skip_->NoteStore(ram_host, p);
             return ram_host;
         }
         uint8_t* flash_host = map_->Read(effective_address);
@@ -139,8 +175,13 @@ uint8_t* ArmTranslator::MapGuestVirtualToHost(uint32_t p) {
                             current_asid, walk.global,
                             false, walk.span_bytes);
             }
-            ArmNoteCodeTracking<kAccess>(st, effective_address);
-            return flash_host;
+            if constexpr (kReadWrite) {
+                mmu_->SetIoPending(effective_address);
+                return nullptr;
+            } else {
+                ArmNoteCodeTracking<kAccess>(st, effective_address);
+                return flash_host;
+            }
         }
         if constexpr (kAccess != ArmMmuAccess::kExecute) {
             if (walk.cacheable) {
@@ -177,6 +218,14 @@ uint8_t* ArmTranslator::TranslateUserRead(uint32_t va) {
 
 uint8_t* ArmTranslator::TranslateUserWrite(uint32_t va) {
     return MapGuestVirtualToHost<ArmMmuAccess::kWrite, true>(va);
+}
+
+uint8_t* ArmTranslator::TranslateWriteSpan(uint32_t va, uint32_t bytes) {
+    return MapGuestVirtualToHost<ArmMmuAccess::kWrite, false, true>(va, bytes);
+}
+
+uint8_t* ArmTranslator::TranslateUserWriteSpan(uint32_t va, uint32_t bytes) {
+    return MapGuestVirtualToHost<ArmMmuAccess::kWrite, true, true>(va, bytes);
 }
 
 const ArmTlbEntry* ArmTranslator::MatchDataTlb(uint32_t va, uint32_t* folded) const {

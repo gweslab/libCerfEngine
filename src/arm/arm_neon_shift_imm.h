@@ -1,5 +1,7 @@
 #pragma once
 
+#include "arm_cpu_state_service.h"
+
 #include <cerfengine/calling_convention.h>
 #include <cstdint>
 
@@ -9,9 +11,9 @@ namespace cerfengine {
 
 /* 2-reg-shift immediate NEON ops (A7.4.4). Distinct encoding region
    (bit23=1) and shift-amount derivation from L:imm6. */
-class ArmNeonShiftImm : public cerfengine::EngineService {
+class ArmNeonShiftImm : public ArmCpuStateService {
 public:
-    using cerfengine::EngineService::EngineService;
+    using ArmCpuStateService::ArmCpuStateService;
 
     static constexpr uint32_t kSiShrS  = 0u;
     static constexpr uint32_t kSiShrU  = 1u;

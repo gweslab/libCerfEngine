@@ -11,6 +11,8 @@
 
 namespace cerfengine {
 
+class ArmCpu;
+
 class ArmVfp : public cerfengine::EngineService {
 public:
     using cerfengine::EngineService::EngineService;
@@ -305,6 +307,7 @@ public:
                                                       uint32_t packed);
 
 private:
+    ArmCpu* cpu_ = nullptr;
     int  host_rmode_       = 0;
     bool host_rmode_known_ = false;
     bool dp32_             = false;

@@ -11,6 +11,7 @@ namespace cerfengine {
 
 class ArmBlockCompiler;
 class ArmCpu;
+class ArmIdleSkip;
 class ArmInterruptChannel;
 class ArmMmu;
 class ArmTranslationCache;
@@ -79,6 +80,7 @@ private:
     ClockHost*              clock_    = nullptr;
     const void*             entry_stub_ = nullptr;
     GuardedBlockEntry*      block_entry_ = nullptr;
+    ArmIdleSkip*            idle_skip_   = nullptr;
 };
 
 }

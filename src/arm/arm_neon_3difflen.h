@@ -1,5 +1,7 @@
 #pragma once
 
+#include "arm_cpu_state_service.h"
+
 #include <cerfengine/calling_convention.h>
 #include <cstdint>
 
@@ -8,9 +10,9 @@
 namespace cerfengine {
 
 /* 3-registers-of-different-lengths NEON ops (A7.4.2). */
-class ArmNeon3DiffLen : public cerfengine::EngineService {
+class ArmNeon3DiffLen : public ArmCpuStateService {
 public:
-    using cerfengine::EngineService::EngineService;
+    using ArmCpuStateService::ArmCpuStateService;
 
     /* Long/wide add and subtract (A8.8.285 / A8.8.417). Long: D op D -> Q.
        Wide: Q op D -> Q. */

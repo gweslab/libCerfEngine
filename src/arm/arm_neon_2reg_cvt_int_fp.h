@@ -1,5 +1,7 @@
 #pragma once
 
+#include "arm_cpu_state_service.h"
+
 #include <cerfengine/calling_convention.h>
 #include <cstdint>
 
@@ -9,9 +11,9 @@ namespace cerfengine {
 
 /* VCVT int↔fp Advanced SIMD (A8.8.305): op field at bits[8:7],
    op[1]=to_integer, op[0]=unsigned. */
-class ArmNeon2RegCvtIntFp : public cerfengine::EngineService {
+class ArmNeon2RegCvtIntFp : public ArmCpuStateService {
 public:
-    using cerfengine::EngineService::EngineService;
+    using ArmCpuStateService::ArmCpuStateService;
 
     static constexpr uint32_t kIntSToFp = 0u;
     static constexpr uint32_t kIntUToFp = 1u;

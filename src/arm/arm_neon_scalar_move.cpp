@@ -13,9 +13,8 @@ CERFENGINE_REGISTER(ArmNeonScalarMove);
 
 void ArmNeonScalarMove::HandleCoreToScalar(uint32_t d_idx, uint32_t lane_index,
                                            uint32_t esize, uint32_t rt_index) {
-    auto* state = engine_.Get<ArmCpu>().State();
-    uint8_t* d_bytes = reinterpret_cast<uint8_t*>(&state->vfp_d[d_idx]);
-    const uint32_t rt_val = state->gprs[rt_index];
+    uint8_t* d_bytes = reinterpret_cast<uint8_t*>(&state_->vfp_d[d_idx]);
+    const uint32_t rt_val = state_->gprs[rt_index];
 
     if (esize == 8u) {
         d_bytes[lane_index] = static_cast<uint8_t>(rt_val & 0xFFu);
@@ -29,9 +28,8 @@ void ArmNeonScalarMove::HandleScalarToCore(uint32_t n_idx, uint32_t lane_index,
                                            uint32_t esize,
                                            uint32_t unsigned_ext,
                                            uint32_t rt_index) {
-    auto* state = engine_.Get<ArmCpu>().State();
     const uint8_t* n_bytes =
-        reinterpret_cast<const uint8_t*>(&state->vfp_d[n_idx]);
+        reinterpret_cast<const uint8_t*>(&state_->vfp_d[n_idx]);
 
     uint32_t result;
     if (esize == 8u) {
@@ -53,7 +51,7 @@ void ArmNeonScalarMove::HandleScalarToCore(uint32_t n_idx, uint32_t lane_index,
         }
     }
 
-    state->gprs[rt_index] = result;
+    state_->gprs[rt_index] = result;
 }
 
 void CERFENGINE_CDECL ArmNeonScalarMove::HandleCoreToScalarHelper(

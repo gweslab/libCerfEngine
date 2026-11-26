@@ -100,9 +100,7 @@ bool ArmDataprocSpaceDecoder::DecodeMiscSpace(DecodedInsn* insn, ArmOpcode op) {
                (p. A8-500). */
             insn->rm  =  op.word        & 0xFu;
             insn->crn = (op.word >> 16) & 0xFu;
-            /* QEMU ARM translate.c trans_MSR_reg -> gen_set_psr
-               -> gen_lookup_tb (DISAS_EXIT). */
-            insn->context_sync = true;
+            insn->cpsr_write = true;
         }
         insn->kind = ArmInsnKind::kMrsOrMsr;
         return true;
@@ -341,9 +339,7 @@ bool ArmDataprocSpaceDecoder::DecodeMsrImmHints(DecodedInsn* insn,
     insn->crn       = mask;
     insn->n         = r;
     insn->immediate = op.word & 0xFFFu;
-    /* QEMU ARM translate.c trans_MSR_imm -> gen_set_psr_im ->
-       gen_lookup_tb (DISAS_EXIT). */
-    insn->context_sync = true;
+    insn->cpsr_write = true;
     insn->kind         = ArmInsnKind::kMsrImmediate;
     return true;
 }

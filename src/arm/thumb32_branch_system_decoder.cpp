@@ -108,9 +108,7 @@ bool Thumb32BranchSystemDecoder::DecodeMoveToSpecial(DecodedInsn* insn,
     insn->n        = (op >> 20) & 0x1u;
     insn->rm       = rn;
     insn->crn      = (op >>  8) & 0xFu;
-    /* QEMU ARM translate.c trans_MSR_reg -> gen_set_psr ->
-       gen_lookup_tb (DISAS_EXIT). */
-    insn->context_sync = true;
+    insn->cpsr_write = true;
     insn->kind         = ArmInsnKind::kMrsOrMsr;
     return true;
 }
@@ -161,9 +159,7 @@ bool Thumb32BranchSystemDecoder::DecodeChangeProcessorState(DecodedInsn* insn,
     insn->op1       = aif_mask | (m != 0u ? 0x1Fu : 0u);
     insn->immediate = (imod == 0x3u ? aif_mask : 0u) | (m != 0u ? mode : 0u);
     insn->und_in_it = 1u;
-    /* QEMU ARM translate.c trans_CPS -> gen_set_psr_im ->
-       gen_lookup_tb (DISAS_EXIT). */
-    insn->context_sync = true;
+    insn->cpsr_write = true;
     insn->kind         = ArmInsnKind::kCps;
     return true;
 }

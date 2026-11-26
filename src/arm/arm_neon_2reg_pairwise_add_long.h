@@ -1,5 +1,7 @@
 #pragma once
 
+#include "arm_cpu_state_service.h"
+
 #include <cerfengine/calling_convention.h>
 #include <cstdint>
 
@@ -8,9 +10,9 @@
 namespace cerfengine {
 
 /* VPADDL / VPADAL (A8.8.364 / A8.8.361). */
-class ArmNeon2RegPairwiseAddLong : public cerfengine::EngineService {
+class ArmNeon2RegPairwiseAddLong : public ArmCpuStateService {
 public:
-    using cerfengine::EngineService::EngineService;
+    using ArmCpuStateService::ArmCpuStateService;
 
     static constexpr uint32_t kPaddl = 0u;
     static constexpr uint32_t kPadal = 1u;

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "arm_cpu_state_service.h"
+
 #include <cerfengine/calling_convention.h>
 #include <cstdint>
 
@@ -8,9 +10,9 @@
 namespace cerfengine {
 
 /* Two-registers-and-a-scalar NEON ops (A7.4.3). */
-class ArmNeon2RegScalar : public cerfengine::EngineService {
+class ArmNeon2RegScalar : public ArmCpuStateService {
 public:
-    using cerfengine::EngineService::EngineService;
+    using ArmCpuStateService::ArmCpuStateService;
 
     /* VMLAL/VMLSL by scalar (A8.8.338 T2/A2). Long: Qd[e] += op1[e]*scalar
        (or -=). U bit selects sign/zero extend before mul. */

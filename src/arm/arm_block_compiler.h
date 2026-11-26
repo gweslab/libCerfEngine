@@ -67,6 +67,7 @@ private:
     uint8_t* FetchInBlockPage(uint32_t folded_pc);
     bool     SecondPageMapped(const JitBlock* blk, uint32_t guest_pc);
     size_t   GenerateCode(uint8_t* code, uint8_t* code_end);
+    bool     IdleBarrier() const;
 
     BlockContext      block_ctx_{};
     cerfir::BlockLink link_{};

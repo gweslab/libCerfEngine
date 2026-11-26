@@ -20,6 +20,8 @@ constexpr uint32_t kBlockPrivilegeCount = 3;
 
 constexpr uint32_t kJumpCacheNoKey = 0xFFFFFFFFu;
 
+constexpr uint32_t kJumpCachePageBuckets = 1024;
+
 struct JumpCacheEntry {
     uint32_t key[kBlockPrivilegeCount];
     void*    native;
@@ -70,6 +72,7 @@ struct IsaBlockSpace {
     BlockIndexSet  indices[kBlockPrivilegeCount];
     JumpCacheEntry jump_cache[kJumpCacheSize];
     JitBlock*      jump_cache_blk[kJumpCacheSize];
+    uint16_t       jump_cache_pages[kJumpCachePageBuckets];
 
     std::vector<JitBlock*> page_heads;
     uint32_t               page_base  = 0;
@@ -86,8 +89,20 @@ struct IsaBlockSpace {
         return kJumpCacheNoKey;
     }
 
+    static uint32_t JumpCachePageBucket(uint32_t key) {
+        return (key >> 12) & (kJumpCachePageBuckets - 1u);
+    }
+
+    static bool JumpCacheInserted(const JumpCacheEntry& e) {
+        for (uint32_t key : e.key) {
+            if (key == kJumpCacheNoKey) return true;
+        }
+        return false;
+    }
+
     void JumpCacheClearEntry(uint32_t index) {
         JumpCacheEntry& e = jump_cache[index];
+        if (JumpCacheInserted(e)) --jump_cache_pages[JumpCachePageBucket(JumpCacheLiveKey(e))];
         for (uint32_t& key : e.key) key = 0;
         e.native              = nullptr;
         jump_cache_blk[index] = nullptr;
@@ -96,12 +111,14 @@ struct IsaBlockSpace {
     void JumpCacheFlush() {
         std::memset(jump_cache, 0, sizeof(jump_cache));
         std::memset(jump_cache_blk, 0, sizeof(jump_cache_blk));
+        std::memset(jump_cache_pages, 0, sizeof(jump_cache_pages));
     }
 
     void JumpCacheClearPage(uint32_t page_va) {
         const uint32_t base = page_va & 0xFFFFF000u;
-        for (uint32_t off = 0; off < 0x1000u; off += 4u) {
-            const uint32_t index = JumpCacheIndex(base + off);
+        if (jump_cache_pages[JumpCachePageBucket(base)] == 0u) return;
+        const uint32_t first = JumpCacheIndex(base);
+        for (uint32_t index = first; index < first + 0x400u; ++index) {
             if ((JumpCacheLiveKey(jump_cache[index]) & 0xFFFFF000u) == base) {
                 JumpCacheClearEntry(index);
             }
@@ -128,6 +145,8 @@ struct IsaBlockSpace {
         const uint32_t  index = JumpCacheIndex(folded_va);
         static_assert(kBlockPrivilegeCount == 3u);
         JumpCacheEntry& e     = jump_cache[index];
+        if (JumpCacheInserted(e)) --jump_cache_pages[JumpCachePageBucket(JumpCacheLiveKey(e))];
+        ++jump_cache_pages[JumpCachePageBucket(folded_va)];
         e.key[0]              = kJumpCacheNoKey;
         e.key[1]              = kJumpCacheNoKey;
         e.key[2]              = kJumpCacheNoKey;

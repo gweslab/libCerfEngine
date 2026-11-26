@@ -19,8 +19,10 @@ public:
     void RegisterListener(std::function<void()> fn);
     void SetKick(std::function<void()> kick);
     void Request();
-    void ServicePending() {
-        if (pending_.load(std::memory_order_relaxed) != 0u) TakePending();
+    bool ServicePending() {
+        if (pending_.load(std::memory_order_relaxed) == 0u) return false;
+        TakePending();
+        return true;
     }
     void RunListeners();
 

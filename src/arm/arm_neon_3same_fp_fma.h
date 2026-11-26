@@ -1,5 +1,7 @@
 #pragma once
 
+#include "arm_cpu_state_service.h"
+
 #include <cerfengine/calling_convention.h>
 #include <cstdint>
 
@@ -8,9 +10,9 @@
 namespace cerfengine {
 
 /* VFMA / VFMS - A8.8.317 Advanced SIMD T1/A1, opc=1100 C=1 U=0 sz=0. */
-class ArmNeon3SameFpFma : public cerfengine::EngineService {
+class ArmNeon3SameFpFma : public ArmCpuStateService {
 public:
-    using cerfengine::EngineService::EngineService;
+    using ArmCpuStateService::ArmCpuStateService;
 
     static constexpr uint32_t kFma = 0u;
     static constexpr uint32_t kFms = 1u;
