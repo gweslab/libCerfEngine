@@ -36,6 +36,8 @@ public:
 
     void SetInterruptPending();
     void ClearInterruptPending();
+    void SetFiqPending();
+    void ClearFiqPending();
     void SetIdleWake(bool level);
 
     RunStatus Run() override;

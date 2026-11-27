@@ -40,6 +40,21 @@ void ArmInterruptChannel::ClearInterruptPending() {
         .fetch_and(~kChainExitIrq, std::memory_order_acq_rel);
 }
 
+void ArmInterruptChannel::SetFiqPending() {
+    const bool edge = fiq_line_.exchange(1u, std::memory_order_acq_rel) == 0u;
+    std::atomic_ref<uint32_t>(cpu_state_->chain_exit_request)
+        .fetch_or(kChainExitFiq, std::memory_order_acq_rel);
+    if (edge) {
+        idle_->Signal();
+    }
+}
+
+void ArmInterruptChannel::ClearFiqPending() {
+    fiq_line_.store(0u, std::memory_order_release);
+    std::atomic_ref<uint32_t>(cpu_state_->chain_exit_request)
+        .fetch_and(~kChainExitFiq, std::memory_order_acq_rel);
+}
+
 void ArmInterruptChannel::SetIdleWake(bool level) {
     const uint32_t value = level ? 1u : 0u;
     const bool edge = idle_wake_line_.exchange(value, std::memory_order_acq_rel) == 0u &&
@@ -62,13 +77,12 @@ uint32_t CERFENGINE_CDECL ArmInterruptChannel::BackOutForIrqHelper(
     return channel->BackOutForIrq(guest_pc) ? 1u : 0u;
 }
 
-/* ARM DDI 0406C.c B1.8.14: a WFI wake-up event is "a physical IRQ interrupt,
-   regardless of the value of the CPSR.I bit". */
 bool ArmInterruptChannel::WaitForInterrupt() {
     return idle_->Wait([this] {
         if (ExitPending()) return GuestIdleWait::Poll::kExit;
         if (clock_stopped_) return GuestIdleWait::Poll::kWait;
         const bool woke = irq_line_.load(std::memory_order_acquire) != 0u ||
+                          fiq_line_.load(std::memory_order_acquire) != 0u ||
                           idle_wake_line_.load(std::memory_order_acquire) != 0u;
         return woke ? GuestIdleWait::Poll::kWoken : GuestIdleWait::Poll::kWait;
     });
@@ -108,8 +122,8 @@ bool ArmInterruptChannel::ExitPending() {
     if (cpu_state_->reset_pending || cpu_state_->deep_sleep) return true;
     const uint32_t exits = std::atomic_ref<uint32_t>(cpu_state_->chain_exit_request)
                                .load(std::memory_order_acquire);
-    if ((exits & ~(kChainExitIrq | kChainExitPrivilege | kChainExitFlush | kChainExitClock |
-                   kChainExitIdle | kChainExitScan)) != 0u) {
+    if ((exits & ~(kChainExitIrq | kChainExitFiq | kChainExitPrivilege | kChainExitFlush |
+                   kChainExitClock | kChainExitIdle | kChainExitScan)) != 0u) {
         return true;
     }
     host_requests_->ServicePending();

@@ -26,6 +26,8 @@ public:
 
     void SetInterruptPending();
     void ClearInterruptPending();
+    void SetFiqPending();
+    void ClearFiqPending();
     void SetIdleWake(bool level);
 
     uint32_t Level() const { return irq_line_.load(std::memory_order_acquire); }
@@ -33,13 +35,17 @@ public:
     struct IrqGate {
         uint32_t level;
         bool     raise;
+        bool     fiq;
     };
 
     IrqGate EvaluateGate() const {
         IrqGate gate;
         gate.level = Level();
-        gate.raise = gate.level != 0u && cpu_state_->cpsr.bits.irq_disable == 0u &&
-                     cpu_state_->deep_sleep == 0u;
+        const bool awake = cpu_state_->deep_sleep == 0u;
+        gate.fiq   = awake && fiq_line_.load(std::memory_order_acquire) != 0u &&
+                     cpu_state_->cpsr.bits.fiq_disable == 0u;
+        gate.raise = gate.fiq ||
+                     (awake && gate.level != 0u && cpu_state_->cpsr.bits.irq_disable == 0u);
         return gate;
     }
 
@@ -55,9 +61,10 @@ public:
                                                          uint32_t guest_pc);
 
     void KickIfDeliverable() {
-        if (!EvaluateGate().raise) return;
+        const IrqGate gate = EvaluateGate();
+        if (!gate.raise) return;
         std::atomic_ref<uint32_t>(cpu_state_->chain_exit_request)
-            .fetch_or(kChainExitIrq, std::memory_order_acq_rel);
+            .fetch_or(gate.fiq ? kChainExitFiq : kChainExitIrq, std::memory_order_acq_rel);
     }
 
     void Wake();
@@ -87,6 +94,7 @@ private:
 
     bool                  clock_stopped_ = false;
     std::atomic<uint32_t> irq_line_{0};
+    std::atomic<uint32_t> fiq_line_{0};
     std::atomic<uint32_t> idle_wake_line_{0};
 
     ArmCpuState*        cpu_state_     = nullptr;

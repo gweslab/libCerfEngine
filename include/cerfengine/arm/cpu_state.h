@@ -111,6 +111,7 @@ constexpr uint32_t kChainExitClock = 1u << 4;
 constexpr uint32_t kChainExitIdle  = 1u << 5;
 constexpr uint32_t kChainExitPrivilege = 1u << 6;
 constexpr uint32_t kChainExitScan  = 1u << 7;
+constexpr uint32_t kChainExitFiq   = 1u << 8;
 
 /* ARM ARM DDI 0406C.c B1.3.3, p. B1-1148: "Condition flags, bits[31:28] ...
    N, bit[31] ... Z, bit[30] ... C, bit[29] ... V, bit[28]". */

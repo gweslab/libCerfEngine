@@ -176,6 +176,11 @@ void ArmCpu::RaiseIrqException(uint32_t guest_pc) {
     EnterException(ArmMode::kIrq, ReturnAddress(guest_pc, 0u, 4u), 24u, true);
 }
 
+void ArmCpu::RaiseFiqException(uint32_t guest_pc) {
+    EnterException(ArmMode::kFiq, ReturnAddress(guest_pc, 0u, 4u), 28u, true);
+    state_.cpsr.bits.fiq_disable = 1u;
+}
+
 /* ARM ARM DDI 0406C.c A2.3, p. A2-45: "When executing an ARM instruction, PC
    reads as the address of the current instruction plus 8"; Thumb reads plus 4. */
 uint32_t ArmCpu::ReturnAddress(uint32_t guest_pc, int32_t thumb_sub, int32_t arm_sub) {

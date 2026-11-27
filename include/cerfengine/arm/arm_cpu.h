@@ -44,6 +44,7 @@ public:
     void RaiseAbortDataException(uint32_t guest_pc);
     void RaiseAbortPrefetchException(uint32_t guest_pc);
     void RaiseIrqException(uint32_t guest_pc);
+    void RaiseFiqException(uint32_t guest_pc);
     void RaiseSwiException(uint32_t guest_pc);
     void RaiseResetException(uint32_t initial_pc, bool initial_thumb);
     void RaiseResetException();

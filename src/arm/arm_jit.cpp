@@ -125,15 +125,17 @@ GuestEngine::RunStatus ArmJit::Run() {
             else                                 channel_->ResumeIdle();
             return RunStatus::kRunning;
         }
-        if ((exits & (kChainExitIrq | kChainExitPrivilege)) != 0u) {
-            word.fetch_and(~(kChainExitIrq | kChainExitPrivilege), std::memory_order_acq_rel);
+        if ((exits & (kChainExitIrq | kChainExitFiq | kChainExitPrivilege)) != 0u) {
+            word.fetch_and(~(kChainExitIrq | kChainExitFiq | kChainExitPrivilege),
+                           std::memory_order_acq_rel);
         }
     }
     const ArmInterruptChannel::IrqGate gate = channel_->EvaluateGate();
     cpu_state_->irq_interrupt_pending = gate.level;
     if (gate.raise) {
         idle_skip_->Restart();
-        cpu_->RaiseIrqException(cpu_state_->gprs[ArmGpr::kR15]);
+        if (gate.fiq) cpu_->RaiseFiqException(cpu_state_->gprs[ArmGpr::kR15]);
+        else          cpu_->RaiseIrqException(cpu_state_->gprs[ArmGpr::kR15]);
     }
 
     const uint32_t pc = cpu_state_->gprs[ArmGpr::kR15];
@@ -194,6 +196,8 @@ void ArmJit::SetHostChainExit(bool requested) { channel_->SetHostExit(requested)
 
 void ArmJit::SetInterruptPending()   { channel_->SetInterruptPending(); }
 void ArmJit::ClearInterruptPending() { channel_->ClearInterruptPending(); }
+void ArmJit::SetFiqPending()         { channel_->SetFiqPending(); }
+void ArmJit::ClearFiqPending()       { channel_->ClearFiqPending(); }
 void ArmJit::SetIdleWake(bool level) { channel_->SetIdleWake(level); }
 
 void ArmJit::EnterDeepSleep() {
