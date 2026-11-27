@@ -22,6 +22,16 @@ namespace cerfengine {
 
 CERFENGINE_REGISTER(ArmIrCodegen);
 
+namespace {
+
+constexpr uint32_t kSctlrXp = 1u << 23;
+
+bool SubpageEntriesPossible(const ArmFeatures& features) {
+    return (features.sctlr_read_only_mask & features.sctlr_read_only_value & kSctlrXp) == 0u;
+}
+
+}
+
 void ArmIrCodegen::OnReady() {
     host_   = &engine_.Host();
     verify_ = engine_.GetSetup().verify_ir;
@@ -113,6 +123,12 @@ void ArmIrCodegen::BuildGuestModel() {
     t.watch_words_aux = static_cast<int32_t>(offsetof(ArmMmuState, code_xlat_bitmap));
     t.watch_dirty_aux = static_cast<int32_t>(offsetof(ArmMmuState, code_page_dirty));
     t.io_tag_bit         = kArmTlbIoTagBit;
+    if (SubpageEntriesPossible(engine_.GetSetup().arm)) {
+        t.subpage_tag_bit      = kArmTlbSubpageTagBit;
+        t.subpage_kind_mask    = kArmTlbSubpageKindMask;
+        t.subpage_access_shift = kArmTlbSubpageAccessShift;
+        t.subpage_index_shift  = kArmTlbSubpageIndexShift;
+    }
     t.io_pending_address = mmu.IoPendingAddressPtr();
     t.io_pending_valid   = mmu.IoPendingValidPtr();
     t.miss_helper[static_cast<size_t>(cerfir::TlbAccess::kRead)] =

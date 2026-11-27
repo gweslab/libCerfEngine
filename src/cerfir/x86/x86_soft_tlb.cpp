@@ -83,31 +83,7 @@ uint8_t* X86SoftTlb::EmitDirect(uint8_t* cursor, uint32_t privilege, TlbAccess a
     if (is_write) {
         EmitTestByteBaseDisp32Imm8(cursor, kEdx, e.writable, 0xFF);
         miss[nmiss++] = EmitJzLabel32(cursor);
-
-        if (model_.watch_writes) {
-            EmitMovRegReg      (cursor, kEax, kEcx);
-            EmitAndRegImm32    (cursor, kEax, OffsetMask(model_));
-            EmitOrRegBaseDisp32(cursor, kEax, kEdx, e.pa);
-
-            EmitCmpRegBaseDisp32(cursor, kEax, kMmuReg, model_.watch_base_aux);
-            uint8_t* below = EmitJbLabel32(cursor);
-            EmitCmpRegBaseDisp32(cursor, kEax, kMmuReg, model_.watch_top_aux);
-            uint8_t* above = EmitJaeLabel32(cursor);
-
-            EmitSubRegBaseDisp32   (cursor, kEax, kMmuReg, model_.watch_base_aux);
-            EmitPushReg            (cursor, kEcx);
-            EmitMovPtrRegBaseDisp32(cursor, kEcx, kMmuReg, model_.watch_words_aux);
-            EmitShrReg32Imm        (cursor, kEax, 2);
-            EmitBtMemReg           (cursor, kEcx, kEax);
-            uint8_t* restore = EmitJncLabel32(cursor);
-            EmitShrReg32Imm        (cursor, kEax, 10);
-            EmitMovPtrRegBaseDisp32(cursor, kEcx, kMmuReg, model_.watch_dirty_aux);
-            EmitBtsMemReg          (cursor, kEcx, kEax);
-            FixupLabel32(restore, cursor);
-            EmitPopReg          (cursor, kEcx);
-            FixupLabel32(below, cursor);
-            FixupLabel32(above, cursor);
-        }
+        if (model_.watch_writes) cursor = EmitWatchWrite(cursor, privilege);
     }
 
     cursor = EmitFold(cursor);
@@ -115,6 +91,34 @@ uint8_t* X86SoftTlb::EmitDirect(uint8_t* cursor, uint32_t privilege, TlbAccess a
 
     for (uint32_t i = 0; i < nmiss; ++i) miss_rel[i] = static_cast<size_t>(miss[i] - start);
     *miss_count = nmiss;
+    return cursor;
+}
+
+uint8_t* X86SoftTlb::EmitWatchWrite(uint8_t* cursor, uint32_t privilege) const {
+    using namespace x86;
+    const EntryDisps e = DispsFor(model_, privilege);
+    EmitMovRegReg      (cursor, kEax, kEcx);
+    EmitAndRegImm32    (cursor, kEax, OffsetMask(model_));
+    EmitOrRegBaseDisp32(cursor, kEax, kEdx, e.pa);
+
+    EmitCmpRegBaseDisp32(cursor, kEax, kMmuReg, model_.watch_base_aux);
+    uint8_t* below = EmitJbLabel32(cursor);
+    EmitCmpRegBaseDisp32(cursor, kEax, kMmuReg, model_.watch_top_aux);
+    uint8_t* above = EmitJaeLabel32(cursor);
+
+    EmitSubRegBaseDisp32   (cursor, kEax, kMmuReg, model_.watch_base_aux);
+    EmitPushReg            (cursor, kEcx);
+    EmitMovPtrRegBaseDisp32(cursor, kEcx, kMmuReg, model_.watch_words_aux);
+    EmitShrReg32Imm        (cursor, kEax, 2);
+    EmitBtMemReg           (cursor, kEcx, kEax);
+    uint8_t* restore = EmitJncLabel32(cursor);
+    EmitShrReg32Imm        (cursor, kEax, 10);
+    EmitMovPtrRegBaseDisp32(cursor, kEcx, kMmuReg, model_.watch_dirty_aux);
+    EmitBtsMemReg          (cursor, kEcx, kEax);
+    FixupLabel32(restore, cursor);
+    EmitPopReg          (cursor, kEcx);
+    FixupLabel32(below, cursor);
+    FixupLabel32(above, cursor);
     return cursor;
 }
 
@@ -197,6 +201,39 @@ uint8_t* X86SoftTlb::EmitMiss(uint8_t* cursor, uint32_t privilege, TlbAccess acc
         EmitRet             (cursor);
 
         for (int i = 0; i < n_io_miss; ++i) FixupLabel32(io_miss[i], cursor);
+    }
+    if (model_.subpage_tag_bit != 0u) {
+        uint8_t* sub_miss[3];
+        int      n_sub_miss = 0;
+
+        cursor = EmitFold(cursor);
+        EmitAndRegImm32     (cursor, kEax, PageMask(model_));
+        EmitAddRegImm32     (cursor, kEax, model_.subpage_tag_bit);
+        EmitXorRegBaseDisp32(cursor, kEax, kEdx, e.tag);
+        EmitTestRegImm32    (cursor, kEax, model_.subpage_kind_mask);
+        sub_miss[n_sub_miss++] = EmitJnzLabel32(cursor);
+
+        EmitMovRegBaseDisp32      (cursor, kEax, kMmuReg, model_.context_aux);
+        EmitTestByteBaseDisp32Imm8(cursor, kEdx, e.global, 0xFF);
+        uint8_t* context_ok = EmitJnzLabel(cursor);
+        EmitCmpReg8BaseDisp32     (cursor, kAl, kEdx, e.context);
+        sub_miss[n_sub_miss++] = EmitJnzLabel32(cursor);
+        FixupLabel(context_ok, cursor);
+
+        EmitMovRegReg      (cursor, kEax, kEcx);
+        EmitShrReg32Imm    (cursor, kEax, static_cast<uint8_t>(model_.subpage_index_shift));
+        EmitAndRegImm32    (cursor, kEax, 3u);
+        EmitAddRegImm32    (cursor, kEax, model_.subpage_access_shift + (is_write ? 4u : 0u));
+        EmitBtBaseDisp32Reg(cursor, kEdx, e.tag, kEax);
+        sub_miss[n_sub_miss++] = EmitJncLabel32(cursor);
+
+        if (is_write && model_.watch_writes) cursor = EmitWatchWrite(cursor, privilege);
+        cursor = EmitFold(cursor);
+        EmitAddPtrRegBaseDisp32(cursor, kEax, kEdx, e.addend);
+        if (keep_pc) EmitPopReg(cursor, kEdx);
+        EmitRet(cursor);
+
+        for (int i = 0; i < n_sub_miss; ++i) FixupLabel32(sub_miss[i], cursor);
     }
     if (keep_pc) {
         EmitPopReg(cursor, kEax);

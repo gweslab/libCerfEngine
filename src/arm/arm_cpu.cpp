@@ -235,7 +235,7 @@ void ArmCpu::RaiseResetException(uint32_t initial_pc, bool initial_thumb) {
     const cerfengine::ArmResetResult reset = engine_.GetSetup().arm_system->ArmReset();
     if (reset.resume_mmu) {
         mmu.SetControlRegister(reset.control_register);
-        mmu.SetEffectiveControlRegister(reset.control_register);
+        mmu.SetEffectiveControlRegister(mmu.State()->control_register.word);
     }
 
     state_.deep_sleep    = 0u;

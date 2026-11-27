@@ -36,8 +36,8 @@ struct Lanes {
     ArmIrRig unverified;
 };
 
-const cerfengine::ArmCpuState& RunBoth(Lanes& lanes, const std::vector<uint32_t>& body,
-                                       const cerfengine::ArmCpuState& initial, RunStatus want) {
+cerfengine::ArmCpuState RunBoth(Lanes& lanes, const std::vector<uint32_t>& body,
+                                const cerfengine::ArmCpuState& initial, RunStatus want) {
     std::vector<uint32_t> program = body;
     program.push_back(kRigBranchSelf);
     RunStatus status[2];

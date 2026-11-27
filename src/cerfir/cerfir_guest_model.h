@@ -66,6 +66,10 @@ struct SoftTlbModel {
     int32_t     watch_words_aux                 = 0;
     int32_t     watch_dirty_aux                 = 0;
     uint32_t    io_tag_bit                      = 0;
+    uint32_t    subpage_tag_bit                 = 0;
+    uint32_t    subpage_kind_mask               = 0;
+    uint32_t    subpage_access_shift            = 0;
+    uint32_t    subpage_index_shift             = 0;
     uint32_t*   io_pending_address              = nullptr;
     uint32_t*   io_pending_valid                = nullptr;
     const void* miss_helper[kTlbAccessKinds]    = {};

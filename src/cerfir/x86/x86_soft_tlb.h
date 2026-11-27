@@ -12,7 +12,7 @@ namespace cerfengine::cerfir {
 
 class X86SoftTlb {
 public:
-    static constexpr size_t kMissBytes     = 256;
+    static constexpr size_t kMissBytes     = 512;
     static constexpr size_t kStampMaxBytes = 512;
     static constexpr size_t RegionBytes(uint32_t privileges) {
         return privileges * kTlbAccessKinds * kMissBytes;
@@ -51,6 +51,7 @@ private:
     uint8_t* EmitDirect(uint8_t* cursor, uint32_t privilege, TlbAccess access,
                         size_t* miss_rel, uint32_t* miss_count) const;
     uint8_t* EmitMiss(uint8_t* cursor, uint32_t privilege, TlbAccess access) const;
+    uint8_t* EmitWatchWrite(uint8_t* cursor, uint32_t privilege) const;
     uint8_t* EmitFold(uint8_t* cursor) const;
     [[nodiscard]] uint8_t* EmitPushOldPc(uint8_t* cursor) const;
     [[nodiscard]] uint8_t* EmitPopOldPc(uint8_t* cursor) const;

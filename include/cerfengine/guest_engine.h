@@ -26,6 +26,8 @@ public:
 
     virtual void FlushTranslationCache() = 0;
 
+    virtual void DropPhysicalRange(uint32_t pa, uint32_t bytes) = 0;
+
     virtual void SetResetPending(bool is_resume) = 0;
 
     virtual void EnterDeepSleep() = 0;

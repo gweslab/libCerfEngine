@@ -182,10 +182,13 @@ void ArmIdleSkip::ClearWritable() {
     cleared_count_ = 0;
     for (ArmTlbUnit& unit : mmu_state_->data_tlb) {
         for (ArmTlbEntry& entry : unit.entries) {
-            if (entry.writable == 0u) continue;
+            const bool subpage_writes =
+                ArmTlbIsSubpageEntry(entry) && (entry.tag & kArmTlbSubpageWriteBits) != 0u;
+            if (entry.writable == 0u && !subpage_writes) continue;
             cleared_entries_[cleared_count_++] =
                 ClearedEntry{&entry, entry.va_addend, entry.tag, entry.asid, entry.global};
             entry.writable = 0u;
+            entry.tag &= subpage_writes ? ~kArmTlbSubpageWriteBits : ~0u;
         }
     }
     writable_cleared_ = true;
@@ -195,9 +198,12 @@ void ArmIdleSkip::RestoreWritable() {
     for (uint32_t i = 0; i < cleared_count_; ++i) {
         const ClearedEntry& saved = cleared_entries_[i];
         ArmTlbEntry&        entry = *saved.entry;
-        if (entry.tag == saved.tag && entry.va_addend == saved.addend &&
+        const bool subpage = saved.tag != kArmTlbInvalidTag && (saved.tag & kArmTlbSubpageTagBit) != 0u;
+        const uint32_t cleared_tag = subpage ? saved.tag & ~kArmTlbSubpageWriteBits : saved.tag;
+        if (entry.tag == cleared_tag && entry.va_addend == saved.addend &&
             entry.asid == saved.asid && entry.global == saved.global) {
-            entry.writable = 1u;
+            if (subpage) entry.tag = saved.tag;
+            else         entry.writable = 1u;
         }
     }
     cleared_count_    = 0;

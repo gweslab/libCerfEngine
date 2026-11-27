@@ -56,6 +56,12 @@ public:
 
     void ThrowOnWalkOf(uint32_t page) { throw_page_ = page; }
 
+    void SetSubpageAccess(uint32_t page, uint8_t access) {
+        subpage_page_   = page;
+        subpage_access_ = access;
+    }
+    uint32_t SubpageWalks() const { return subpage_walks_; }
+
     void RemapPage(uint32_t va_page, uint32_t pa_page) {
         remap_va_ = va_page;
         remap_pa_ = pa_page;
@@ -65,6 +71,7 @@ public:
         if (!walk_enabled_) TestUnexpectedWalk(mva);
         if ((mva & ~0xFFFu) == throw_page_) ThrowFromHost(mva);
         cerfengine::ArmTranslation t;
+        if ((mva & ~0xFFFu) == subpage_page_) return WalkSubpaged(mva, write);
         if (mva - hole_base_ < hole_size_ || (user && mva - privileged_base_ < privileged_size_)) {
             ++walk_faults_;
             last_walk_fault_va_    = mva;
@@ -93,6 +100,25 @@ public:
     bool     LastWalkFaultWrite() const { return last_walk_fault_write_; }
 
 private:
+    cerfengine::ArmTranslation WalkSubpaged(uint32_t mva, bool write) {
+        ++subpage_walks_;
+        cerfengine::ArmTranslation t;
+        const uint32_t needed = (write ? 0x10u : 0x01u) << ((mva >> 10) & 3u);
+        if ((subpage_access_ & needed) == 0u) {
+            ++walk_faults_;
+            last_walk_fault_va_    = mva;
+            last_walk_fault_write_ = write;
+            return t;
+        }
+        const uint32_t whole = write ? 0xF0u : 0x0Fu;
+        t.mapped         = true;
+        t.pa             = MappedPa(mva);
+        t.global         = pages_global_;
+        t.cacheable      = (subpage_access_ & whole) == whole;
+        t.subpage_access = t.cacheable ? 0u : subpage_access_;
+        return t;
+    }
+
     TestCoprocessor* coprocessor_ = nullptr;
 
     bool     allow_alignment_faults_ = false;
@@ -107,6 +133,9 @@ private:
     bool     pages_global_           = true;
     uint32_t remap_va_               = 0xFFFFFFFFu;
     uint32_t throw_page_             = 0xFFFFFFFFu;
+    uint32_t subpage_page_           = 0xFFFFFFFFu;
+    uint8_t  subpage_access_         = 0;
+    uint32_t subpage_walks_          = 0;
     uint32_t remap_pa_               = 0;
     uint32_t walk_faults_            = 0;
     uint32_t last_walk_fault_va_     = 0;

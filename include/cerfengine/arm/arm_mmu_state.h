@@ -76,7 +76,13 @@ static_assert((sizeof(ArmTlbEntry) & (sizeof(ArmTlbEntry) - 1u)) == 0u,
 constexpr uint32_t kArmTlbWays       = 4;
 constexpr uint32_t kArmTlbSets       = 256;
 constexpr uint32_t kArmTlbSetMask    = kArmTlbSets - 1u;
+constexpr uint32_t kArmTlbPageMask   = 0xFFFFF000u;
 constexpr uint32_t kArmTlbIoTagBit   = 1u;
+constexpr uint32_t kArmTlbSubpageTagBit       = 2u;
+constexpr uint32_t kArmTlbSubpageAccessShift  = 4u;
+constexpr uint32_t kArmTlbSubpageWriteBits    = 0xF0u << kArmTlbSubpageAccessShift;
+constexpr uint32_t kArmTlbSubpageIndexShift   = 10u;
+constexpr uint32_t kArmTlbSubpageKindMask     = kArmTlbPageMask | kArmTlbIoTagBit | kArmTlbSubpageTagBit;
 constexpr uint32_t kArmTlbInvalidTag = 0xFFFFFFFFu;
 constexpr uint32_t kArmSectionShift  = 20u;
 constexpr uint32_t kArmSectionCount  = 1u << (32u - kArmSectionShift);
@@ -108,11 +114,11 @@ inline uint32_t ArmTlbSetBase(uint32_t va) {
     return ((va >> 12) & kArmTlbSetMask) * kArmTlbWays;
 }
 
-inline int ArmTlbMatchWay(const ArmTlbUnit* unit, uint32_t base,
-                          uint32_t tag, uint8_t asid, bool need_write) {
+inline int ArmTlbMatchMaskedWay(const ArmTlbUnit* unit, uint32_t base, uint32_t tag,
+                                uint32_t tag_mask, uint8_t asid, bool need_write) {
     for (uint32_t w = 0; w < kArmTlbWays; ++w) {
         const ArmTlbEntry& e = unit->entries[base + w];
-        if (e.tag != tag) continue;
+        if ((e.tag & tag_mask) != tag) continue;
         if (!e.global && e.asid != asid) continue;
         if (need_write && !e.writable) continue;
         return static_cast<int>(w);
@@ -120,11 +126,34 @@ inline int ArmTlbMatchWay(const ArmTlbUnit* unit, uint32_t base,
     return -1;
 }
 
+inline int ArmTlbMatchWay(const ArmTlbUnit* unit, uint32_t base,
+                          uint32_t tag, uint8_t asid, bool need_write) {
+    return ArmTlbMatchMaskedWay(unit, base, tag, 0xFFFFFFFFu, asid, need_write);
+}
+
 inline int ArmTlbMatchIoWay(const ArmTlbUnit* unit, uint32_t base,
                             uint32_t page_tag, uint8_t asid,
                             bool need_write) {
     return ArmTlbMatchWay(unit, base, page_tag | kArmTlbIoTagBit,
                           asid, need_write);
+}
+
+inline uint32_t ArmTlbEntryPage(const ArmTlbEntry& entry) {
+    return entry.tag & kArmTlbPageMask;
+}
+
+inline uint32_t ArmTlbSubpageAccess(const ArmTlbEntry& entry) {
+    return (entry.tag >> kArmTlbSubpageAccessShift) & 0xFFu;
+}
+
+inline bool ArmTlbIsSubpageEntry(const ArmTlbEntry& entry) {
+    return entry.tag != kArmTlbInvalidTag && (entry.tag & kArmTlbSubpageTagBit) != 0u;
+}
+
+inline int ArmTlbMatchSubpageWay(const ArmTlbUnit* unit, uint32_t base,
+                                 uint32_t page_tag, uint8_t asid) {
+    return ArmTlbMatchMaskedWay(unit, base, page_tag | kArmTlbSubpageTagBit,
+                                kArmTlbSubpageKindMask, asid, false);
 }
 
 inline bool ArmTlbEntryIsWideSpan(const ArmTlbEntry& entry) {

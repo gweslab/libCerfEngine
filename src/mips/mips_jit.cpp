@@ -194,6 +194,8 @@ void MipsJit::SetCoreClockStopped(bool stopped) {
 
 void MipsJit::FlushTranslationCache() { cache_->Flush(); }
 
+void MipsJit::DropPhysicalRange(uint32_t pa, uint32_t bytes) { map_->InvalidateRange(pa, bytes); }
+
 void MipsJit::SetDmaRegion(uint32_t pa, uint32_t size) {
     cache_->AddDmaRegion(pa, size);
 }

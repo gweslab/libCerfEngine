@@ -50,6 +50,8 @@ struct ArmFeatures {
     uint32_t mvfr0                    = 0;
     uint32_t mvfr1                    = 0;
     uint32_t wcid                     = 0;
+    uint32_t sctlr_read_only_mask     = 0;
+    uint32_t sctlr_read_only_value    = 0;
 };
 
 enum class MipsIsaLevel : uint32_t { kMips1, kMips3, kMips4 };

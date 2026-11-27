@@ -8,6 +8,7 @@
 #include "../host_platform.h"
 #include <cerfengine/host_request_channel.h>
 #include <cerfengine/jit_block_index.h>
+#include <cerfengine/physical_map.h>
 #include "../cerfir/cerfir_host_lowering.h"
 #include "../jit_code_arena.h"
 #include "arm_block_compiler.h"
@@ -239,6 +240,11 @@ void ArmJit::PrintFatalDump() {
 }
 
 void ArmJit::FlushTranslationCache() { cache_->Flush(); }
+
+void ArmJit::DropPhysicalRange(uint32_t pa, uint32_t bytes) {
+    engine_.Get<PhysicalMap>().InvalidateRange(pa, bytes);
+    mmu_->InvalidatePhysicalTlbs(pa, bytes);
+}
 
 void ArmJit::PendTranslationFlush() { cache_->PendFlush(); }
 

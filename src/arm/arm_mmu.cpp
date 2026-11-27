@@ -74,6 +74,11 @@ void ArmMmu::InvalidateDataTlbs() {
     for (ArmTlbUnit& unit : state_.data_tlb) ArmTlbFlushAll(&unit);
 }
 
+void ArmMmu::InvalidatePhysicalTlbs(uint32_t pa, uint32_t bytes) {
+    for (ArmTlbUnit& unit : state_.instruction_tlb) ArmTlbInvalidateByPa(&unit, pa, bytes);
+    for (ArmTlbUnit& unit : state_.data_tlb) ArmTlbInvalidateByPa(&unit, pa, bytes);
+}
+
 void CERFENGINE_FASTCALL ArmMmu::InvalidateAllTlbsHelper(ArmMmu* mmu) {
     mmu->InvalidateAllTlbs();
 }
@@ -121,6 +126,7 @@ void ArmMmu::RegisterControlRegisterListener(std::function<void()> fn) {
 }
 
 void ArmMmu::SetControlRegister(uint32_t value) {
+    value = ControlRegisterAfterWrite(value);
     if (state_.control_register.word == value) return;
     state_.control_register.word = value;
     control_register_listeners_.Call();

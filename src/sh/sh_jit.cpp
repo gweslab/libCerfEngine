@@ -139,6 +139,7 @@ public:
     }
 
     void FlushTranslationCache() override { cache_->Flush(); }
+    void DropPhysicalRange(uint32_t pa, uint32_t bytes) override { map_->InvalidateRange(pa, bytes); }
 
     void SetResetPending(bool is_resume) override {
         host_->OnResetRequested(is_resume);

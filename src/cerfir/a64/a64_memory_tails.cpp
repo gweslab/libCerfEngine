@@ -6,6 +6,7 @@
 #include "../../a64_emit_alu.h"
 #include "../../a64_emit_memory.h"
 #include "../../emit_fault.h"
+#include "a64_lower_fns.h"
 #include "a64_lowering.h"
 #include "a64_memory_operands.h"
 
@@ -17,6 +18,9 @@ void A64MemoryTails::Grow() {
 }
 
 bool A64MemoryTails::Emit(A64Lowering& l) {
+    for (size_t i = 0; i < cold_count_; ++i) {
+        if (!A64EmitColdWordTransfer(l, colds_[i])) return false;
+    }
     for (size_t i = 0; i < count_; ++i) {
         if (!l.HasRoom()) return false;
         EmitOne(l, tails_[i]);

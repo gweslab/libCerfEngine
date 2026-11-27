@@ -120,6 +120,13 @@ CERFENGINE_FORCEINLINE void EmitBtMemReg(uint8_t*& c, uint8_t base, uint8_t reg)
     EmitOp0FModRm(c, 0xA3, 0, base, reg);
 }
 
+CERFENGINE_FORCEINLINE void EmitBtBaseDisp32Reg(uint8_t*& c, uint8_t base, int32_t disp, uint8_t reg) {
+    uint8_t* p = c;
+    EmitOp0FModRm(p, 0xA3, 2, base, reg);
+    Emit32(p, static_cast<uint32_t>(disp));
+    c = p;
+}
+
 /* BTS r/m32, r32 - 0F AB /r, mod=00 [base] (SDM Vol. 2A 3-136 BTS). */
 CERFENGINE_FORCEINLINE void EmitBtsMemReg(uint8_t*& c, uint8_t base, uint8_t reg) {
     EmitOp0FModRm(c, 0xAB, 0, base, reg);

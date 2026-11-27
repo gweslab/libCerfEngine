@@ -41,6 +41,15 @@ void ArmTranslator::NoteStore(uint8_t* host, uint32_t va, [[maybe_unused]] uint3
     }
 }
 
+void ArmTranslator::FillSubpage(ArmTlbUnit* unit, uint32_t p, uint32_t pa, uint8_t asid,
+                                const ArmTranslation& walk) {
+    uint8_t* const read = map_->Read(pa);
+    if (read == nullptr || !host::PhysicalSpanUniform(memory_, pa, walk.span_bytes)) return;
+    uint32_t access = walk.subpage_access;
+    if (map_->Write(pa) != read || idle_skip_->Recording()) access &= 0x0Fu;
+    FillFastTlbSubpage(unit, p, read, pa, asid, walk.global, access);
+}
+
 template <ArmMmuAccess kAccess, bool kForceUser, bool kSpan>
 uint8_t* ArmTranslator::MapGuestVirtualToHost(uint32_t p, [[maybe_unused]] uint32_t span_bytes) {
     static_assert(!kSpan || kAccess == ArmMmuAccess::kWrite);
@@ -107,6 +116,23 @@ uint8_t* ArmTranslator::MapGuestVirtualToHost(uint32_t p, [[maybe_unused]] uint3
                 mmu_->SetIoPending(io.pa_page | (p & 0x0FFFu));
                 return nullptr;
             }
+            const int sub_way = ArmTlbMatchSubpageWay(tlb_unit, set_base, va_page, current_asid);
+            if (sub_way >= 0) {
+                const uint32_t needed =
+                    (kIsWrite ? 0x10u : 0x01u) << ((p >> kArmTlbSubpageIndexShift) & 3u);
+                if ((ArmTlbSubpageAccess(tlb_unit->entries[set_base + static_cast<uint32_t>(sub_way)]) &
+                     needed) != 0u) {
+                    ArmTlbPromote(tlb_unit, set_base, sub_way);
+                    const ArmTlbEntry& sub = tlb_unit->entries[set_base];
+                    NoteCodeAccess<kAccess, kSpan>(st, sub.pa_page | (p & 0x0FFFu), span_bytes);
+                    uint8_t* const host = reinterpret_cast<uint8_t*>(
+                        static_cast<uintptr_t>(p) + sub.va_addend);
+                    if constexpr (kIsWrite) {
+                        if (idle_skip_->Recording()) NoteStore<kSpan>(host, p, span_bytes);
+                    }
+                    return host;
+                }
+            }
         }
     }
 
@@ -143,6 +169,8 @@ uint8_t* ArmTranslator::MapGuestVirtualToHost(uint32_t p, [[maybe_unused]] uint3
                 FillFastTlb(tlb_unit, p, host_ptr, effective_address,
                             current_asid, walk.global,
                             !recording, walk.span_bytes);
+            } else if (walk.subpage_access != 0u) {
+                FillSubpage(tlb_unit, p, effective_address, current_asid, walk);
             }
             NoteCodeAccess<kAccess, kSpan>(st, effective_address, span_bytes);
             if (recording) NoteStore<kSpan>(host_ptr, p, span_bytes);
@@ -157,12 +185,16 @@ uint8_t* ArmTranslator::MapGuestVirtualToHost(uint32_t p, [[maybe_unused]] uint3
     } else {
         constexpr bool kReadWrite = kAccess == ArmMmuAccess::kReadWrite;
         const bool     recording  = kReadWrite && idle_skip_->Recording();
-        uint8_t* ram_host = map_->Write(effective_address);
+        uint8_t* ram_host = kReadWrite ? map_->Write(effective_address) : map_->Read(effective_address);
         if (ram_host) {
             if (uniform) {
                 FillFastTlb(tlb_unit, p, ram_host, effective_address,
                             current_asid, walk.global, kReadWrite && !recording,
                             walk.span_bytes);
+            } else if constexpr (kAccess != ArmMmuAccess::kExecute) {
+                if (walk.subpage_access != 0u) {
+                    FillSubpage(tlb_unit, p, effective_address, current_asid, walk);
+                }
             }
             ArmNoteCodeTracking<kAccess>(st, effective_address);
             if (recording) idle_skip_->NoteStore(ram_host, p);

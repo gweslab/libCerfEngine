@@ -42,11 +42,32 @@ struct A64MissStub {
     bool         keep_pc;
 };
 
+struct A64ColdTransfer {
+    uint32_t         attr;
+    uint32_t         list;
+    uint8_t*         entry;
+    uint8_t*         align;
+    uint8_t*         join;
+    A64PinState      align_state;
+    A64PinState      entry_state;
+    A64PinState      join_state;
+    SoftTlbMissSites misses;
+    const void*      miss_target;
+    uint32_t         pc;
+    bool             keep_pc;
+};
+
 class A64MemoryTails {
 public:
     void BeginBlock() {
         count_      = 0;
         stub_count_ = 0;
+        cold_count_ = 0;
+    }
+
+    void AddColdTransfer(const A64ColdTransfer& cold) {
+        if (cold_count_ == colds_.size()) colds_.resize(colds_.empty() ? 8u : colds_.size() * 2u);
+        colds_[cold_count_++] = cold;
     }
 
     CERFENGINE_FORCEINLINE A64MemoryTail& New() {
@@ -85,6 +106,8 @@ private:
     size_t                     capacity_ = 0;
     std::vector<A64MissStub>   stubs_;
     size_t                     stub_count_ = 0;
+    std::vector<A64ColdTransfer> colds_;
+    size_t                       cold_count_ = 0;
 };
 
 }

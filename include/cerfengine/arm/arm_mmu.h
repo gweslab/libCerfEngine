@@ -33,6 +33,11 @@ public:
     void SetControlRegister(uint32_t value);
     void SetEffectiveControlRegister(uint32_t value);
 
+    uint32_t ControlRegisterAfterWrite(uint32_t value) const {
+        const uint32_t read_only = processor_config_->sctlr_read_only_mask;
+        return (value & ~read_only) | (processor_config_->sctlr_read_only_value & read_only);
+    }
+
     /* Table A3-1 (p. A3-108) and Table D12-1 (D12.3.1, p. D12-2506) give the
        alignment model by architecture version and SCTLR.U; D15.3.1
        (p. D15-2592) gives the v4/v5 legacy behaviour. */
@@ -55,6 +60,7 @@ public:
     void InvalidateAllTlbs();
     void InvalidateInstructionTlbs();
     void InvalidateDataTlbs();
+    void InvalidatePhysicalTlbs(uint32_t pa, uint32_t bytes);
     void SynchronizeSctlr();
 
     static void CERFENGINE_FASTCALL InvalidateAllTlbsHelper(ArmMmu* mmu);

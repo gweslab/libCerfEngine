@@ -95,6 +95,7 @@ struct ArmTranslation {
     uint32_t span_bytes = 0x1000u;
     bool     global     = false;
     bool     cacheable  = true;
+    uint8_t  subpage_access = 0;
     uint8_t* host       = nullptr;
 };
 

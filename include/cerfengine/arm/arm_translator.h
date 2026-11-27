@@ -52,6 +52,9 @@ private:
     template <bool kSpan>
     void NoteStore(uint8_t* host, uint32_t va, uint32_t span_bytes);
 
+    void FillSubpage(ArmTlbUnit* unit, uint32_t p, uint32_t pa, uint8_t asid,
+                     const ArmTranslation& walk);
+
     const ArmTlbEntry* MatchDataTlb(uint32_t va, uint32_t* folded) const;
 
     ArmMmu*             mmu_       = nullptr;

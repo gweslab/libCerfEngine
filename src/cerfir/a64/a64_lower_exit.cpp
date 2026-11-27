@@ -9,6 +9,7 @@
 #include "../../a64_emit_memory.h"
 #include "../../chain_jump_patch.h"
 #include "../../emit_fault.h"
+#include "../../host_platform.h"
 #include "a64_lower_fns.h"
 
 namespace cerfengine::cerfir {
@@ -39,14 +40,18 @@ void EmitTestImm(uint8_t*& c, uint8_t reg, uint32_t mask) {
     a64::EmitTstReg(c, reg, a64::kIp0);
 }
 
-void EmitPoll(A64PinnedSlots& p, uint8_t*& c, const ExitModel& e, uint8_t* (&to_dispatcher)[2]) {
-    p.Sync(c);
-    p.Load(c, kA64Tmp0, e.chain_exit_slot);
+void EmitSyncedPoll(uint8_t*& c, const ExitModel& e, uint8_t* (&to_dispatcher)[2]) {
+    a64::EmitLdrW(c, kA64Tmp0, a64::kStateReg, e.chain_exit_slot);
     to_dispatcher[0] = a64::EmitCbzLabel(c, kA64Tmp0, true, false);
-    p.Load(c, kA64Tmp0, e.cycle_slot);
-    p.Load(c, kA64Tmp1, e.deadline_slot);
+    a64::EmitLdrW(c, kA64Tmp0, a64::kStateReg, e.cycle_slot);
+    a64::EmitLdrW(c, kA64Tmp1, a64::kStateReg, e.deadline_slot);
     a64::EmitSubReg(c, kA64Tmp0, kA64Tmp0, kA64Tmp1);
     to_dispatcher[1] = a64::EmitTbzLabel(c, kA64Tmp0, 31u, false);
+}
+
+void EmitPoll(A64PinnedSlots& p, uint8_t*& c, const ExitModel& e, uint8_t* (&to_dispatcher)[2]) {
+    p.Sync(c);
+    EmitSyncedPoll(c, e, to_dispatcher);
 }
 
 void EmitChain(A64Lowering& l, uint32_t target, uint32_t slot) {
@@ -107,21 +112,8 @@ void EmitCacheLookup(uint8_t*& c, const void* jump_cache, int32_t key_disp,
     a64::EmitBr(c, a64::kIp0);
 }
 
-void EmitProbe(A64Lowering& l) {
-    const ExitModel& e       = l.Target().model->exits;
-    const BlockLink& link    = *l.Target().link;
-    const int32_t    pc_slot = l.GetBlock().PcSlot();
-    A64PinnedSlots&  p       = l.Pins();
-    uint8_t*&        c       = l.Cursor();
-    uint8_t*         miss[kProbeMissSites];
-    uint32_t         n = 0;
-
-    uint8_t* to_dispatcher[2];
-    EmitPoll(p, c, e, to_dispatcher);
-    miss[n++] = to_dispatcher[0];
-    miss[n++] = to_dispatcher[1];
-
-    p.Load(c, kA64Tmp0, pc_slot);
+void EmitPcLookup(uint8_t*& c, const ExitModel& e, const BlockLink& link,
+                  uint8_t* (&miss)[kProbeMissSites], uint32_t& n) {
     if (e.fold_mask != 0u) {
         EmitTestImm(c, kA64Tmp0, e.fold_mask);
         uint8_t* const no_fold = a64::EmitBCondLabel(c, a64::kNe);
@@ -132,7 +124,7 @@ void EmitProbe(A64Lowering& l) {
 
     uint8_t* other_mode = nullptr;
     if (e.mode_mask != 0u) {
-        p.Load(c, kA64Tmp1, e.mode_slot);
+        a64::EmitLdrW(c, kA64Tmp1, a64::kStateReg, e.mode_slot);
         EmitTestImm(c, kA64Tmp1, e.mode_mask);
         uint8_t* const mismatch = a64::EmitBCondLabel(c, link.mode_set ? a64::kEq : a64::kNe);
         if (link.other_mode_jump_cache != nullptr) {
@@ -147,7 +139,40 @@ void EmitProbe(A64Lowering& l) {
         a64::FixupLabel(other_mode, c);
         EmitCacheLookup(c, link.other_mode_jump_cache, link.jump_cache_key_disp, miss, n);
     }
+}
 
+void EmitProbeRoutineBytes(uint8_t*& c, const ExitModel& e, const BlockLink& link, int32_t pc_slot) {
+    uint8_t* miss[kProbeMissSites];
+    uint32_t n = 0;
+    uint8_t* to_dispatcher[2];
+    EmitSyncedPoll(c, e, to_dispatcher);
+    miss[n++] = to_dispatcher[0];
+    miss[n++] = to_dispatcher[1];
+    a64::EmitLdrW(c, kA64Tmp0, a64::kStateReg, pc_slot);
+    EmitPcLookup(c, e, link, miss, n);
+    for (uint32_t i = 0; i < n; ++i) a64::FixupLabel(miss[i], c);
+    a64::EmitLdrX(c, a64::kLr, a64::kSp, kA64ReturnSlot);
+    a64::EmitRet(c);
+}
+
+void EmitProbe(A64Lowering& l) {
+    const ExitModel& e    = l.Target().model->exits;
+    const BlockLink& link = *l.Target().link;
+    A64PinnedSlots&  p    = l.Pins();
+    uint8_t*&        c    = l.Cursor();
+    if (link.probe_routine != nullptr) {
+        p.Sync(c);
+        a64::EmitB(c, link.probe_routine);
+        return;
+    }
+    uint8_t* miss[kProbeMissSites];
+    uint32_t n = 0;
+    uint8_t* to_dispatcher[2];
+    EmitPoll(p, c, e, to_dispatcher);
+    miss[n++] = to_dispatcher[0];
+    miss[n++] = to_dispatcher[1];
+    p.Load(c, kA64Tmp0, l.GetBlock().PcSlot());
+    EmitPcLookup(c, e, link, miss, n);
     for (uint32_t i = 0; i < n; ++i) a64::FixupLabel(miss[i], c);
 }
 
@@ -159,6 +184,21 @@ void EmitBlockReturn(A64Lowering& l) {
     l.Pins().MarkUnreachable();
 }
 
+}
+
+const void* A64Lowering::BuildProbeRoutine(const ExitModel& e, const BlockLink& link, int32_t pc_slot,
+                                           uint8_t* region) {
+    uint8_t  scratch[kProbeRoutineBytes * 2];
+    uint8_t* end = scratch;
+    EmitProbeRoutineBytes(end, e, link, pc_slot);
+    if (static_cast<size_t>(end - scratch) > kProbeRoutineBytes) {
+        throw EmitFault("CerfIR A64 lowering: a shared probe routine exceeds its slot");
+    }
+    const platform::CodeWriteScope write;
+    uint8_t* c = region;
+    EmitProbeRoutineBytes(c, e, link, pc_slot);
+    platform::FlushInstructionCache(region, static_cast<size_t>(c - region));
+    return region;
 }
 
 void A64EmitExitDirect(A64Lowering& l, uint32_t target, uint16_t flags) {

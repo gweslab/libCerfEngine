@@ -41,7 +41,7 @@ void TrackLargeSpan(ArmTlbUnit* unit, uint32_t slot, bool add) {
     ArmTlbSpanTracker* tracker = unit->span_tracker;
     if (!tracker) return;
     const uint32_t span_bytes = 1u << entry.span_shift;
-    const uint32_t page = entry.tag & ~kArmTlbIoTagBit;
+    const uint32_t page = ArmTlbEntryPage(entry);
     const uint32_t first = (page & ~(span_bytes - 1u)) >> kArmSectionShift;
     const uint32_t last = ((page & ~(span_bytes - 1u)) + span_bytes - 1u) >>
                           kArmSectionShift;
@@ -77,6 +77,32 @@ ArmTlbEntry& PrepareInsert(ArmTlbUnit* unit, uint32_t base) {
     return entry;
 }
 
+void FillTagged(ArmTlbUnit* unit, uint32_t folded_va, uint32_t tag, uintptr_t va_addend,
+                uint32_t pa, uint8_t asid, bool global, bool writable, uint32_t span_bytes) {
+    const uint32_t base = ArmTlbSetBase(folded_va);
+    unit->dirty         = 1u;
+    ArmTlbEntry* e = nullptr;
+    for (uint32_t w = 0; w < kArmTlbWays; ++w) {
+        ArmTlbEntry& c = unit->entries[base + w];
+        if (c.tag == tag && c.asid == asid &&
+            c.global == (global ? 1u : 0u)) {
+            TrackLargeSpan(unit, base + w, false);
+            ArmTlbPromote(unit, base, static_cast<int>(w));
+            e = &unit->entries[base];
+            break;
+        }
+    }
+    if (!e) e = &PrepareInsert(unit, base);
+    e->tag       = tag;
+    e->va_addend = va_addend;
+    e->pa_page   = pa & kArmTlbPageMask;
+    e->asid      = asid;
+    e->global    = global ? 1u : 0u;
+    e->writable  = writable ? 1u : 0u;
+    e->span_shift = static_cast<uint8_t>(std::countr_zero(span_bytes));
+    TrackLargeSpan(unit, base, true);
+}
+
 }
 
 ArmTlbInvalidation ArmTlbInvalidateByVa(ArmTlbUnit* unit,
@@ -91,7 +117,7 @@ ArmTlbInvalidation ArmTlbInvalidateByVa(ArmTlbUnit* unit,
     if (!tracker || tracker->region_refs[page >> kArmSectionShift] == 0u) {
         for (uint32_t w = 0; w < kArmTlbWays; ++w) {
             ArmTlbEntry& entry = unit->entries[base + w];
-            if ((entry.tag & ~kArmTlbIoTagBit) == page) {
+            if (entry.tag != kArmTlbInvalidTag && ArmTlbEntryPage(entry) == page) {
                 entry.tag = kArmTlbInvalidTag;
             }
         }
@@ -102,7 +128,7 @@ ArmTlbInvalidation ArmTlbInvalidateByVa(ArmTlbUnit* unit,
                 const uint32_t bit = std::countr_zero(bits);
                 const uint32_t slot = (word << 5) + bit;
                 ArmTlbEntry& entry = unit->entries[slot];
-                const uint32_t entry_page = entry.tag & ~kArmTlbIoTagBit;
+                const uint32_t entry_page = ArmTlbEntryPage(entry);
                 const uint32_t entry_span = 1u << entry.span_shift;
                 const uint32_t entry_mask = ~(entry_span - 1u);
                 if ((entry_page & entry_mask) == (page & entry_mask)) {
@@ -115,8 +141,8 @@ ArmTlbInvalidation ArmTlbInvalidateByVa(ArmTlbUnit* unit,
         }
         for (uint32_t w = 0; w < kArmTlbWays; ++w) {
             ArmTlbEntry& entry = unit->entries[base + w];
-            if (!ArmTlbEntryIsWideSpan(entry) &&
-                (entry.tag & ~kArmTlbIoTagBit) == page) {
+            if (!ArmTlbEntryIsWideSpan(entry) && entry.tag != kArmTlbInvalidTag &&
+                ArmTlbEntryPage(entry) == page) {
                 entry.tag = kArmTlbInvalidTag;
             }
         }
@@ -126,60 +152,50 @@ ArmTlbInvalidation ArmTlbInvalidateByVa(ArmTlbUnit* unit,
     return {page & span_mask, span_bytes};
 }
 
+void ArmTlbInvalidateByPa(ArmTlbUnit* unit, uint32_t pa, uint32_t bytes) {
+    if (unit->dirty == 0u || bytes == 0u) return;
+    const uint64_t end = uint64_t(pa) + bytes;
+    for (uint32_t slot = 0; slot < kArmTlbSets * kArmTlbWays; ++slot) {
+        ArmTlbEntry& entry = unit->entries[slot];
+        if (entry.tag == kArmTlbInvalidTag || (entry.tag & kArmTlbIoTagBit) != 0u) continue;
+        const uint64_t span  = uint64_t{1} << entry.span_shift;
+        const uint64_t first = entry.pa_page - (ArmTlbEntryPage(entry) & (span - 1u));
+        if (first >= end || first + span <= pa) continue;
+        TrackLargeSpan(unit, slot, false);
+        entry.tag = kArmTlbInvalidTag;
+    }
+}
+
 void FillFastTlb(ArmTlbUnit* unit, uint32_t folded_va, uint8_t* host,
                  uint32_t pa, uint8_t asid, bool global, bool writable,
                  uint32_t span_bytes) {
-    const uint32_t base = ArmTlbSetBase(folded_va);
-    const uint32_t page = folded_va & 0xFFFFF000u;
-    unit->dirty         = 1u;
-    ArmTlbEntry* e = nullptr;
-    for (uint32_t w = 0; w < kArmTlbWays; ++w) {
-        ArmTlbEntry& c = unit->entries[base + w];
-        if (c.tag == page && c.asid == asid &&
-            c.global == (global ? 1u : 0u)) {
-            TrackLargeSpan(unit, base + w, false);
-            ArmTlbPromote(unit, base, static_cast<int>(w));
-            e = &unit->entries[base];
-            break;
-        }
-    }
-    if (!e) e = &PrepareInsert(unit, base);
-    e->tag       = page;
-    e->va_addend = reinterpret_cast<uintptr_t>(host) - folded_va;
-    e->pa_page   = pa & 0xFFFFF000u;
-    e->asid      = asid;
-    e->global    = global ? 1u : 0u;
-    e->writable  = writable ? 1u : 0u;
-    e->span_shift = static_cast<uint8_t>(std::countr_zero(span_bytes));
-    TrackLargeSpan(unit, base, true);
+    FillTagged(unit, folded_va, folded_va & kArmTlbPageMask,
+               reinterpret_cast<uintptr_t>(host) - folded_va, pa, asid, global, writable, span_bytes);
 }
 
 void FillFastTlbIo(ArmTlbUnit* unit, uint32_t folded_va, uint32_t pa,
                    uint8_t asid, bool global, bool writable,
                    uint32_t span_bytes) {
-    const uint32_t base   = ArmTlbSetBase(folded_va);
-    const uint32_t io_tag = (folded_va & 0xFFFFF000u) | kArmTlbIoTagBit;
-    unit->dirty           = 1u;
-    ArmTlbEntry* e = nullptr;
+    FillTagged(unit, folded_va, (folded_va & kArmTlbPageMask) | kArmTlbIoTagBit, 0, pa, asid,
+               global, writable, span_bytes);
+}
+
+void FillFastTlbSubpage(ArmTlbUnit* unit, uint32_t folded_va, uint8_t* host,
+                        uint32_t pa, uint8_t asid, bool global, uint32_t access) {
+    const uint32_t page = folded_va & kArmTlbPageMask;
+    const uint32_t base = ArmTlbSetBase(folded_va);
     for (uint32_t w = 0; w < kArmTlbWays; ++w) {
         ArmTlbEntry& c = unit->entries[base + w];
-        if (c.tag == io_tag && c.asid == asid &&
-            c.global == (global ? 1u : 0u)) {
+        const bool same_page =
+            c.tag == page || (c.tag & kArmTlbSubpageKindMask) == (page | kArmTlbSubpageTagBit);
+        if (same_page && c.asid == asid && c.global == (global ? 1u : 0u)) {
             TrackLargeSpan(unit, base + w, false);
-            ArmTlbPromote(unit, base, static_cast<int>(w));
-            e = &unit->entries[base];
-            break;
+            c.tag = kArmTlbInvalidTag;
         }
     }
-    if (!e) e = &PrepareInsert(unit, base);
-    e->tag       = io_tag;
-    e->va_addend = 0;
-    e->pa_page   = pa & 0xFFFFF000u;
-    e->asid      = asid;
-    e->global    = global ? 1u : 0u;
-    e->writable  = writable ? 1u : 0u;
-    e->span_shift = static_cast<uint8_t>(std::countr_zero(span_bytes));
-    TrackLargeSpan(unit, base, true);
+    const uint32_t tag = page | kArmTlbSubpageTagBit | ((access & 0xFFu) << kArmTlbSubpageAccessShift);
+    FillTagged(unit, folded_va, tag, reinterpret_cast<uintptr_t>(host) - folded_va, pa, asid,
+               global, false, 0x1000u);
 }
 
 }

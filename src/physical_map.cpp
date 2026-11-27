@@ -36,6 +36,16 @@ uint8_t* PhysicalMap::PeekWrite(uint32_t pa) const {
     return host::PhysicalTranslate(host_, pa, true, page);
 }
 
+void PhysicalMap::InvalidateRange(uint32_t pa, uint32_t bytes) {
+    if (bytes == 0u) return;
+    const uint32_t first = pa >> kPageShift;
+    const uint32_t last  = static_cast<uint32_t>((uint64_t(pa) + bytes - 1u) >> kPageShift);
+    for (uint32_t page = first; page <= last; ++page) {
+        if (PhysicalPage* table = tables_[page >> (kTableShift - kPageShift)].get())
+            table[page & kPageIndexMask] = PhysicalPage{};
+    }
+}
+
 void PhysicalMap::Invalidate() {
     for (std::unique_ptr<PhysicalPage[]>& table : tables_) {
         if (table) std::fill_n(table.get(), kPagesPerTable, PhysicalPage{});

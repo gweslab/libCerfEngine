@@ -100,7 +100,7 @@ endif()
 
 add_library(cerfengine STATIC ${cerfengine_sources})
 add_library(cerfengine::cerfengine ALIAS cerfengine)
-if(cerfengine_backend_x86_win32)
+if(cerfengine_backend_x86_win32 AND NOT cerfengine_IS_TOP_LEVEL)
     set_target_properties(cerfengine PROPERTIES
         INTERPROCEDURAL_OPTIMIZATION_RELEASE ON
         INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO ON)

@@ -32,6 +32,15 @@ namespace {
 /* ARM DDI 0406C.c D15.6.3 (p. D15-2606): "Only ARMv4 and ARMv5 support tiny (1KB) pages." */
 constexpr uint32_t kThumb2PageMask = 0xFFFu;
 
+constexpr uint32_t kSctlrAfe = 1u << 29;
+constexpr uint32_t kSctlrEe  = 1u << 25;
+constexpr uint32_t kSctlrVe  = 1u << 24;
+constexpr uint32_t kSctlrHa  = 1u << 17;
+constexpr uint32_t kSctlrL4  = 1u << 15;
+constexpr uint32_t kSctlrB   = 1u << 7;
+
+constexpr uint32_t kSctlrHaltWhenSet = kSctlrAfe | kSctlrEe | kSctlrVe | kSctlrHa | kSctlrL4 | kSctlrB;
+
 }
 
 void ArmBlockCompiler::OnReady() {
@@ -62,9 +71,16 @@ void ArmBlockCompiler::OnReady() {
 
 void CERFENGINE_FASTCALL ArmBlockCompiler::SctlrWriteHelper(uint32_t          value,
                                                             ArmBlockCompiler* compiler) {
-    if (compiler->mmu_->State()->control_register.word == value) return;
+    const uint32_t stored = compiler->mmu_->ControlRegisterAfterWrite(value);
+    const uint32_t halting = stored & kSctlrHaltWhenSet;
+    if (halting != 0u) {
+        compiler->engine_.Halt(HaltReason::kUnimplemented,
+                               "ArmBlockCompiler: SCTLR write 0x%08X sets bits 0x%08X", value,
+                               halting);
+    }
+    if (compiler->mmu_->State()->control_register.word == stored) return;
 
-    compiler->mmu_->SetControlRegister(value);
+    compiler->mmu_->SetControlRegister(stored);
     compiler->cache_->PendFlush();
 }
 

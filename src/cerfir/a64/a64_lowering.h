@@ -49,14 +49,13 @@ public:
     static constexpr ptrdiff_t kOpReserveBytes = 4096;
     static constexpr uint32_t  kCycleAddLimit  = 0x1000u;
     static constexpr size_t    kEntryStubBytes = 64;
-    static constexpr size_t    kProbeRoutineBytes = 0;
+    static constexpr size_t    kProbeRoutineBytes = 384;
 
     A64Lowering() : regs_(cursor_, pins_) {}
 
     static const void* BuildEntryStub(const PinnedSlots& pinned, uint8_t* region);
-    static const void* BuildProbeRoutine(const ExitModel&, const BlockLink&, int32_t, uint8_t*) {
-        return nullptr;
-    }
+    static const void* BuildProbeRoutine(const ExitModel& e, const BlockLink& link, int32_t pc_slot,
+                                         uint8_t* region);
     static uint8_t     PinnedHostRegister(uint32_t index) {
         return index < kA64MaxPinned ? kA64PinnedRegs[index] : 0xFFu;
     }

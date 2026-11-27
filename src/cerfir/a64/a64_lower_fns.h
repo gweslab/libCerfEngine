@@ -147,6 +147,7 @@ void A64EmitFusedAlu(A64Lowering& lowering, Op op, Ref a, Ref b, uint32_t mask, 
 void A64EmitLoad(A64Lowering& lowering, Ref ref, Ref address, Ref writeback, uint32_t attr);
 void A64EmitStore(A64Lowering& lowering, Ref address, Ref value, Ref writeback, uint32_t attr);
 void A64EmitTransferWords(A64Lowering& lowering, uint32_t attr, uint32_t list);
+bool A64EmitColdWordTransfer(A64Lowering& lowering, const A64ColdTransfer& cold);
 
 bool A64AluImmFits(Op op, uint32_t imm);
 void A64EmitAlu(uint8_t*& c, Op op, uint8_t dst, uint8_t lhs, const A64RegAlloc::Operand& rhs,

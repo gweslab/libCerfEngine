@@ -37,6 +37,7 @@ public:
     CERFENGINE_FORCEINLINE uint32_t HostMask() const { return host_mask_; }
     CERFENGINE_FORCEINLINE uint32_t Full() const { return full_; }
     CERFENGINE_FORCEINLINE A64PinState State() const { return state_; }
+    CERFENGINE_FORCEINLINE void        EnterState(const A64PinState& state) { state_ = state; }
 
     CERFENGINE_FORCEINLINE int32_t Index(int32_t disp, uint32_t bytes) const {
         const int64_t off = int64_t{disp} - base_;

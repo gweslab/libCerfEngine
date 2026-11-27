@@ -36,6 +36,7 @@ public:
     uint8_t* PeekWrite(uint32_t pa) const;
 
     void Invalidate();
+    void InvalidateRange(uint32_t pa, uint32_t bytes);
 
 private:
     static constexpr uint32_t kPageShift      = 12u;

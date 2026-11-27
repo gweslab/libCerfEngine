@@ -138,6 +138,49 @@ uint8_t* A64SoftTlb::EmitWatchWrite(uint8_t* c, uint32_t) const {
     return c;
 }
 
+uint8_t* A64SoftTlb::EmitWatchWords(uint8_t* c, const int32_t* word_delta, uint32_t count) const {
+    if (!model_.watch_writes || count == 0u) return c;
+    EmitAndMask(c, kTmpA, kVa, OffsetMask(model_));
+    EmitLdrW(c, kTmpB, kEntry, model_.entry_pa);
+    EmitLogicReg(c, kOrr, kTmpA, kTmpA, kTmpB);
+
+    EmitLdrW(c, kTmpB, kMmuReg, model_.watch_base_aux);
+    EmitCmpReg(c, kTmpA, kTmpB);
+    uint8_t* below = EmitBCondLabel(c, kCc);
+    EmitLdrW(c, kTmpC, kMmuReg, model_.watch_top_aux);
+    EmitCmpReg(c, kTmpA, kTmpC);
+    uint8_t* above = EmitBCondLabel(c, kCs);
+
+    EmitSubReg(c, kTmpA, kTmpA, kTmpB);
+    EmitLsrImm(c, kTmpA, kTmpA, 2u);
+    EmitLdrX(c, kTmpB, kMmuReg, model_.watch_words_aux);
+    uint8_t* hits[kMaxWords];
+    for (uint32_t k = 0; k < count; ++k) {
+        EmitAddConst(c, kTmpC, kTmpA, static_cast<uint32_t>(word_delta[k]), false);
+        EmitLsrImm(c, kTmpD, kTmpC, 5u);
+        EmitLoadStoreIndexed(c, kWord, kLoad, kTmpD, kTmpB, kTmpD, true);
+        EmitShiftReg(c, kLsr, kTmpD, kTmpD, kTmpC);
+        hits[k] = EmitTbzLabel(c, kTmpD, 0u, true);
+    }
+    uint8_t* done = EmitBLabel(c);
+    for (uint32_t k = 0; k < count; ++k) FixupLabel(hits[k], c);
+
+    EmitLsrImm(c, kTmpA, kTmpA, 10u);
+    EmitLdrX(c, kTmpB, kMmuReg, model_.watch_dirty_aux);
+    EmitLsrImm(c, kTmpC, kTmpA, 5u);
+    EmitAddReg(c, kTmpB, kTmpB, kTmpC, kLsl, 2u, true);
+    EmitLdrW(c, kTmpD, kTmpB, 0);
+    EmitMovImm32(c, kTmpE, 1u);
+    EmitShiftReg(c, kLsl, kTmpE, kTmpE, kTmpA);
+    EmitLogicReg(c, kOrr, kTmpD, kTmpD, kTmpE);
+    EmitStrW(c, kTmpD, kTmpB, 0);
+
+    FixupLabel(done, c);
+    FixupLabel(below, c);
+    FixupLabel(above, c);
+    return c;
+}
+
 uint8_t* A64SoftTlb::EmitDirect(uint8_t* c, uint32_t privilege, TlbAccess access,
                                 size_t* miss_offset, uint32_t* miss_count) const {
     uint8_t* const start = c;
@@ -178,6 +221,37 @@ uint8_t* A64SoftTlb::EmitMiss(uint8_t* c, uint32_t privilege, TlbAccess access) 
         EmitMovReg(c, kHost, kZr, true);
         EmitRet(c);
         for (int i = 0; i < n_io_miss; ++i) FixupLabel(io_miss[i], c);
+    }
+    if (model_.subpage_tag_bit != 0u) {
+        uint8_t* sub_miss[3];
+        int      n_sub_miss = 0;
+        c = EmitFold(c);
+        EmitAndMask(c, kTmpA, kFolded, PageMask(model_));
+        EmitAddConst(c, kTmpA, kTmpA, model_.subpage_tag_bit, false);
+        EmitLdrW(c, kTmpB, kEntry, model_.entry_tag);
+        EmitLogicReg(c, kEor, kTmpA, kTmpA, kTmpB);
+        EmitAndMask(c, kTmpA, kTmpA, model_.subpage_kind_mask);
+        sub_miss[n_sub_miss++] = EmitCbzLabel(c, kTmpA, true, false);
+
+        EmitLdrb(c, kTmpA, kEntry, model_.entry_global);
+        uint8_t* context_ok = EmitCbzLabel(c, kTmpA, true, false);
+        EmitLdrb(c, kTmpA, kMmuReg, model_.context_aux);
+        EmitLdrb(c, kTmpE, kEntry, model_.entry_context);
+        EmitCmpReg(c, kTmpA, kTmpE);
+        sub_miss[n_sub_miss++] = EmitBCondLabel(c, kNe);
+        FixupLabel(context_ok, c);
+
+        EmitUbfx(c, kTmpA, kFolded, model_.subpage_index_shift, 2u);
+        EmitAddConst(c, kTmpA, kTmpA, model_.subpage_access_shift + (access != TlbAccess::kRead ? 4u : 0u),
+                     false);
+        EmitShiftReg(c, kLsr, kTmpB, kTmpB, kTmpA);
+        sub_miss[n_sub_miss++] = EmitTbzLabel(c, kTmpB, 0u, false);
+
+        if (access != TlbAccess::kRead && model_.watch_writes) c = EmitWatchWrite(c, privilege);
+        EmitLdrX(c, kTmpB, kEntry, model_.entry_addend);
+        EmitAddUxtw(c, kHost, kTmpB, kFolded);
+        EmitRet(c);
+        for (int i = 0; i < n_sub_miss; ++i) FixupLabel(sub_miss[i], c);
     }
     const bool keep_pc = KeepsPc();
     if (keep_pc) c = EmitSavePc(c);

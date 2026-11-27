@@ -17,6 +17,8 @@ struct ArmTlbInvalidation {
 ArmTlbInvalidation ArmTlbInvalidateByVa(ArmTlbUnit* unit,
                                         uint32_t process_id, uint32_t va);
 
+void ArmTlbInvalidateByPa(ArmTlbUnit* unit, uint32_t pa, uint32_t bytes);
+
 void FillFastTlb(ArmTlbUnit* unit, uint32_t folded_va, uint8_t* host,
                  uint32_t pa, uint8_t asid, bool global, bool writable,
                  uint32_t span_bytes);
@@ -24,5 +26,8 @@ void FillFastTlb(ArmTlbUnit* unit, uint32_t folded_va, uint8_t* host,
 void FillFastTlbIo(ArmTlbUnit* unit, uint32_t folded_va, uint32_t pa,
                    uint8_t asid, bool global, bool writable,
                    uint32_t span_bytes);
+
+void FillFastTlbSubpage(ArmTlbUnit* unit, uint32_t folded_va, uint8_t* host,
+                        uint32_t pa, uint8_t asid, bool global, uint32_t access);
 
 }
